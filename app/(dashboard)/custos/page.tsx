@@ -1,0 +1,111 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Receipt } from 'lucide-react'
+import { MonthYearFilter } from '@/components/month-year-filter'
+import { Suspense } from 'react'
+import { MESES } from '@/lib/constants'
+
+export default async function CustosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string; ano?: string }>
+}) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const params = await searchParams
+  const now = new Date()
+  const mes = params.mes ? parseInt(params.mes) : now.getMonth() + 1
+  const ano = params.ano ? parseInt(params.ano) : now.getFullYear()
+
+  const { data: custos } = await supabase
+    .from('custos')
+    .select('*, apartamentos(numero, empreendimentos(nome))')
+    .eq('mes', mes)
+    .eq('ano', ano)
+    .order('categoria')
+
+  const total = custos?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+
+  return (
+    <div className="p-8">
+      <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Custos</h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Despesas de {MESES[mes - 1]} {ano} — {custos?.length ?? 0} lançamento(s)
+          </p>
+        </div>
+        <Suspense fallback={null}>
+          <MonthYearFilter mes={mes} ano={ano} />
+        </Suspense>
+      </div>
+
+      <Card className="border border-gray-100 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+            <Receipt size={18} />
+            Lançamentos de Custos
+          </CardTitle>
+          {total > 0 && (
+            <span className="text-sm font-bold text-gray-900">
+              Total: R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          )}
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-gray-100">
+                <TableHead className="text-gray-500 font-medium">Imóvel</TableHead>
+                <TableHead className="text-gray-500 font-medium">Categoria</TableHead>
+                <TableHead className="text-gray-500 font-medium">Gestão</TableHead>
+                <TableHead className="text-gray-500 font-medium text-right">Valor</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {custos && custos.length > 0 ? (
+                custos.map((custo) => (
+                  <TableRow key={custo.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-900">{custo.apartamentos?.numero}</span>
+                        <span className="text-xs text-gray-400">{(custo.apartamentos?.empreendimentos as any)?.nome}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-gray-600 font-medium">{custo.categoria}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={custo.tipo_gestao === 'adm' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}>
+                        {custo.tipo_gestao.toUpperCase()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-gray-900">
+                      R$ {custo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-gray-400 py-12">
+                    Nenhum custo encontrado para {MESES[mes - 1]} {ano}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
