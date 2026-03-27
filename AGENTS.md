@@ -1,5 +1,180 @@
 <!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Regras para Agentes de IA — Sistema Financeiro AlugEasy
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+## ⚠️ Este é um projeto Next.js 16 com App Router — leia antes de qualquer código
+
+Esta versão do Next.js tem **mudanças significativas** em relação ao que pode estar no seu treinamento. Leia o guia em `node_modules/next/dist/docs/` antes de escrever qualquer código. Respeite as mensagens de deprecação.
+
+---
+
+## 📌 Contexto do Projeto
+
+| Item | Valor |
+|---|---|
+| Framework | Next.js **16.2.1** com **App Router** |
+| Runtime | React 19.2.4 |
+| Banco de dados | Supabase (PostgreSQL 17) — projeto `rlkmljeatapayiroggrp` |
+| Região Supabase | `sa-east-1` (São Paulo) |
+| Estilização | Tailwind CSS **v4** + shadcn/ui v4 |
+| Autenticação | `@supabase/ssr` 0.9.0 |
+
+---
+
+## 🏗️ Regras de Arquitetura
+
+### App Router — convenções obrigatórias
+
+- Páginas de servidor: sem `'use client'` — podem `async`, usam `cookies()`, `redirect()`, `createClient()` do server
+- Páginas/componentes de cliente: começam com `'use client'` — sem acesso direto ao banco
+- **Groups de rotas:** `(auth)` para login, `(dashboard)` para área protegida
+- Layouts com autenticação ficam em `app/(dashboard)/layout.tsx`
+- API Routes usam `export async function POST(request: NextRequest)` — **sem `pages/api/`**
+
+### Supabase — clientes distintos por contexto
+
+```ts
+// ✅ Em Server Components, layouts, api/routes:
+import { createClient } from '@/lib/supabase/server'
+const supabase = await createClient()
+
+// ✅ Em Client Components:
+import { createClient } from '@/lib/supabase/client'
+const supabase = createClient() // sem await
+```
+
+**Nunca** misturar os dois clientes no mesmo arquivo.
+
+---
+
+## 🗄️ Banco de Dados — Regras
+
+### Schema público (tabelas existentes)
+
+```
+profiles         → id (uuid), full_name, role ('admin'|'analista')
+empreendimentos  → id, nome (unique)
+apartamentos     → id, empreendimento_id (fk), numero
+                   UNIQUE (empreendimento_id, numero)
+custos           → id, apartamento_id (fk), mes, ano, categoria, valor, tipo_gestao ('adm'|'sub')
+diarias          → id, apartamento_id (fk), data, valor, tipo_gestao ('adm'|'sub')
+importacoes      → id, tipo ('custos_adm'|'custos_sub'|'diarias_adm'|'diarias_sub'),
+                   mes, ano, nome_arquivo, status ('concluido'|'erro'), importado_por
+```
+
+### Restrições que NUNCA devem ser violadas
+
+- `status` em `importacoes` aceita **apenas** `'concluido'` ou `'erro'` — **nunca** `'sucesso'`
+- `tipo` em `importacoes` aceita **apenas** `'custos_adm'`, `'custos_sub'`, `'diarias_adm'`, `'diarias_sub'`
+- `tipo_gestao` aceita **apenas** `'adm'` ou `'sub'`
+- `role` em `profiles` aceita **apenas** `'admin'` ou `'analista'`
+
+### RLS (Row Level Security)
+
+- **Sempre habilitado** em todas as tabelas
+- Leitura: qualquer usuário autenticado (`auth.role() = 'authenticated'`)
+- Escrita: apenas usuários com `role = 'admin'` na tabela `profiles`
+- **Nunca desativar RLS** sem adicionar novas políticas equivalentes
+
+---
+
+## 🛣️ Rotas — Mapa Completo
+
+| Rota | Tipo | Acesso |
+|---|---|---|
+| `/login` | Público | Todos |
+| `/` | Protegido | Autenticados |
+| `/empreendimentos` | Protegido | Autenticados |
+| `/apartamentos` | Protegido | Autenticados |
+| `/custos` | Protegido | Autenticados |
+| `/diarias` | Protegido | Autenticados |
+| `/relatorio` | Protegido | Autenticados |
+| `/importar` | Protegido | **Apenas admin** |
+| `/usuarios` | Protegido | **Apenas admin** |
+| `POST /api/import` | API Route | Deve verificar autenticação manualmente |
+
+> **Importante:** O grupo `(dashboard)` não existe como segmento de URL. A rota raiz é `/`, não `/dashboard`. Ao redirecionar, use sempre `/` para o dashboard.
+
+---
+
+## 🧩 Componentes — Padrões
+
+### shadcn/ui já instalados
+
+Card, CardContent, CardHeader, CardTitle, CardDescription, Badge, Button, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tooltip, TooltipContent, TooltipTrigger, TooltipProvider
+
+### Importação correta
+
+```ts
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+// etc.
+```
+
+### Constantes globais (usar em vez de redefinir localmente)
+
+```ts
+import { MESES, MESES_ABREV, ANOS, formatCurrency } from '@/lib/constants'
+```
+
+---
+
+## 🔴 Bugs Conhecidos — NÃO reproduzir
+
+Ao modificar ou criar código, **evitar repetir os seguintes erros existentes**:
+
+1. **Redirect para `/dashboard`** — rota não existe. Sempre usar `redirect('/')` ou `router.push('/')`
+2. **`tipo_planilha`** — campo não existe. Usar `tipo`
+3. **`status: 'sucesso'`** — valor inválido. Usar `status: 'concluido'`
+4. **`mes`/`ano` hardcoded** — sempre receber do formulário/request
+5. **Rota `/api/import` pública** — sempre verificar `user` e `role === 'admin'` no início do handler
+
+---
+
+## 📝 Padrões de Código
+
+### Server Component buscando dados
+
+```tsx
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+
+export default async function MinhaPagina() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data } = await supabase.from('tabela').select('*')
+
+  return <div>{/* JSX com dados */}</div>
+}
+```
+
+### API Route com autenticação
+
+```ts
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role').eq('id', user.id).single()
+  if (profile?.role !== 'admin')
+    return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+
+  // lógica principal...
+}
+```
+
+---
+
+## 📂 Documentação
+
+Sempre manter atualizado após mudanças:
+- `documentação.md` — documentação técnica completa (schema, rotas, bugs)
+- `README.md` — guia de início rápido
+- Este arquivo (`AGENTS.md`) — regras para agentes de IA
 <!-- END:nextjs-agent-rules -->

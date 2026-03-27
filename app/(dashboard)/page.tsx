@@ -1,12 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   Building2,
   TrendingUp,
   TrendingDown,
   DollarSign,
-  BedDouble,
+  Receipt,
   Upload,
 } from 'lucide-react'
 import { DashboardCharts } from '@/components/dashboard-charts'
@@ -51,6 +50,11 @@ export default async function DashboardPage({
   const custosTotal = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
   const lucroTotal = faturamentoTotal - custosTotal
   const qtdEmpreendimentos = empreendimentos?.length ?? 0
+  const margemPct = faturamentoTotal > 0 ? Math.round((lucroTotal / faturamentoTotal) * 100) : 0
+  const custosPct = faturamentoTotal > 0 ? Math.min(100, Math.round((custosTotal / faturamentoTotal) * 100)) : 0
+
+  const fmt = (v: number) =>
+    `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 
   const empreendimentoMap: Record<string, { fat: number; custos: number }> = {}
 
@@ -82,8 +86,10 @@ export default async function DashboardPage({
     luc: vals.fat - vals.custos,
   }))
 
+  const hasData = faturamentoTotal > 0
+
   return (
-    <div className="p-8">
+    <div className="p-8 max-w-screen-xl">
       {/* Header */}
       <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -97,149 +103,178 @@ export default async function DashboardPage({
         </Suspense>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Card className="border border-gray-100 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Faturamento Total
-            </CardTitle>
-            <DollarSign className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {faturamentoTotal > 0
-                ? `R$ ${faturamentoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                : 'R$ —'}
-            </div>
-            <p className="text-xs text-gray-400 mt-1">{anoMesLabel}</p>
-          </CardContent>
-        </Card>
+      {/* ── CARTÕES DE MÉTRICAS PRINCIPAIS ─────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
 
-        <Card className="border border-gray-100 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Lucro / Prejuízo
-            </CardTitle>
-            {lucroTotal >= 0 ? (
-              <TrendingUp className="h-4 w-4 text-green-500" />
-            ) : (
-              <TrendingDown className="h-4 w-4 text-red-500" />
-            )}
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${
-                lucroTotal >= 0 ? 'text-green-600' : 'text-red-600'
-              }`}
-            >
-              {faturamentoTotal > 0
-                ? `${lucroTotal >= 0 ? '+' : ''}R$ ${lucroTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                : 'R$ —'}
+        {/* Faturamento */}
+        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ backgroundColor: '#193660' }} />
+          <div className="p-6 pl-7">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                Faturamento
+              </span>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#19366018' }}>
+                <DollarSign size={17} style={{ color: '#193660' }} />
+              </div>
             </div>
-            <p className="text-xs text-gray-400 mt-1">{anoMesLabel}</p>
-          </CardContent>
-        </Card>
+            <p className="text-3xl font-extrabold text-gray-900 leading-none mb-1">
+              {hasData ? fmt(faturamentoTotal) : <span className="text-gray-300">R$ —</span>}
+            </p>
+            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
+            <div>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>Base de referência</span>
+                <span>100%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-100">
+                <div className="h-1.5 rounded-full" style={{ width: '100%', backgroundColor: '#193660' }} />
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <Card className="border border-gray-100 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Empreendimentos
-            </CardTitle>
-            <Building2 className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {qtdEmpreendimentos > 0 ? qtdEmpreendimentos : '—'}
+        {/* Custos */}
+        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-red-400" />
+          <div className="p-6 pl-7">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                Custos Totais
+              </span>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-red-50">
+                <Receipt size={17} className="text-red-500" />
+              </div>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Cadastrados</p>
-          </CardContent>
-        </Card>
+            <p className="text-3xl font-extrabold text-gray-900 leading-none mb-1">
+              {hasData ? fmt(custosTotal) : <span className="text-gray-300">R$ —</span>}
+            </p>
+            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
+            <div>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>% do faturamento</span>
+                <span>{hasData ? `${custosPct}%` : '—'}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-100">
+                <div
+                  className="h-1.5 rounded-full bg-red-400"
+                  style={{ width: hasData ? `${custosPct}%` : '0%' }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <Card className="border border-gray-100 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              Custos Totais
-            </CardTitle>
-            <BedDouble className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">
-              {custosTotal > 0
-                ? `R$ ${custosTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                : 'R$ —'}
+        {/* Lucro Líquido */}
+        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
+            style={{ backgroundColor: lucroTotal >= 0 ? '#16a34a' : '#dc2626' }}
+          />
+          <div className="p-6 pl-7">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                Lucro Líquido
+              </span>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${lucroTotal >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                {lucroTotal >= 0
+                  ? <TrendingUp size={17} className="text-green-600" />
+                  : <TrendingDown size={17} className="text-red-500" />}
+              </div>
             </div>
-            <p className="text-xs text-gray-400 mt-1">{anoMesLabel}</p>
-          </CardContent>
-        </Card>
+            <p className={`text-3xl font-extrabold leading-none mb-1 ${!hasData ? 'text-gray-300' : lucroTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {hasData ? `${lucroTotal >= 0 ? '+' : ''}${fmt(lucroTotal)}` : 'R$ —'}
+            </p>
+            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
+            <div>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>Margem sobre faturamento</span>
+                <span>{hasData ? `${margemPct}%` : '—'}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-100">
+                <div
+                  className="h-1.5 rounded-full"
+                  style={{
+                    width: hasData ? `${Math.abs(margemPct)}%` : '0%',
+                    backgroundColor: lucroTotal >= 0 ? '#16a34a' : '#dc2626',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Card compacto — Empreendimentos */}
+      <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3 w-fit mb-8">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#19366018' }}>
+          <Building2 size={16} style={{ color: '#193660' }} />
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 leading-none mb-0.5">Empreendimentos cadastrados</p>
+          <p className="text-sm font-bold text-gray-800">
+            {qtdEmpreendimentos > 0
+              ? `${qtdEmpreendimentos} empreendimento${qtdEmpreendimentos > 1 ? 's' : ''}`
+              : '—'}
+          </p>
+        </div>
       </div>
 
       {/* Gráfico */}
       {chartData.length > 0 ? (
         <DashboardCharts data={chartData} />
       ) : (
-        <Card className="border border-gray-100 shadow-sm mb-6">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Upload className="h-10 w-10 text-gray-300 mb-3" />
-            <p className="text-gray-500 font-medium">Nenhum dado disponível</p>
-            <p className="text-gray-400 text-sm mt-1">
-              Importe as planilhas Excel para visualizar os gráficos
-            </p>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-gray-100 shadow-sm mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+            <Upload className="h-7 w-7 text-gray-300" />
+          </div>
+          <p className="text-gray-500 font-semibold">Nenhum dado disponível</p>
+          <p className="text-gray-400 text-sm mt-1">
+            Importe as planilhas Excel para visualizar os gráficos
+          </p>
+        </div>
       )}
 
       {/* Cards de empreendimentos */}
       {empreendimentoCards.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
+          <h2 className="text-base font-semibold text-gray-800 mb-4">
             Resultado por Empreendimento
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {empreendimentoCards.map((emp) => (
-              <Card
+              <div
                 key={emp.nome}
-                className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer p-4"
               >
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold text-gray-800">
-                      {emp.nome}
-                    </CardTitle>
-                    <Badge
-                      className={`text-xs ${
-                        emp.luc >= 0
-                          ? 'bg-green-100 text-green-700 border-green-200'
-                          : 'bg-red-100 text-red-700 border-red-200'
-                      }`}
-                      variant="outline"
-                    >
-                      {emp.luc >= 0 ? '▲ Lucro' : '▼ Prejuízo'}
-                    </Badge>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-gray-800 truncate pr-2">{emp.nome}</span>
+                  <Badge
+                    className={`text-xs shrink-0 ${
+                      emp.luc >= 0
+                        ? 'bg-green-100 text-green-700 border-green-200'
+                        : 'bg-red-100 text-red-700 border-red-200'
+                    }`}
+                    variant="outline"
+                  >
+                    {emp.luc >= 0 ? '▲ Lucro' : '▼ Prejuízo'}
+                  </Badge>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Faturamento</span>
+                    <span className="font-medium text-gray-800">
+                      R$ {emp.fat.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    </span>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">Faturamento</span>
-                      <span className="font-medium text-gray-800">
-                        R$ {emp.fat.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">Lucro</span>
-                      <span
-                        className={`font-semibold ${
-                          emp.luc >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        {emp.luc >= 0 ? '+' : ''}R${' '}
-                        {emp.luc.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                      </span>
-                    </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Lucro</span>
+                    <span className={`font-semibold ${emp.luc >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {emp.luc >= 0 ? '+' : ''}R$ {emp.luc.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
         </div>
