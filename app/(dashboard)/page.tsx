@@ -12,6 +12,7 @@ import { DashboardCharts } from '@/components/dashboard-charts'
 import { MonthYearFilter } from '@/components/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
+import Link from 'next/link'
 
 export default async function DashboardPage({
   searchParams,
@@ -29,22 +30,26 @@ export default async function DashboardPage({
 
   const supabase = await createClient()
 
-  const { data: empreendimentos } = await supabase
-    .from('empreendimentos')
-    .select('id, nome')
-    .order('nome')
-
-  const { data: diariasData } = await supabase
-    .from('diarias')
-    .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
-    .gte('data', dataInicio)
-    .lte('data', dataFim)
-
-  const { data: custosData } = await supabase
-    .from('custos')
-    .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
-    .eq('mes', mes)
-    .eq('ano', ano)
+  const [
+    { data: empreendimentos },
+    { data: diariasData },
+    { data: custosData },
+  ] = await Promise.all([
+    supabase
+      .from('empreendimentos')
+      .select('id, nome')
+      .order('nome'),
+    supabase
+      .from('diarias')
+      .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
+      .gte('data', dataInicio)
+      .lte('data', dataFim),
+    supabase
+      .from('custos')
+      .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
+      .eq('mes', mes)
+      .eq('ano', ano),
+  ])
 
   const faturamentoTotal = diariasData?.reduce((acc, d) => acc + (d.valor || 0), 0) ?? 0
   const custosTotal = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
@@ -89,7 +94,7 @@ export default async function DashboardPage({
   const hasData = faturamentoTotal > 0
 
   return (
-    <div className="p-8 max-w-screen-xl">
+    <div className="p-8 w-full">
       {/* Header */}
       <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -224,15 +229,17 @@ export default async function DashboardPage({
       {chartData.length > 0 ? (
         <DashboardCharts data={chartData} />
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-gray-100 shadow-sm mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-            <Upload className="h-7 w-7 text-gray-300" />
+        <Link href="/importar">
+          <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border-2 border-dashed border-gray-200 shadow-sm mb-6 hover:border-[#193660] hover:bg-gray-50 transition-all duration-150 cursor-pointer group">
+            <div className="w-14 h-14 rounded-2xl bg-gray-50 group-hover:bg-[#19366015] flex items-center justify-center mb-4 transition-colors">
+              <Upload className="h-7 w-7 text-gray-300 group-hover:text-[#193660] transition-colors" />
+            </div>
+            <p className="text-gray-500 group-hover:text-gray-700 font-semibold transition-colors">Nenhum dado disponível</p>
+            <p className="text-gray-400 text-sm mt-1">
+              Clique aqui para importar planilhas e visualizar os gráficos
+            </p>
           </div>
-          <p className="text-gray-500 font-semibold">Nenhum dado disponível</p>
-          <p className="text-gray-400 text-sm mt-1">
-            Importe as planilhas Excel para visualizar os gráficos
-          </p>
-        </div>
+        </Link>
       )}
 
       {/* Cards de empreendimentos */}

@@ -4,21 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "ca896fccffcb67e5",
+        "id": "c2fa71acadfb4e0e",
         "type": "tabs",
         "children": [
           {
-            "id": "a822e3d40245df50",
+            "id": "eb7354a9095fc703",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "documentação.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "documentação"
+              "title": "Nova aba"
             }
           }
         ]
@@ -94,7 +90,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "documentação.md",
+                "file": "node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/layout.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +100,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Links inversos para documentação"
+              "title": "Links inversos para layout"
             }
           },
           {
@@ -113,12 +109,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "documentação.md",
+                "file": "node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/layout.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Links de saída para documentação"
+              "title": "Links de saída para layout"
             }
           },
           {
@@ -156,13 +152,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "documentação.md",
+                "file": "node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/layout.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Sumário de documentação"
+              "title": "Sumário de layout"
             }
           }
         ]
@@ -183,19 +179,46 @@
       "bases:Criar nova base": false
     }
   },
-  "active": "a822e3d40245df50",
+  "active": "eb7354a9095fc703",
   "lastOpenFiles": [
-    "analyze_excel_full.py",
-    "node_modules/eslint-plugin-react/README.md",
-    "documentação.md",
-    "Sem título.md",
-    "README.md",
-    "logo-alugueasy.png",
-    "node_modules/next/dist/docs/01-app/04-glossary.md",
-    "node_modules/fs-extra/README.md",
     "node_modules/ms/license.md",
-    "node_modules/next/dist/docs/02-pages/02-guides/upgrading/version-13.md",
-    "CLAUDE.md",
-    "AGENTS.md"
+    "node_modules/@hookform/resolvers/package.json",
+    "tsconfig.tsbuildinfo",
+    "node_modules/@types/xlsx/index.d.ts",
+    "node_modules/@types/ws/index.d.ts",
+    "node_modules/@types/validate-npm-package-name/index.d.ts",
+    "node_modules/@types/use-sync-external-store/index.d.ts",
+    "node_modules/@types/statuses/index.d.ts",
+    "node_modules/@types/json5/index.d.ts",
+    "node_modules/@types/json-schema/index.d.ts",
+    "node_modules/@types/estree/index.d.ts",
+    "node_modules/which-typed-array/README.md",
+    "node_modules/which-typed-array/CHANGELOG.md",
+    "node_modules/which-boxed-primitive/README.md",
+    "node_modules/which-boxed-primitive/CHANGELOG.md",
+    "node_modules/unbox-primitive/README.md",
+    "node_modules/unbox-primitive/CHANGELOG.md",
+    "node_modules/typed-array-buffer/README.md",
+    "node_modules/typed-array-buffer/CHANGELOG.md",
+    "node_modules/eslint-plugin-import/memo-parser/README.md",
+    "node_modules/eslint-plugin-import/docs/rules/unambiguous.md",
+    "node_modules/eslint-plugin-import/docs/rules/prefer-default-export.md",
+    "node_modules/eslint-plugin-import/docs/rules/order.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-useless-path-segments.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-webpack-loader-syntax.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-unused-modules.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-unassigned-import.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-unresolved.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-self-import.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-restricted-paths.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-relative-parent-imports.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-relative-packages.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-nodejs-modules.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-namespace.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-named-default.md",
+    "node_modules/eslint-plugin-import/docs/rules/no-named-export.md",
+    "node_modules/@supabase/phoenix/priv/static/phoenix.png",
+    "node_modules/@supabase/phoenix/priv/static/phoenix-orange.png",
+    "logo-alugueasy.png"
   ]
 }

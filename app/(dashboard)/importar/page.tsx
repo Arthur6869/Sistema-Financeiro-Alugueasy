@@ -127,9 +127,6 @@ export default function ImportarPage() {
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-900">Importar Planilhas</h1>
-          <Badge style={{ backgroundColor: '#193660' }} className="text-white text-xs">
-            Admin only
-          </Badge>
         </div>
         <p className="text-gray-500 text-sm mt-1">
           Faça upload das planilhas Excel de conferência do mês
@@ -250,14 +247,14 @@ export default function ImportarPage() {
                       ? 'Importado com sucesso!'
                       : status === 'error'
                       ? 'Erro ao importar — tente novamente'
-                      : 'Clique ou arraste o arquivo .xlsx'}
+                      : 'Clique ou arraste o arquivo .xlsx ou .csv'}
                   </span>
-                  <span className="text-xs text-gray-400">Formato aceito: .xlsx</span>
+                  <span className="text-xs text-gray-400">Formatos aceitos: .xlsx, .csv</span>
                 </label>
                 <input
                   id={`upload-${tipo.id}`}
                   type="file"
-                  accept=".xlsx"
+                  accept=".xlsx,.csv"
                   className="hidden"
                   disabled={isLoading}
                   onChange={(e) => {

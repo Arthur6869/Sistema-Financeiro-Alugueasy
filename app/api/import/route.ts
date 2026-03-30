@@ -17,8 +17,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Tipo inválido: "${tipo}"` }, { status: 400 })
     }
 
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    if (!['xlsx', 'csv'].includes(ext ?? '')) {
+      return NextResponse.json({ error: 'Formato inválido. Envie um arquivo .xlsx ou .csv' }, { status: 400 })
+    }
+
     const buffer = await file.arrayBuffer()
-    const workbook = XLSX.read(buffer, { type: 'buffer' })
+    const workbook = XLSX.read(buffer, { type: 'buffer', raw: false })
     const worksheet = workbook.Sheets[workbook.SheetNames[0]]
     const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
@@ -31,15 +36,6 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) {
       return NextResponse.json({ error: 'Usuário não autenticado. Faça login novamente.' }, { status: 401 })
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-    if (profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Apenas administradores podem importar planilhas.' }, { status: 403 })
     }
 
     const tipo_gestao = tipo.includes('adm') ? 'adm' : 'sub'

@@ -28,21 +28,23 @@ export default async function RelatorioPage() {
 
   // Filtro exato por (mes, ano) para não buscar dados além dos 6 meses
   const custosFilter = periodos.map(({ mes, ano }) => `and(mes.eq.${mes},ano.eq.${ano})`).join(',')
-  const { data: custosAll } = await supabase
-    .from('custos')
-    .select('mes, ano, categoria, valor, tipo_gestao')
-    .or(custosFilter)
 
   const first = periodos[0]
   const last = periodos[periodos.length - 1]
   const dataInicio = `${first.ano}-${String(first.mes).padStart(2, '0')}-01`
   const dataFim = `${last.ano}-${String(last.mes).padStart(2, '0')}-${new Date(last.ano, last.mes, 0).getDate()}`
 
-  const { data: diariasAll } = await supabase
-    .from('diarias')
-    .select('data, valor, tipo_gestao')
-    .gte('data', dataInicio)
-    .lte('data', dataFim)
+  const [{ data: custosAll }, { data: diariasAll }] = await Promise.all([
+    supabase
+      .from('custos')
+      .select('mes, ano, categoria, valor, tipo_gestao')
+      .or(custosFilter),
+    supabase
+      .from('diarias')
+      .select('data, valor, tipo_gestao')
+      .gte('data', dataInicio)
+      .lte('data', dataFim),
+  ])
 
   // Montar dados mensais para o gráfico de linha
   const monthlyData = periodos.map(({ mes, ano, label }) => {
