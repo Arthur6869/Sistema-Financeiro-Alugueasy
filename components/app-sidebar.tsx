@@ -101,16 +101,14 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
 
             return collapsed ? (
               <Tooltip key={item.href}>
-                <TooltipTrigger asChild>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      'flex items-center justify-center p-2.5 rounded-lg transition-all duration-150',
-                      isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
-                    )}
-                  >
-                    <Icon size={18} />
-                  </Link>
+                <TooltipTrigger
+                  render={<Link href={item.href} />}
+                  className={cn(
+                    'flex items-center justify-center p-2.5 rounded-lg transition-all duration-150',
+                    isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  )}
+                >
+                  <Icon size={18} />
                 </TooltipTrigger>
                 <TooltipContent side="right"><p>{item.label}</p></TooltipContent>
               </Tooltip>
@@ -145,16 +143,14 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
 
                 return collapsed ? (
                   <Tooltip key={item.href}>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={item.href}
-                        className={cn(
-                          'flex items-center justify-center p-2.5 rounded-lg transition-all duration-150',
-                          isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
-                        )}
-                      >
-                        <Icon size={18} />
-                      </Link>
+                    <TooltipTrigger
+                      render={<Link href={item.href} />}
+                      className={cn(
+                        'flex items-center justify-center p-2.5 rounded-lg transition-all duration-150',
+                        isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                      )}
+                    >
+                      <Icon size={18} />
                     </TooltipTrigger>
                     <TooltipContent side="right"><p>{item.label}</p></TooltipContent>
                   </Tooltip>
