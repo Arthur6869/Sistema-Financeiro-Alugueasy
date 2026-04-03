@@ -5,8 +5,8 @@ import { useCallback } from 'react'
 import { MESES, ANOS } from '@/lib/constants'
 
 interface MonthYearFilterProps {
-  mes: number
-  ano: number
+  mes: number // 0 = Todos
+  ano: number // 0 = Todos
 }
 
 export function MonthYearFilter({ mes, ano }: MonthYearFilterProps) {
@@ -30,6 +30,7 @@ export function MonthYearFilter({ mes, ano }: MonthYearFilterProps) {
         onChange={(e) => updateParam('mes', e.target.value)}
         className="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#193660]/30 cursor-pointer"
       >
+        <option value={0}>Todos os meses</option>
         {MESES.map((nome, i) => (
           <option key={i + 1} value={i + 1}>
             {nome}
@@ -42,6 +43,7 @@ export function MonthYearFilter({ mes, ano }: MonthYearFilterProps) {
         onChange={(e) => updateParam('ano', e.target.value)}
         className="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#193660]/30 cursor-pointer"
       >
+        <option value={0}>Todos os anos</option>
         {ANOS.map((a) => (
           <option key={a} value={a}>
             {a}

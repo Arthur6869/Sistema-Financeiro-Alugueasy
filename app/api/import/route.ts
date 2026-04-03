@@ -23,117 +23,255 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = await file.arrayBuffer()
-    const workbook = XLSX.read(buffer, { type: 'buffer', raw: false })
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
-
-    if (!rows || rows.length < 2) {
-      return NextResponse.json({ error: 'Planilha vazia ou sem dados (mínimo 2 linhas)' }, { status: 400 })
-    }
+   const workbook = XLSX.read(buffer, { type: 'buffer', raw: false })
 
     const supabase = await createClient()
-
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) {
       return NextResponse.json({ error: 'Usuário não autenticado. Faça login novamente.' }, { status: 401 })
     }
 
-    const tipo_gestao = tipo.includes('adm') ? 'adm' : 'sub'
     const mes = mesParam ? parseInt(mesParam) : new Date().getMonth() + 1
     const ano = anoParam ? parseInt(anoParam) : new Date().getFullYear()
     const data_registro = `${ano}-${String(mes).padStart(2, '0')}-01`
+    const tipo_gestao = tipo.includes('adm') ? 'adm' : 'sub'
 
-    // Garantir que o empreendimento padrão existe
-    let { data: emp } = await supabase
+    const { data: allEmpreendimentos } = await supabase
       .from('empreendimentos')
-      .select('id')
-      .eq('nome', 'Residencial AlugEasy')
-      .single()
+      .select('id, nome')
 
-    if (!emp) {
-      const { data: newEmp, error: empErr } = await supabase
-        .from('empreendimentos')
-        .insert({ nome: 'Residencial AlugEasy' })
-        .select('id')
-        .single()
-      if (empErr) throw empErr
-      emp = newEmp
-    }
-
-    const empreendimento_id = emp!.id
-    const headerRow = rows[0]
-    const columnsCount = headerRow.length
-
-    // Coletar números de apartamentos da linha de cabeçalho
-    const aptNumbers: string[] = []
-    for (let col = 0; col < columnsCount; col += 2) {
-      const val = headerRow[col]
-      if (val) aptNumbers.push(val.toString().replace('.0', ''))
-    }
-
-    if (aptNumbers.length === 0) {
-      return NextResponse.json({ error: 'Nenhum apartamento encontrado no cabeçalho da planilha' }, { status: 400 })
-    }
-
-    // Buscar todos os apartamentos em uma única query
-    const { data: existingApts } = await supabase
+    const { data: allApartamentos } = await supabase
       .from('apartamentos')
-      .select('id, numero')
-      .eq('empreendimento_id', empreendimento_id)
-      .in('numero', aptNumbers)
+      .select('id, numero, empreendimento_id')
+
+    if (!allEmpreendimentos || !allApartamentos) {
+      return NextResponse.json({ error: 'Erro ao carregar dados do banco' }, { status: 500 })
+    }
+
+    const empMap: Record<string, string> = {}
+    allEmpreendimentos.forEach(e => { empMap[e.nome.toUpperCase()] = e.id })
 
     const aptMap: Record<string, string> = {}
-    existingApts?.forEach((a) => { aptMap[a.numero] = a.id })
+    allApartamentos.forEach(a => {
+      aptMap[`${a.empreendimento_id}::${a.numero}`] = a.id
+    })
 
-    // Inserir apartamentos ausentes em lote
-    const missingNums = aptNumbers.filter((n) => !aptMap[n])
-    if (missingNums.length > 0) {
-      const { data: newApts, error: batchErr } = await supabase
-        .from('apartamentos')
-        .insert(missingNums.map((numero) => ({ numero, empreendimento_id })))
-        .select('id, numero')
-      if (batchErr) throw batchErr
-      newApts?.forEach((a) => { aptMap[a.numero] = a.id })
-    }
+    const firstAptByEmp: Record<string, string> = {}
+    allApartamentos.forEach(a => {
+      if (!firstAptByEmp[a.empreendimento_id]) {
+        firstAptByEmp[a.empreendimento_id] = a.id
+      }
+    })
 
-    // Construir todos os registros a inserir
     const custosToInsert: any[] = []
     const diariasToInsert: any[] = []
 
-    for (let col = 0; col < columnsCount; col += 2) {
-      const val = headerRow[col]
-      if (!val) continue
-      const numero = val.toString().replace('.0', '')
-      const apartamento_id = aptMap[numero]
-      if (!apartamento_id) continue
+    // ========== PROCESSAMENTO POR TIPO ==========
 
-      if (tipo.startsWith('custos')) {
-        for (let row = 1; row < rows.length; row++) {
-          const valor = parseFloat(rows[row][col])
-          const categoria = rows[row][col + 1]?.toString() || 'Outros'
-          if (!isNaN(valor) && valor > 0 && categoria !== 'Descrição') {
-            custosToInsert.push({ apartamento_id, valor, categoria, mes, ano, tipo_gestao })
+    if (tipo.startsWith('diarias')) {
+      // ─────────────────────────────────────────────────────────────────
+      // DIÁRIAS: O arquivo tem uma aba "RESULTADO ADM MES" ou
+      // "RESULTADO SUB MES" que consolida os totais de TODOS os
+      // empreendimentos e TODOS os apartamentos corretamente.
+      //
+      // Estrutura da aba RESULTADO:
+      //   Linha 0: "FEV - ADM" (ou SUB)
+      //   Linha 1: "ESSENCE" [col0]  "EASY" [col2]  "CULLINAN" [col4] ...
+      //   Linha 2: 42731.25  "FAT"   15392.92 "FAT"  5899.98   "FAT"  ...
+      //   Linha 6: "TOTAL FAT"  143049.19  ← valor total correto
+      //
+      // NÃO leia as abas individuais (ESSENCE, EASY...) para faturamento,
+      // pois elas têm TOTAL: que representa apenas parte dos apartamentos
+      // dependendo de como a planilha foi construída.
+      // ─────────────────────────────────────────────────────────────────
+
+      const resultSheetName = workbook.SheetNames.find(name =>
+        name.toUpperCase().includes('RESULTADO')
+      )
+
+      if (!resultSheetName) {
+        return NextResponse.json({
+          error: 'Aba RESULTADO não encontrada no arquivo de diárias. Verifique se o arquivo correto foi enviado.'
+        }, { status: 400 })
+      }
+
+      const worksheet = workbook.Sheets[resultSheetName]
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }) as any[][]
+
+      let nomesRow: any[] = []
+      const fatValoresPorEmp: Record<string, number> = {}
+
+      const NOMES_EMPREENDIMENTOS = [
+        'ESSENCE', 'EASY', 'CULLINAN', 'ATHOS', 'NOBILE',
+        'FUSION', 'MERCURE', 'METROPOLITAN', 'RAMADA', 'BRISAS', 'VISION'
+      ]
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        if (!row) continue
+
+        const cell0 = row[0] != null ? String(row[0]).trim().toUpperCase() : ''
+
+        if (cell0 === 'TOTAL FAT') {
+          const totalGeral = parseFloat(row[1])
+          console.log(`[DIÁRIAS] TOTAL FAT consolidado (${resultSheetName}): R$ ${totalGeral}`)
+          continue
+        }
+
+        if (row.some((c: any) =>
+          typeof c === 'string' &&
+          NOMES_EMPREENDIMENTOS.includes(c.trim().toUpperCase())
+        )) {
+          nomesRow = row
+          continue
+        }
+
+        if (
+          nomesRow.length > 0 &&
+          Object.keys(fatValoresPorEmp).length === 0 &&
+          row.some((c: any) => c === 'FAT')
+        ) {
+          for (let j = 0; j < row.length; j++) {
+            if (typeof row[j] === 'number') {
+              const nomeEmp = nomesRow[j]
+              if (typeof nomeEmp === 'string' && nomeEmp.trim()) {
+                const nomeUpper = nomeEmp.trim().toUpperCase()
+                fatValoresPorEmp[nomeUpper] = row[j]
+                console.log(`[DIÁRIAS] ${nomeUpper} → R$ ${row[j]}`)
+              }
+            }
           }
         }
-      } else {
-        const valor = parseFloat(rows[1]?.[col])
-        if (!isNaN(valor) && valor > 0) {
-          diariasToInsert.push({ apartamento_id, valor, data: data_registro, tipo_gestao })
+      }
+
+      for (const [nomeEmp, valor] of Object.entries(fatValoresPorEmp)) {
+        if (valor <= 0) continue
+
+        const empreendimento_id = empMap[nomeEmp]
+        if (!empreendimento_id) continue
+
+        const apartamento_id = firstAptByEmp[empreendimento_id]
+        if (!apartamento_id) continue
+
+        diariasToInsert.push({
+          apartamento_id,
+          valor,
+          data: data_registro,
+          tipo_gestao
+        })
+        console.log(`[DIÁRIAS] ✓ ${nomeEmp} (${tipo_gestao}) → R$ ${valor}`)
+      }
+
+    } else {
+      // CUSTOS: Cada aba = um empreendimento.
+      const sheetsToProcess = workbook.SheetNames.filter(name =>
+        !name.toUpperCase().includes('RESULTADO') &&
+        !name.toUpperCase().includes('RESUMO')
+      )
+
+      for (const sheetName of sheetsToProcess) {
+        const empreendimento_id = empMap[sheetName.toUpperCase()]
+        if (!empreendimento_id) continue
+
+        const worksheet = workbook.Sheets[sheetName]
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }) as any[][]
+
+        if (!rows || rows.length < 2) continue
+
+        for (let i = 0; i < rows.length; i++) {
+          const cellA = rows[i][0]
+          if (cellA == null) continue
+
+          const cellAStr = String(cellA).trim().toUpperCase()
+
+          if (cellAStr.startsWith('TOTAL') && cellAStr.includes(':')) {
+            const cellB = rows[i][1]
+            if (cellB == null) break
+
+            let valor: number
+            if (typeof cellB === 'string') {
+              valor = parseFloat(cellB.replace('R$', '').replace(/\./g, '').replace(',', '.').trim())
+            } else {
+              valor = parseFloat(cellB)
+            }
+
+            if (!isNaN(valor) && valor > 0) {
+              const apartamento_id = firstAptByEmp[empreendimento_id]
+              if (apartamento_id) {
+                custosToInsert.push({
+                  apartamento_id,
+                  valor,
+                  categoria: 'Total Consolidado',
+                  mes,
+                  ano,
+                  tipo_gestao
+                })
+                console.log(`[CUSTOS] ✓ ${sheetName} (${tipo_gestao}) → R$ ${valor}`)
+              }
+            }
+            break
+          }
         }
       }
     }
 
-    // Inserções em lote
-    if (custosToInsert.length > 0) {
-      const { error } = await supabase.from('custos').insert(custosToInsert)
-      if (error) throw error
-    }
-    if (diariasToInsert.length > 0) {
-      const { error } = await supabase.from('diarias').insert(diariasToInsert)
-      if (error) throw error
+    // ========== INSERIR DADOS NO BANCO ==========
+
+    // Proteção anti-duplicação: apagar registros anteriores do mesmo período
+    if (tipo.startsWith('diarias') && diariasToInsert.length > 0) {
+      const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+      const dataFim = `${ano}-${String(mes).padStart(2, '0')}-28`
+
+      const { count, error: deleteErr } = await supabase
+        .from('diarias')
+        .delete()
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
+        .eq('tipo_gestao', tipo_gestao)
+
+      if (deleteErr) {
+        console.warn('Aviso ao limpar diárias anteriores:', deleteErr.message)
+      } else if (count && count > 0) {
+        console.log(`[IMPORT] Removidos ${count} registros anteriores de diárias (${mes}/${ano})`)
+      }
     }
 
-    await supabase.from('importacoes').insert({
+    if (tipo.startsWith('custos') && custosToInsert.length > 0) {
+      const { count, error: deleteErr } = await supabase
+        .from('custos')
+        .delete()
+        .eq('mes', mes)
+        .eq('ano', ano)
+        .eq('tipo_gestao', tipo_gestao)
+
+      if (deleteErr) {
+        console.warn('Aviso ao limpar custos anteriores:', deleteErr.message)
+      } else if (count && count > 0) {
+        console.log(`[IMPORT] Removidos ${count} registros anteriores de custos (${mes}/${ano})`)
+      }
+    }
+
+    if (custosToInsert.length > 0) {
+      const { error: custosError } = await supabase.from('custos').insert(custosToInsert)
+      if (custosError) {
+        console.error('Erro ao inserir custos:', custosError)
+        return NextResponse.json({ error: `Erro ao inserir custos: ${custosError.message}` }, { status: 500 })
+      }
+      console.log(`✓ Inseridos ${custosToInsert.length} registros de custos`)
+    }
+
+    if (diariasToInsert.length > 0) {
+      const { error: diariasError } = await supabase.from('diarias').insert(diariasToInsert)
+      if (diariasError) {
+        console.error('Erro ao inserir diárias:', diariasError)
+        return NextResponse.json({ error: `Erro ao inserir diárias: ${diariasError.message}` }, { status: 500 })
+      }
+      console.log(`✓ Inseridas ${diariasToInsert.length} registros de diárias`)
+    }
+
+    // ========== REGISTRAR HISTÓRICO DE IMPORTAÇÃO ==========
+
+    const { error: insertError } = await supabase.from('importacoes').insert({
       nome_arquivo: file.name,
       tipo,
       mes,
@@ -142,10 +280,26 @@ export async function POST(request: NextRequest) {
       importado_por: user.id,
     })
 
+    if (insertError) {
+      console.error('Erro ao inserir no histórico de importações:', insertError)
+      return NextResponse.json({
+        error: `Falha ao registrar importação no histórico: ${insertError.message}`
+      }, { status: 500 })
+    }
+
     return NextResponse.json({
       success: true,
-      inserted: { custos: custosToInsert.length, diarias: diariasToInsert.length },
+      message: 'Arquivo analisado com sucesso. Totais extraídos do consolidado.',
+      tipo,
+      mes,
+      ano,
+      arquivo: file.name,
+      registros: {
+        diarias: diariasToInsert.length,
+        custos: custosToInsert.length,
+      }
     })
+
   } catch (error: any) {
     console.error('Erro na importação:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })

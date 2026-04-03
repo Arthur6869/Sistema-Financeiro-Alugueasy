@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Receipt } from 'lucide-react'
-import { MonthYearFilter } from '@/components/month-year-filter'
+import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 
@@ -26,17 +26,26 @@ export default async function CustosPage({
 
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano ? parseInt(params.ano) : now.getFullYear()
+  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
+  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
 
-  const { data: custos } = await supabase
+  let query = supabase
     .from('custos')
     .select('*, apartamentos(numero, empreendimentos(nome))')
-    .eq('mes', mes)
-    .eq('ano', ano)
     .order('categoria')
 
+  if (mes > 0) query = query.eq('mes', mes) as typeof query
+  if (ano > 0) query = query.eq('ano', ano) as typeof query
+
+  const { data: custos } = await query
+
   const total = custos?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+
+  const periodoLabel =
+    mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
+    mes > 0 ? `${MESES[mes - 1]} — todos os anos` :
+    ano > 0 ? `Todos os meses de ${ano}` :
+    'Todos os períodos'
 
   return (
     <div className="p-8">
@@ -44,7 +53,7 @@ export default async function CustosPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Custos</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Despesas de {MESES[mes - 1]} {ano} — {custos?.length ?? 0} lançamento(s)
+            Despesas de {periodoLabel} — {custos?.length ?? 0} lançamento(s)
           </p>
         </div>
         <Suspense fallback={null}>
@@ -98,7 +107,7 @@ export default async function CustosPage({
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-gray-400 py-12">
-                    Nenhum custo encontrado para {MESES[mes - 1]} {ano}
+                    Nenhum custo encontrado para {periodoLabel}
                   </TableCell>
                 </TableRow>
               )}

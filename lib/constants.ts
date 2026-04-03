@@ -8,7 +8,7 @@ export const MESES_ABREV = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ]
 
-export const ANOS = [2024, 2025, 2026, 2027]
+export const ANOS = [2026]
 
 export const formatCurrency = (value: number, decimals = 2): string =>
   `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: decimals })}`

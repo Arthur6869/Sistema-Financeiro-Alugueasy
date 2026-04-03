@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { CalendarDays } from 'lucide-react'
-import { MonthYearFilter } from '@/components/month-year-filter'
+import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 
@@ -26,20 +26,31 @@ export default async function DiariasPage({
 
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano ? parseInt(params.ano) : now.getFullYear()
+  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
+  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
 
-  const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-  const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
-
-  const { data: diarias } = await supabase
+  let query = supabase
     .from('diarias')
     .select('*, apartamentos(numero, empreendimentos(nome))')
-    .gte('data', dataInicio)
-    .lte('data', dataFim)
     .order('data', { ascending: false })
 
+  if (mes > 0 && ano > 0) {
+    const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+    const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+    query = query.gte('data', dataInicio).lte('data', dataFim) as typeof query
+  } else if (ano > 0) {
+    query = query.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`) as typeof query
+  }
+
+  const { data: diarias } = await query
+
   const total = diarias?.reduce((acc, d) => acc + (d.valor || 0), 0) ?? 0
+
+  const periodoLabel =
+    mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
+    mes > 0 ? `${MESES[mes - 1]} — todos os anos` :
+    ano > 0 ? `Todos os meses de ${ano}` :
+    'Todos os períodos'
 
   return (
     <div className="p-8">
@@ -47,7 +58,7 @@ export default async function DiariasPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Diárias</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Receitas de {MESES[mes - 1]} {ano} — {diarias?.length ?? 0} registro(s)
+            Receitas de {periodoLabel} — {diarias?.length ?? 0} registro(s)
           </p>
         </div>
         <Suspense fallback={null}>
@@ -103,7 +114,7 @@ export default async function DiariasPage({
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-gray-400 py-12">
-                    Nenhuma diária registrada para {MESES[mes - 1]} {ano}
+                    Nenhuma diária registrada para {periodoLabel}
                   </TableCell>
                 </TableRow>
               )}

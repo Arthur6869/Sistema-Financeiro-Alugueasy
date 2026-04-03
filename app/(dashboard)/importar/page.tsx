@@ -20,6 +20,7 @@ import {
   Loader2,
   Receipt,
   CalendarDays,
+  Trash2,
 } from 'lucide-react'
 
 import { MESES, ANOS } from '@/lib/constants'
@@ -71,23 +72,29 @@ export default function ImportarPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [historico, setHistorico] = useState<any[]>([])
   const [loadingHistorico, setLoadingHistorico] = useState(true)
+  const [filtroMes, setFiltroMes] = useState(0)
+  const [filtroAno, setFiltroAno] = useState(now.getFullYear())
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const supabase = createClient()
 
-  const loadHistorico = useCallback(async () => {
+  const loadHistorico = useCallback(async (fMes: number, fAno: number) => {
     setLoadingHistorico(true)
-    const { data } = await supabase
+    let query = supabase
       .from('importacoes')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(100)
+    if (fMes > 0) query = query.eq('mes', fMes) as typeof query
+    if (fAno > 0) query = query.eq('ano', fAno) as typeof query
+    const { data } = await query
     setHistorico(data ?? [])
     setLoadingHistorico(false)
-  }, []) // supabase é estável por ser criado fora do render
+  }, [])
 
   useEffect(() => {
-    loadHistorico()
-  }, [loadHistorico])
+    loadHistorico(filtroMes, filtroAno)
+  }, [loadHistorico, filtroMes, filtroAno])
 
   async function handleUpload(tipo: string, file: File) {
     setUploading(tipo)
@@ -108,7 +115,7 @@ export default function ImportarPage() {
 
       if (res.ok) {
         setResults((prev) => ({ ...prev, [tipo]: 'ok' }))
-        await loadHistorico()
+        await loadHistorico(filtroMes, filtroAno)
       } else {
         const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
         setErrors((prev) => ({ ...prev, [tipo]: body?.error ?? `HTTP ${res.status}` }))
@@ -119,6 +126,40 @@ export default function ImportarPage() {
       setResults((prev) => ({ ...prev, [tipo]: 'error' }))
     } finally {
       setUploading(null)
+    }
+  }
+
+  async function handleDelete(imp: any) {
+    const periodoLabel = `${MESES[(imp.mes ?? 1) - 1]} ${imp.ano}`
+    const tipoLabel = TIPO_LABELS[imp.tipo] ?? imp.tipo
+    if (!confirm(`Excluir todos os dados de "${tipoLabel}" referentes a ${periodoLabel}?\n\nEsta ação remove os registros do banco e não pode ser desfeita.`)) return
+
+    setDeletingId(imp.id)
+    try {
+      const tipo_gestao = imp.tipo.includes('adm') ? 'adm' : 'sub'
+
+      if (imp.tipo.startsWith('custos')) {
+        await supabase
+          .from('custos')
+          .delete()
+          .eq('mes', imp.mes)
+          .eq('ano', imp.ano)
+          .eq('tipo_gestao', tipo_gestao)
+      } else {
+        const dataInicio = `${imp.ano}-${String(imp.mes).padStart(2, '0')}-01`
+        const dataFim = new Date(imp.ano, imp.mes, 0).toISOString().slice(0, 10)
+        await supabase
+          .from('diarias')
+          .delete()
+          .gte('data', dataInicio)
+          .lte('data', dataFim)
+          .eq('tipo_gestao', tipo_gestao)
+      }
+
+      await supabase.from('importacoes').delete().eq('id', imp.id)
+      await loadHistorico(filtroMes, filtroAno)
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -274,13 +315,35 @@ export default function ImportarPage() {
         })}
       </div>
 
-      {/* Histórico real */}
+      {/* Histórico */}
       <Card className="border border-gray-100 shadow-sm">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
           <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
             <Upload size={18} />
             Histórico de Importações
           </CardTitle>
+          <div className="flex items-center gap-2">
+            <select
+              value={filtroMes}
+              onChange={(e) => setFiltroMes(Number(e.target.value))}
+              className="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#193660]/30 cursor-pointer"
+            >
+              <option value={0}>Todos os meses</option>
+              {MESES.map((nome, i) => (
+                <option key={i + 1} value={i + 1}>{nome}</option>
+              ))}
+            </select>
+            <select
+              value={filtroAno}
+              onChange={(e) => setFiltroAno(Number(e.target.value))}
+              className="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#193660]/30 cursor-pointer"
+            >
+              <option value={0}>Todos os anos</option>
+              {ANOS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -291,19 +354,20 @@ export default function ImportarPage() {
                 <TableHead className="text-gray-500">Período</TableHead>
                 <TableHead className="text-gray-500">Arquivo</TableHead>
                 <TableHead className="text-gray-500">Status</TableHead>
+                <TableHead className="text-gray-500 w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingHistorico ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     <Loader2 size={20} className="animate-spin text-gray-300 mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : historico.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-gray-400 py-8">
-                    Nenhuma importação realizada ainda
+                  <TableCell colSpan={6} className="text-center text-gray-400 py-8">
+                    Nenhuma importação encontrada
                   </TableCell>
                 </TableRow>
               ) : (
@@ -336,6 +400,19 @@ export default function ImportarPage() {
                           <AlertCircle size={10} className="mr-1" /> Erro
                         </Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => handleDelete(imp)}
+                        disabled={deletingId === imp.id}
+                        className="p-1.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Excluir importação e dados"
+                      >
+                        {deletingId === imp.id
+                          ? <Loader2 size={14} className="animate-spin" />
+                          : <Trash2 size={14} />
+                        }
+                      </button>
                     </TableCell>
                   </TableRow>
                 ))
