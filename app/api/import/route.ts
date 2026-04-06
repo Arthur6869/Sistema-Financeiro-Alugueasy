@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = await file.arrayBuffer()
-   const workbook = XLSX.read(buffer, { type: 'buffer', raw: false })
+    const workbook = XLSX.read(buffer, { type: 'buffer', raw: false })
 
     const supabase = await createClient()
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
@@ -70,19 +70,17 @@ export async function POST(request: NextRequest) {
 
     if (tipo.startsWith('diarias')) {
       // ─────────────────────────────────────────────────────────────────
-      // DIÁRIAS: O arquivo tem uma aba "RESULTADO ADM MES" ou
-      // "RESULTADO SUB MES" que consolida os totais de TODOS os
-      // empreendimentos e TODOS os apartamentos corretamente.
+      // DIÁRIAS: Usar a aba "RESULTADO ADM MES" / "RESULTADO SUB MES"
+      // que consolida os totais de TODOS os empreendimentos corretamente.
+      //
+      // NÃO ler as abas individuais — elas têm apartamentos em colunas
+      // horizontais e o TOTAL: delas pode ser parcial.
       //
       // Estrutura da aba RESULTADO:
-      //   Linha 0: "FEV - ADM" (ou SUB)
+      //   Linha 0: "FEV - ADM"
       //   Linha 1: "ESSENCE" [col0]  "EASY" [col2]  "CULLINAN" [col4] ...
-      //   Linha 2: 42731.25  "FAT"   15392.92 "FAT"  5899.98   "FAT"  ...
-      //   Linha 6: "TOTAL FAT"  143049.19  ← valor total correto
-      //
-      // NÃO leia as abas individuais (ESSENCE, EASY...) para faturamento,
-      // pois elas têm TOTAL: que representa apenas parte dos apartamentos
-      // dependendo de como a planilha foi construída.
+      //   Linha 2:  42731.25  "FAT"   15392.92 "FAT"  5899.98   "FAT" ...
+      //   Linha 6: "TOTAL FAT"  143049.19
       // ─────────────────────────────────────────────────────────────────
 
       const resultSheetName = workbook.SheetNames.find(name =>
@@ -91,7 +89,7 @@ export async function POST(request: NextRequest) {
 
       if (!resultSheetName) {
         return NextResponse.json({
-          error: 'Aba RESULTADO não encontrada no arquivo de diárias. Verifique se o arquivo correto foi enviado.'
+          error: 'Aba RESULTADO não encontrada. Verifique se o arquivo correto foi enviado.'
         }, { status: 400 })
       }
 
@@ -118,6 +116,7 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // Linha de nomes dos empreendimentos
         if (row.some((c: any) =>
           typeof c === 'string' &&
           NOMES_EMPREENDIMENTOS.includes(c.trim().toUpperCase())
@@ -126,6 +125,7 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // Linha de valores FAT: [valor, "FAT", valor, "FAT" ...]
         if (
           nomesRow.length > 0 &&
           Object.keys(fatValoresPorEmp).length === 0 &&
@@ -148,10 +148,16 @@ export async function POST(request: NextRequest) {
         if (valor <= 0) continue
 
         const empreendimento_id = empMap[nomeEmp]
-        if (!empreendimento_id) continue
+        if (!empreendimento_id) {
+          console.warn(`[DIÁRIAS] "${nomeEmp}" não encontrado no banco. Pulando.`)
+          continue
+        }
 
         const apartamento_id = firstAptByEmp[empreendimento_id]
-        if (!apartamento_id) continue
+        if (!apartamento_id) {
+          console.warn(`[DIÁRIAS] Nenhum apartamento para "${nomeEmp}". Pulando.`)
+          continue
+        }
 
         diariasToInsert.push({
           apartamento_id,
@@ -163,34 +169,58 @@ export async function POST(request: NextRequest) {
       }
 
     } else {
+      // ─────────────────────────────────────────────────────────────────
       // CUSTOS: Cada aba = um empreendimento.
+      //
+      // REGRA CRÍTICA: pegar APENAS o valor da linha "TOTAL:" de cada aba.
+      // NÃO ler linha por linha — a planilha tem apartamentos em colunas
+      // horizontais e só o TOTAL: já soma tudo corretamente.
+      //
+      // Estrutura de cada aba:
+      //   Linha 0:  "FEV"
+      //   Linha 1:  APT 204  "Descrição"  APT 301  "Descrição" ...
+      //   Linha 2:  30       "Amenitiz"   30        "Amenitiz"  ...
+      //   ...
+      //   Linha 30: "TOTAL:"  16165.64  ← ÚNICO valor a ser lido
+      // ─────────────────────────────────────────────────────────────────
+
       const sheetsToProcess = workbook.SheetNames.filter(name =>
         !name.toUpperCase().includes('RESULTADO') &&
         !name.toUpperCase().includes('RESUMO')
       )
 
+      console.log(`[CUSTOS] Abas a processar: ${sheetsToProcess.join(', ')}`)
+
       for (const sheetName of sheetsToProcess) {
         const empreendimento_id = empMap[sheetName.toUpperCase()]
-        if (!empreendimento_id) continue
+        if (!empreendimento_id) {
+          console.warn(`[CUSTOS] "${sheetName}" não encontrado no banco. Pulando.`)
+          continue
+        }
 
         const worksheet = workbook.Sheets[sheetName]
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }) as any[][]
 
         if (!rows || rows.length < 2) continue
 
+        // Buscar dinamicamente a linha "TOTAL:" — NÃO usar número de linha fixo
+        let totalEncontrado = false
         for (let i = 0; i < rows.length; i++) {
           const cellA = rows[i][0]
           if (cellA == null) continue
 
           const cellAStr = String(cellA).trim().toUpperCase()
 
+          // Linha de TOTAL: começa com "TOTAL" e contém ":"
           if (cellAStr.startsWith('TOTAL') && cellAStr.includes(':')) {
             const cellB = rows[i][1]
             if (cellB == null) break
 
             let valor: number
             if (typeof cellB === 'string') {
-              valor = parseFloat(cellB.replace('R$', '').replace(/\./g, '').replace(',', '.').trim())
+              valor = parseFloat(
+                cellB.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()
+              )
             } else {
               valor = parseFloat(cellB)
             }
@@ -207,22 +237,36 @@ export async function POST(request: NextRequest) {
                   tipo_gestao
                 })
                 console.log(`[CUSTOS] ✓ ${sheetName} (${tipo_gestao}) → R$ ${valor}`)
+                totalEncontrado = true
+              } else {
+                console.warn(`[CUSTOS] Nenhum apartamento para "${sheetName}". Pulando.`)
               }
             }
-            break
+            break // Próxima aba — só precisa do TOTAL
           }
         }
+
+        if (!totalEncontrado) {
+          console.warn(`[CUSTOS] Linha TOTAL: não encontrada na aba "${sheetName}"`)
+        }
+      }
+
+      // Validar se encontrou dados
+      if (custosToInsert.length === 0) {
+        return NextResponse.json({
+          error: 'Nenhum custo foi encontrado no arquivo. Verifique se o arquivo correto foi enviado.'
+        }, { status: 400 })
       }
     }
 
-    // ========== INSERIR DADOS NO BANCO ==========
+    // ========== PROTEÇÃO ANTI-DUPLICAÇÃO ==========
+    // Apagar registros anteriores SOMENTE após confirmar que há dados novos
 
-    // Proteção anti-duplicação: apagar registros anteriores do mesmo período
     if (tipo.startsWith('diarias') && diariasToInsert.length > 0) {
       const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
       const dataFim = `${ano}-${String(mes).padStart(2, '0')}-28`
 
-      const { count, error: deleteErr } = await supabase
+      const { error: deleteErr } = await supabase
         .from('diarias')
         .delete()
         .gte('data', dataInicio)
@@ -231,13 +275,13 @@ export async function POST(request: NextRequest) {
 
       if (deleteErr) {
         console.warn('Aviso ao limpar diárias anteriores:', deleteErr.message)
-      } else if (count && count > 0) {
-        console.log(`[IMPORT] Removidos ${count} registros anteriores de diárias (${mes}/${ano})`)
+      } else {
+        console.log(`[IMPORT] Diárias anteriores de ${mes}/${ano} (${tipo_gestao}) removidas`)
       }
     }
 
     if (tipo.startsWith('custos') && custosToInsert.length > 0) {
-      const { count, error: deleteErr } = await supabase
+      const { error: deleteErr } = await supabase
         .from('custos')
         .delete()
         .eq('mes', mes)
@@ -246,10 +290,12 @@ export async function POST(request: NextRequest) {
 
       if (deleteErr) {
         console.warn('Aviso ao limpar custos anteriores:', deleteErr.message)
-      } else if (count && count > 0) {
-        console.log(`[IMPORT] Removidos ${count} registros anteriores de custos (${mes}/${ano})`)
+      } else {
+        console.log(`[IMPORT] Custos anteriores de ${mes}/${ano} (${tipo_gestao}) removidos`)
       }
     }
+
+    // ========== INSERIR DADOS NO BANCO ==========
 
     if (custosToInsert.length > 0) {
       const { error: custosError } = await supabase.from('custos').insert(custosToInsert)
@@ -269,7 +315,7 @@ export async function POST(request: NextRequest) {
       console.log(`✓ Inseridas ${diariasToInsert.length} registros de diárias`)
     }
 
-    // ========== REGISTRAR HISTÓRICO DE IMPORTAÇÃO ==========
+    // ========== REGISTRAR HISTÓRICO ==========
 
     const { error: insertError } = await supabase.from('importacoes').insert({
       nome_arquivo: file.name,
@@ -289,7 +335,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Arquivo analisado com sucesso. Totais extraídos do consolidado.',
+      message: 'Importação concluída com sucesso.',
       tipo,
       mes,
       ano,
