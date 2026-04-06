@@ -8,8 +8,9 @@ import {
   Receipt,
   Upload,
 } from 'lucide-react'
-import { DashboardCharts } from '@/components/dashboard-charts'
-import { MonthYearFilter } from '@/components/month-year-filter'
+import { DashboardCharts } from '@/components/charts/dashboard-charts'
+import { MonthYearFilter } from '@/components/shared/month-year-filter'
+import { LimparDadosButton } from '@/components/shared/limpar-dados-button'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import Link from 'next/link'
@@ -21,14 +22,35 @@ export default async function DashboardPage({
 }) {
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano ? parseInt(params.ano) : now.getFullYear()
+  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
+  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
 
-  const anoMesLabel = `${MESES[mes - 1]} ${ano}`
-  const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-  const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+  const anoMesLabel =
+    mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
+    mes > 0 ? `${MESES[mes - 1]} — todos os anos` :
+    ano > 0 ? `Todos os meses de ${ano}` :
+    'Todos os períodos'
 
   const supabase = await createClient()
+
+  let diariasQuery = supabase
+    .from('diarias')
+    .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
+
+  if (mes > 0 && ano > 0) {
+    const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+    const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+    diariasQuery = diariasQuery.gte('data', dataInicio).lte('data', dataFim) as typeof diariasQuery
+  } else if (ano > 0) {
+    diariasQuery = diariasQuery.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`) as typeof diariasQuery
+  }
+
+  let custosQuery = supabase
+    .from('custos')
+    .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
+
+  if (mes > 0) custosQuery = custosQuery.eq('mes', mes) as typeof custosQuery
+  if (ano > 0) custosQuery = custosQuery.eq('ano', ano) as typeof custosQuery
 
   const [
     { data: empreendimentos },
@@ -39,16 +61,8 @@ export default async function DashboardPage({
       .from('empreendimentos')
       .select('id, nome')
       .order('nome'),
-    supabase
-      .from('diarias')
-      .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
-      .gte('data', dataInicio)
-      .lte('data', dataFim),
-    supabase
-      .from('custos')
-      .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
-      .eq('mes', mes)
-      .eq('ano', ano),
+    diariasQuery,
+    custosQuery,
   ])
 
   const faturamentoTotal = diariasData?.reduce((acc, d) => acc + (d.valor || 0), 0) ?? 0
@@ -103,9 +117,12 @@ export default async function DashboardPage({
             Visão geral financeira — {anoMesLabel}
           </p>
         </div>
-        <Suspense fallback={null}>
-          <MonthYearFilter mes={mes} ano={ano} />
-        </Suspense>
+        <div className="flex items-center gap-2">
+          <Suspense fallback={null}>
+            <MonthYearFilter mes={mes} ano={ano} />
+          </Suspense>
+          <LimparDadosButton mes={mes} ano={ano} />
+        </div>
       </div>
 
       {/* ── CARTÕES DE MÉTRICAS PRINCIPAIS ─────────────────────── */}
