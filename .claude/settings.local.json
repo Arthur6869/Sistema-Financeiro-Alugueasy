@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "mcp__claude_ai_Supabase__apply_migration",
-      "mcp__claude_ai_Supabase__execute_sql"
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(curl -s -k -H \"Authorization: Bearer f3fd0afd57a5e563ae43860a321f4daaab6a603db56f9d09db7d488c1af05d6f\" https://127.0.0.1:27124/vault/)",
+      "Bash(curl -s -k https://127.0.0.1:27124/)",
+      "Bash(node -e ' *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\arthu\\OneDrive\\Documentos\\Sistema-Financeiro-Alugueasy\\supabase"
     ]
   }
 }

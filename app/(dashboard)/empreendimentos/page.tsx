@@ -3,11 +3,12 @@ import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Building2, BedDouble, ArrowLeft, TrendingUp, TrendingDown, LayoutGrid, List } from 'lucide-react'
+import { Building2, BedDouble, ArrowLeft, TrendingUp, TrendingDown, LayoutGrid, List, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { CriarEmpreendimentoModal } from '@/components/modals/criar-empreendimento-modal'
 import { CriarApartamentoModal } from '@/components/modals/criar-apartamento-modal'
+import { EditarApartamentoRepasseModal } from '@/components/modals/editar-apartamento-repasse-modal'
 import { DeleteButton } from '@/components/shared/delete-button'
 import { EmpreendimentosListCharts } from '@/components/charts/empreendimentos-list-charts'
 import { EmpreendimentoDetailCharts } from '@/components/charts/empreendimento-detail-charts'
@@ -26,6 +27,13 @@ type FinData = {
 
 function emptyFin(): FinData {
   return { fat: 0, custos: 0, fatAdm: 0, fatSub: 0, custosAdm: 0, custosSub: 0, gestao: new Set() }
+}
+
+function getApartamentoCount(value: unknown): number {
+  if (!value) return 0
+  if (Array.isArray(value)) return value.length
+  if (typeof value === 'object') return Object.keys(value).length
+  return 0
 }
 
 /** Mini-tabela ADM / SUB / Total */
@@ -178,6 +186,14 @@ export default async function EmpreendimentosPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const role = profile?.role ?? 'analista'
+
   const { emp: empId, apt: aptId, mes: mesParam, ano: anoParam, view } = await searchParams
   const now = new Date()
   const mes = mesParam ? parseInt(mesParam) : now.getMonth() + 1
@@ -186,14 +202,36 @@ export default async function EmpreendimentosPage({
   const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
   const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-  const [{ data: empreendimentos }, { data: diariasData }, { data: custosData }] = await Promise.all([
+  const [
+    { data: empreendimentos },
+    { data: diariasData },
+    { data: custosData },
+    { data: reservasData },
+    { data: apartamentosData },
+  ] = await Promise.all([
     supabase.from('empreendimentos').select('id, nome, apartamentos(id)').order('nome'),
-    supabase.from('diarias').select('valor, tipo_gestao, apartamentos(empreendimento_id)').gte('data', dataInicio).lte('data', dataFim),
+    supabase.from('diarias').select('valor, tipo_gestao, apartamento_id, apartamentos(empreendimento_id)').gte('data', dataInicio).lte('data', dataFim),
     supabase.from('custos').select('valor, tipo_gestao, apartamentos(empreendimento_id)').eq('mes', mes).eq('ano', ano),
+    // Fallback Amenitiz: reservas individuais para o período (usadas quando diarias não tem o apt)
+    supabase.from('amenitiz_reservas').select('valor_liquido, individual_room_number, status').eq('mes_competencia', mes).eq('ano_competencia', ano),
+    // Mapa de número do apartamento → empreendimento_id + tipo_gestao (para o fallback Amenitiz)
+    supabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao'),
   ])
+
+  // Mapa: apartamento_id → empreendimento_id + tipo_gestao
+  const aptInfoMap: Record<string, { empId: string; tipoGestao: string }> = {}
+  // Mapa: numero_upper → apartamento_id (para cruzar com individual_room_number do Amenitiz)
+  const aptNumeroToId: Record<string, string> = {}
+  ;(apartamentosData ?? []).forEach((a: any) => {
+    aptInfoMap[a.id] = { empId: a.empreendimento_id, tipoGestao: a.tipo_gestao ?? 'adm' }
+    aptNumeroToId[String(a.numero).trim().toUpperCase()] = a.id
+  })
 
   // finMap: por empreendimento_id, com breakdown ADM/SUB
   const finMap: Record<string, FinData> = {}
+  // Rastrear quais apartamento_ids já têm dados de diárias (para não duplicar com Amenitiz)
+  const aptsComDiarias = new Set<string>()
+
   diariasData?.forEach((d: any) => {
     const id = d.apartamentos?.empreendimento_id
     if (!id) return
@@ -203,7 +241,28 @@ export default async function EmpreendimentosPage({
     if (d.tipo_gestao === 'adm') finMap[id].fatAdm += v
     else if (d.tipo_gestao === 'sub') finMap[id].fatSub += v
     if (d.tipo_gestao) finMap[id].gestao.add(d.tipo_gestao)
+    if (d.apartamento_id) aptsComDiarias.add(d.apartamento_id)
   })
+
+  // Fallback Amenitiz: adicionar apartamentos sem diárias via amenitiz_reservas
+  ;(reservasData ?? []).forEach((r: any) => {
+    // Ignorar canceladas/no-shows
+    if (['cancelled', 'canceled', 'no_show'].includes(r.status ?? '')) return
+    const aptId = aptNumeroToId[String(r.individual_room_number ?? '').trim().toUpperCase()]
+    if (!aptId) return
+    // Só usar Amenitiz se este apartamento NÃO tem dados na tabela diárias
+    if (aptsComDiarias.has(aptId)) return
+    const info = aptInfoMap[aptId]
+    if (!info) return
+    const empId = info.empId
+    if (!finMap[empId]) finMap[empId] = emptyFin()
+    const v = r.valor_liquido || 0
+    finMap[empId].fat += v
+    if (info.tipoGestao === 'adm') finMap[empId].fatAdm += v
+    else if (info.tipoGestao === 'sub') finMap[empId].fatSub += v
+    finMap[empId].gestao.add(info.tipoGestao)
+  })
+
   custosData?.forEach((c: any) => {
     const id = c.apartamentos?.empreendimento_id
     if (!id) return
@@ -220,19 +279,36 @@ export default async function EmpreendimentosPage({
     const emp = empreendimentos?.find((e) => e.id === empId)
     if (!emp) redirect('/empreendimentos')
 
-    const [{ data: apt }, { data: aptDiarias }, { data: aptCustos }] = await Promise.all([
-      supabase.from('apartamentos').select('id, numero').eq('id', aptId).single(),
+    const { data: apt } = await supabase.from('apartamentos').select('id, numero, tipo_gestao').eq('id', aptId).single()
+
+    const [{ data: aptDiarias }, { data: aptCustos }, { data: aptReservas }] = await Promise.all([
       supabase.from('diarias').select('data, valor, tipo_gestao').eq('apartamento_id', aptId).gte('data', dataInicio).lte('data', dataFim).order('data'),
       supabase.from('custos').select('categoria, valor, tipo_gestao').eq('apartamento_id', aptId).eq('mes', mes).eq('ano', ano).order('categoria'),
+      supabase.from('amenitiz_reservas').select('valor_liquido, status').eq('mes_competencia', mes).eq('ano_competencia', ano).eq('individual_room_number', apt?.numero ?? 0),
     ])
 
     const af = emptyFin()
+    const aptTemDiarias = (aptDiarias?.length ?? 0) > 0
+
     aptDiarias?.forEach((d) => {
       const v = d.valor || 0; af.fat += v
       if (d.tipo_gestao === 'adm') af.fatAdm += v
       else if (d.tipo_gestao === 'sub') af.fatSub += v
       if (d.tipo_gestao) af.gestao.add(d.tipo_gestao)
     })
+
+    // Fallback: usar amenitiz_reservas se não há diárias importadas
+    if (!aptTemDiarias) {
+      const tipoGestaoApt = (apt as any)?.tipo_gestao ?? 'adm'
+      ;(aptReservas ?? []).forEach((r: any) => {
+        if (['cancelled', 'canceled', 'no_show'].includes(r.status ?? '')) return
+        const v = r.valor_liquido || 0
+        af.fat += v
+        if (tipoGestaoApt === 'adm') af.fatAdm += v
+        else if (tipoGestaoApt === 'sub') af.fatSub += v
+        af.gestao.add(tipoGestaoApt)
+      })
+    }
     aptCustos?.forEach((c) => {
       const v = c.valor || 0; af.custos += v
       if (c.tipo_gestao === 'adm') af.custosAdm += v
@@ -355,7 +431,7 @@ export default async function EmpreendimentosPage({
     if (!emp) redirect('/empreendimentos')
 
     const [{ data: apartamentos }, { data: aptDiarias }, { data: aptCustos }] = await Promise.all([
-      supabase.from('apartamentos').select('id, numero, created_at').eq('empreendimento_id', empId).order('numero'),
+      supabase.from('apartamentos').select('id, numero, created_at, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato').eq('empreendimento_id', empId).order('numero'),
       supabase.from('diarias').select('valor, apartamento_id, tipo_gestao').gte('data', dataInicio).lte('data', dataFim),
       supabase.from('custos').select('valor, apartamento_id, tipo_gestao').eq('mes', mes).eq('ano', ano),
     ])
@@ -393,7 +469,7 @@ export default async function EmpreendimentosPage({
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">{emp.nome}</h1>
-                <p className="text-gray-500 text-sm mt-0.5">{apartamentos?.length ?? 0} apartamento(s) — {MESES[mes - 1]} {ano}</p>
+                <p className="text-gray-500 text-sm mt-0.5">{apartamentos?.length ?? getApartamentoCount(emp.apartamentos)} apartamento(s) — {MESES[mes - 1]} {ano}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
@@ -435,6 +511,7 @@ export default async function EmpreendimentosPage({
                     <TableRow className="border-gray-100">
                       <TableHead className="text-gray-500 font-medium pl-6">Apartamento</TableHead>
                       <TableHead className="text-gray-500 font-medium">Financeiro (Total / ADM / SUB)</TableHead>
+                      <TableHead className="text-gray-500 font-medium">Repasse</TableHead>
                       <TableHead className="text-gray-500 font-medium text-center">Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -461,6 +538,9 @@ export default async function EmpreendimentosPage({
                           </TableCell>
                           <TableCell className="py-3">
                             {ah ? <FinBreakdown f={af} onlyTotal /> : <span className="text-gray-300 text-xs">—</span>}
+                          </TableCell>
+                          <TableCell className="py-3 align-top pt-4">
+                            <EditarApartamentoRepasseModal apartamento={apt} role={role} />
                           </TableCell>
                           <TableCell className="text-center align-top pt-4">
                             {ah ? (
@@ -599,7 +679,7 @@ export default async function EmpreendimentosPage({
                           </div>
                         </TableCell>
                         <TableCell className="text-center text-gray-500 text-sm align-top pt-4">
-                          {(emp.apartamentos as any[])?.length ?? 0}
+                          {getApartamentoCount(emp.apartamentos)}
                         </TableCell>
                         <TableCell className="py-3">
                           {hasData ? <FinBreakdown f={fin} onlyTotal /> : <span className="text-gray-300 text-xs">—</span>}
@@ -653,7 +733,7 @@ export default async function EmpreendimentosPage({
                     <CardContent>
                       <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
                         <BedDouble size={13} />
-                        <span>{(emp.apartamentos as any[])?.length ?? 0} apartamento(s)</span>
+                        <span>{getApartamentoCount(emp.apartamentos)} apartamento(s)</span>
                       </div>
                       {hasData ? <FinBreakdown f={fin} /> : (
                         <p className="text-xs text-gray-300 italic">Sem dados para {MESES[mes - 1]}</p>

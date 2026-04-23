@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   BarChart3,
   BedDouble,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -39,11 +40,13 @@ const navItems = [
   { href: '/custos', label: 'Custos', icon: DollarSign },
   { href: '/diarias', label: 'Diárias', icon: CalendarDays },
   { href: '/relatorio', label: 'Relatório', icon: BarChart3 },
+  { href: '/prestacao-contas', label: 'Prestação de Contas', icon: FileText },
 ]
 
 const adminItems = [
   { href: '/importar', label: 'Importar', icon: Upload },
   { href: '/usuarios', label: 'Usuários', icon: Users },
+  { href: '/executar-migration', label: 'Migration', icon: Upload },
 ]
 
 type ModalType = 'empreendimento' | 'apartamento' | null
@@ -128,8 +131,8 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
             )
           })}
 
-          {/* Admin items */}
-          {role === 'admin' && (
+          {/* Admin items — visíveis apenas para analista (operador do sistema) */}
+          {role === 'analista' && (
             <>
               {!collapsed && (
                 <div className="pt-3 pb-1 px-3">

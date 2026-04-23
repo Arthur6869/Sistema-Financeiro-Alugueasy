@@ -20,8 +20,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
+    const { data: profile } = await supabase
+      .from('profiles').select('role').eq('id', user.id).single()
+    if (profile?.role !== 'analista') {
+      return NextResponse.json({ error: 'Apenas analistas podem limpar dados' }, { status: 403 })
+    }
+
     const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-    const dataFim = `${ano}-${String(mes).padStart(2, '0')}-28`
+    const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
     console.log(`[LIMPEZA] Iniciando limpeza de ${mes}/${ano}...`)
 
@@ -72,6 +78,32 @@ export async function DELETE(request: NextRequest) {
       console.log(`[LIMPEZA] Apagados ${importCount} registros de importações`)
     }
 
+    // Apagar reservas Amenitiz do período
+    const { count: reservasCount, error: errReservas } = await supabase
+      .from('amenitiz_reservas')
+      .delete()
+      .eq('mes_competencia', mes)
+      .eq('ano_competencia', ano)
+
+    if (errReservas) {
+      console.warn('Aviso ao limpar reservas Amenitiz:', errReservas.message)
+    } else {
+      console.log(`[LIMPEZA] Apagados ${reservasCount} registros de amenitiz_reservas`)
+    }
+
+    // Apagar log de sincronização Amenitiz do período
+    const { count: syncsCount, error: errSyncs } = await supabase
+      .from('amenitiz_syncs')
+      .delete()
+      .eq('mes', mes)
+      .eq('ano', ano)
+
+    if (errSyncs) {
+      console.warn('Aviso ao limpar syncs Amenitiz:', errSyncs.message)
+    } else {
+      console.log(`[LIMPEZA] Apagados ${syncsCount} registros de amenitiz_syncs`)
+    }
+
     console.log(`[LIMPEZA] ✓ Limpeza concluída com sucesso`)
 
     return NextResponse.json({
@@ -80,7 +112,9 @@ export async function DELETE(request: NextRequest) {
       removed: {
         diarias: diariasCount || 0,
         custos: custosCount || 0,
-        importacoes: importCount || 0
+        importacoes: importCount || 0,
+        amenitiz_reservas: reservasCount || 0,
+        amenitiz_syncs: syncsCount || 0,
       }
     })
 

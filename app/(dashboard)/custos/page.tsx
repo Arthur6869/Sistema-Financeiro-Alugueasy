@@ -10,15 +10,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Receipt } from 'lucide-react'
+import { Receipt, ChevronLeft, ChevronRight } from 'lucide-react'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
+import Link from 'next/link'
+
+const PAGE_SIZE = 50
 
 export default async function CustosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; ano?: string }>
+  searchParams: Promise<{ mes?: string; ano?: string; page?: string }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -28,18 +31,29 @@ export default async function CustosPage({
   const now = new Date()
   const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
   const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+  const page = params.page ? Math.max(1, parseInt(params.page)) : 1
+  const offset = (page - 1) * PAGE_SIZE
 
   let query = supabase
     .from('custos')
-    .select('*, apartamentos(numero, empreendimentos(nome))')
+    .select('*, apartamentos(numero, empreendimentos(nome))', { count: 'exact' })
     .order('categoria')
+    .range(offset, offset + PAGE_SIZE - 1)
 
   if (mes > 0) query = query.eq('mes', mes) as typeof query
   if (ano > 0) query = query.eq('ano', ano) as typeof query
 
-  const { data: custos } = await query
+  const { data: custos, count } = await query
 
-  const total = custos?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+  const totalRegistros = count ?? 0
+  const totalPages = Math.ceil(totalRegistros / PAGE_SIZE)
+
+  // Total geral do período (sem paginação) para o sumário
+  let totalQuery = supabase.from('custos').select('valor')
+  if (mes > 0) totalQuery = totalQuery.eq('mes', mes) as typeof totalQuery
+  if (ano > 0) totalQuery = totalQuery.eq('ano', ano) as typeof totalQuery
+  const { data: todosCustos } = await totalQuery
+  const total = todosCustos?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
 
   const periodoLabel =
     mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
@@ -47,13 +61,27 @@ export default async function CustosPage({
     ano > 0 ? `Todos os meses de ${ano}` :
     'Todos os períodos'
 
+  // Montar URL base para paginação preservando filtros
+  const baseUrl = new URLSearchParams()
+  if (mes > 0) baseUrl.set('mes', String(mes))
+  if (ano > 0) baseUrl.set('ano', String(ano))
+  const paginaAnteriorUrl = page > 1
+    ? `/custos?${baseUrl.toString()}&page=${page - 1}`
+    : null
+  const proximaPaginaUrl = page < totalPages
+    ? `/custos?${baseUrl.toString()}&page=${page + 1}`
+    : null
+
+  const inicioRegistro = totalRegistros > 0 ? offset + 1 : 0
+  const fimRegistro = Math.min(offset + PAGE_SIZE, totalRegistros)
+
   return (
     <div className="p-8">
       <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Custos</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Despesas de {periodoLabel} — {custos?.length ?? 0} lançamento(s)
+            Despesas de {periodoLabel} — {totalRegistros} lançamento(s)
           </p>
         </div>
         <Suspense fallback={null}>
@@ -113,6 +141,44 @@ export default async function CustosPage({
               )}
             </TableBody>
           </Table>
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+              <span className="text-xs text-gray-400">
+                Exibindo {inicioRegistro}–{fimRegistro} de {totalRegistros} registros
+              </span>
+              <div className="flex items-center gap-2">
+                {paginaAnteriorUrl ? (
+                  <Link
+                    href={paginaAnteriorUrl}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <ChevronLeft size={14} /> Anterior
+                  </Link>
+                ) : (
+                  <span className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-50 border border-gray-100 rounded-md cursor-not-allowed">
+                    <ChevronLeft size={14} /> Anterior
+                  </span>
+                )}
+                <span className="text-xs text-gray-500 font-medium px-2">
+                  Página {page} de {totalPages}
+                </span>
+                {proximaPaginaUrl ? (
+                  <Link
+                    href={proximaPaginaUrl}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Próxima <ChevronRight size={14} />
+                  </Link>
+                ) : (
+                  <span className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-50 border border-gray-100 rounded-md cursor-not-allowed">
+                    Próxima <ChevronRight size={14} />
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

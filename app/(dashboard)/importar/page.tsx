@@ -19,11 +19,13 @@ import {
   AlertCircle,
   Loader2,
   Receipt,
-  CalendarDays,
+  RefreshCw,
   Trash2,
 } from 'lucide-react'
 
 import { MESES, ANOS } from '@/lib/constants'
+import { AmenitizSyncButton } from '@/components/shared/amenitiz-sync-button'
+import { SyncPlanilhasButton } from '@/components/shared/sync-planilhas-button'
 
 const TIPOS = [
   {
@@ -32,13 +34,7 @@ const TIPOS = [
     desc: 'Custos de imóveis administrados diretamente',
     icon: Receipt,
     color: '#193660',
-  },
-  {
-    id: 'diarias_adm',
-    label: 'Conferência de Diárias — ADM',
-    desc: 'Receita de diárias — gestão ADM',
-    icon: CalendarDays,
-    color: '#0891b2',
+    grupo: 'Custos',
   },
   {
     id: 'custos_sub',
@@ -46,13 +42,23 @@ const TIPOS = [
     desc: 'Custos de imóveis sublocados',
     icon: Receipt,
     color: '#7c3aed',
+    grupo: 'Custos',
+  },
+  {
+    id: 'diarias_adm',
+    label: 'Faturamento de Diárias — ADM',
+    desc: 'Receitas de diárias de imóveis administrados (upload manual)',
+    icon: FileSpreadsheet,
+    color: '#0891b2',
+    grupo: 'Diárias',
   },
   {
     id: 'diarias_sub',
-    label: 'Conferência de Diárias — SUB',
-    desc: 'Receita de diárias — gestão SUB',
-    icon: CalendarDays,
+    label: 'Faturamento de Diárias — SUB',
+    desc: 'Receitas de diárias de imóveis sublocados (upload manual)',
+    icon: FileSpreadsheet,
     color: '#059669',
+    grupo: 'Diárias',
   },
 ]
 
@@ -75,8 +81,18 @@ export default function ImportarPage() {
   const [filtroMes, setFiltroMes] = useState(0)
   const [filtroAno, setFiltroAno] = useState(now.getFullYear())
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [role, setRole] = useState<'analista' | 'admin' | null>(null)
 
   const supabase = createClient()
+
+  // Carregar role do usuário logado
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return
+      supabase.from('profiles').select('role').eq('id', user.id).single()
+        .then(({ data }) => setRole(data?.role ?? 'admin'))
+    })
+  }, [])
 
   const loadHistorico = useCallback(async (fMes: number, fAno: number) => {
     setLoadingHistorico(true)
@@ -221,99 +237,143 @@ export default function ImportarPage() {
         </CardContent>
       </Card>
 
-      {/* Cards de upload */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        {TIPOS.map((tipo) => {
-          const Icon = tipo.icon
-          const status = results[tipo.id]
-          const isLoading = uploading === tipo.id
+      {/* Seções exclusivas do Analista */}
+      {role === 'analista' && (
+        <>
+          {/* Seção Verificação com Planilhas Locais */}
+          <div className="mb-6">
+            <SyncPlanilhasButton mesInicial={mes} anoInicial={ano} />
+          </div>
 
-          return (
-            <Card
-              key={tipo.id}
-              className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: tipo.color + '15' }}
-                  >
-                    <Icon size={20} style={{ color: tipo.color }} />
-                  </div>
-                  <div>
-                    <CardTitle className="text-sm font-semibold text-gray-800">
-                      {tipo.label}
-                    </CardTitle>
-                    <CardDescription className="text-xs text-gray-400 mt-0.5">
-                      {tipo.desc}
-                    </CardDescription>
-                  </div>
-                  {status === 'ok' && (
-                    <CheckCircle2 size={18} className="ml-auto text-green-500 flex-shrink-0" />
-                  )}
-                  {status === 'error' && (
-                    <AlertCircle size={18} className="ml-auto text-red-500 flex-shrink-0" />
-                  )}
+          {/* Seção Amenitiz */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: '#19366018' }}
+              >
+                <RefreshCw size={20} style={{ color: '#193660' }} />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">
+                  Sincronização Automática — Amenitiz
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Busca reservas diretamente da plataforma e aplica as taxas automaticamente
+                  (Booking: 13%-16% | Airbnb: sem taxa | Alugueasy: 10%)
+                </p>
+              </div>
+            </div>
+            <AmenitizSyncButton mesInicial={mes} anoInicial={ano} />
+          </div>
+
+          {/* Cards de Upload por grupo */}
+          {(['Custos', 'Diárias'] as const).map((grupo) => {
+            const tiposGrupo = TIPOS.filter(t => t.grupo === grupo)
+            return (
+              <div key={grupo} className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <span className="w-1.5 h-4 rounded-full inline-block" style={{ backgroundColor: tiposGrupo[0]?.color }} />
+                  {grupo === 'Diárias'
+                    ? 'Diárias — Upload Manual (use quando a sincronização Amenitiz não estiver disponível)'
+                    : 'Custos — Upload de Planilhas'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {tiposGrupo.map((tipo) => {
+                    const Icon = tipo.icon
+                    const status = results[tipo.id]
+                    const isLoading = uploading === tipo.id
+                    return (
+                      <Card
+                        key={tipo.id}
+                        className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ backgroundColor: tipo.color + '15' }}
+                            >
+                              <Icon size={20} style={{ color: tipo.color }} />
+                            </div>
+                            <div>
+                              <CardTitle className="text-sm font-semibold text-gray-800">
+                                {tipo.label}
+                              </CardTitle>
+                              <CardDescription className="text-xs text-gray-400 mt-0.5">
+                                {tipo.desc}
+                              </CardDescription>
+                            </div>
+                            {status === 'ok' && (
+                              <CheckCircle2 size={18} className="ml-auto text-green-500 flex-shrink-0" />
+                            )}
+                            {status === 'error' && (
+                              <AlertCircle size={18} className="ml-auto text-red-500 flex-shrink-0" />
+                            )}
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <label
+                            htmlFor={`upload-${tipo.id}`}
+                            className={`
+                              flex flex-col items-center justify-center gap-2 p-6 rounded-lg border-2 border-dashed cursor-pointer
+                              transition-all duration-150
+                              ${isLoading
+                                ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                : status === 'ok'
+                                ? 'border-green-200 bg-green-50'
+                                : status === 'error'
+                                ? 'border-red-200 bg-red-50'
+                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                              }
+                            `}
+                          >
+                            {isLoading ? (
+                              <Loader2 size={24} className="animate-spin text-gray-400" />
+                            ) : (
+                              <FileSpreadsheet
+                                size={24}
+                                style={{ color: status === 'ok' ? '#22c55e' : status === 'error' ? '#ef4444' : tipo.color }}
+                              />
+                            )}
+                            <span className="text-sm text-gray-500 font-medium">
+                              {isLoading
+                                ? 'Processando...'
+                                : status === 'ok'
+                                ? 'Importado com sucesso!'
+                                : status === 'error'
+                                ? 'Erro ao importar — tente novamente'
+                                : 'Clique ou arraste o arquivo .xlsx ou .csv'}
+                            </span>
+                            <span className="text-xs text-gray-400">Formatos aceitos: .xlsx, .csv</span>
+                          </label>
+                          <input
+                            id={`upload-${tipo.id}`}
+                            type="file"
+                            accept=".xlsx,.csv"
+                            className="hidden"
+                            disabled={isLoading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleUpload(tipo.id, file)
+                              e.target.value = ''
+                            }}
+                          />
+                          {errors[tipo.id] && (
+                            <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 break-all">
+                              {errors[tipo.id]}
+                            </p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
                 </div>
-              </CardHeader>
-              <CardContent>
-                <label
-                  htmlFor={`upload-${tipo.id}`}
-                  className={`
-                    flex flex-col items-center justify-center gap-2 p-6 rounded-lg border-2 border-dashed cursor-pointer
-                    transition-all duration-150
-                    ${isLoading
-                      ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                      : status === 'ok'
-                      ? 'border-green-200 bg-green-50'
-                      : status === 'error'
-                      ? 'border-red-200 bg-red-50'
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }
-                  `}
-                >
-                  {isLoading ? (
-                    <Loader2 size={24} className="animate-spin text-gray-400" />
-                  ) : (
-                    <FileSpreadsheet
-                      size={24}
-                      style={{ color: status === 'ok' ? '#22c55e' : status === 'error' ? '#ef4444' : tipo.color }}
-                    />
-                  )}
-                  <span className="text-sm text-gray-500 font-medium">
-                    {isLoading
-                      ? 'Processando...'
-                      : status === 'ok'
-                      ? 'Importado com sucesso!'
-                      : status === 'error'
-                      ? 'Erro ao importar — tente novamente'
-                      : 'Clique ou arraste o arquivo .xlsx ou .csv'}
-                  </span>
-                  <span className="text-xs text-gray-400">Formatos aceitos: .xlsx, .csv</span>
-                </label>
-                <input
-                  id={`upload-${tipo.id}`}
-                  type="file"
-                  accept=".xlsx,.csv"
-                  className="hidden"
-                  disabled={isLoading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleUpload(tipo.id, file)
-                    e.target.value = ''
-                  }}
-                />
-                {errors[tipo.id] && (
-                  <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 break-all">
-                    {errors[tipo.id]}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+              </div>
+            )
+          })}
+        </>
+      )}
 
       {/* Histórico */}
       <Card className="border border-gray-100 shadow-sm">
@@ -402,17 +462,19 @@ export default function ImportarPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <button
-                        onClick={() => handleDelete(imp)}
-                        disabled={deletingId === imp.id}
-                        className="p-1.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Excluir importação e dados"
-                      >
-                        {deletingId === imp.id
-                          ? <Loader2 size={14} className="animate-spin" />
-                          : <Trash2 size={14} />
-                        }
-                      </button>
+                      {role === 'analista' && (
+                        <button
+                          onClick={() => handleDelete(imp)}
+                          disabled={deletingId === imp.id}
+                          className="p-1.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Excluir importação e dados"
+                        >
+                          {deletingId === imp.id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <Trash2 size={14} />
+                          }
+                        </button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

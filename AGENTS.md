@@ -177,4 +177,17 @@ Sempre manter atualizado após mudanças:
 - `documentação.md` — documentação técnica completa (schema, rotas, bugs)
 - `README.md` — guia de início rápido
 - Este arquivo (`AGENTS.md`) — regras para agentes de IA
+---
+
+## ✅ Decisões de Design — não questionar, só seguir
+
+| Decisão | Motivo |
+|---|---|
+| `analista` tem mais permissões que `admin` | Sistema inverteu semanticamente por decisão de negócio |
+| Guards de acesso usam `role !== 'analista'` para bloquear não-operadores | `analista` = operador do sistema; `admin` = somente leitura |
+| Faturamento vem de `amenitiz_reservas.valor_liquido`, não de `diarias` | Dashboard atualizado na Fase 5 |
+| Sync Amenitiz = DELETE + INSERT (não upsert em `diarias`) | Garantia de consistência no período |
+| Redirect após login = `/` (nunca `/dashboard`) | Rota `/dashboard` não existe |
+| "Prestação de Contas" já está na sidebar (`navItems`) | Adicionado — não duplicar |
+
 <!-- END:nextjs-agent-rules -->
