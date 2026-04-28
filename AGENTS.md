@@ -219,4 +219,32 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 O MCP usa **service role key** (não anon key) para bypassar RLS e ter acesso total de leitura.
 Nunca usar o cliente `@/lib/supabase/server` do Next.js dentro do MCP — são pacotes separados.
 
+---
+
+## 📁 Estrutura de Documentação
+
+| Arquivo | Propósito | Status |
+|---|---|---|
+| `documentação.md` | Documentação técnica completa (schema, rotas, bugs) | ✅ Ativo |
+| `README.md` | Guia de início rápido | ✅ Ativo |
+| `AGENTS.md` | Regras para agentes de IA | ✅ Ativo |
+| `CLAUDE.md` | Referência ao AGENTS.md para Claude Code | ✅ Ativo |
+| `mcp-server/README.md` | Documentação do servidor MCP | ✅ Ativo |
+
+**Regra:** Qualquer nova documentação vai em `documentação.md`.
+Não criar novos arquivos .md na raiz sem aprovação explícita.
+
+---
+
+## 🚫 Arquivos que NUNCA devem estar no repositório
+
+- Planilhas Excel (`*.xlsx`, `*.xls`) — ficam no Google Drive
+- Dados brutos em pastas (`dados jan/`, `dados fev/`, etc.)
+- Scripts Python de análise manual
+- Arquivos Obsidian (`*.canvas`, `*.base`, `.obsidian/`)
+- Artefatos de build (`dist/`, `.next/`, `*.tsbuildinfo`)
+- Variáveis de ambiente (`.env.local`, `.env.production`)
+- Arquivos temporários (`*.bak`, `*.old`, `*.tmp`)
+- Dados JSON de API brutos (`data.json`, fixtures de reservas)
+
 <!-- END:nextjs-agent-rules -->

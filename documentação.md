@@ -1,9 +1,13 @@
 # Documentação Técnica — Sistema Financeiro AlugEasy
 
-> **Versão:** 2.0.0
-> **Última atualização:** 06/04/2026
+> **Versão:** 2.1.0
+> **Última atualização:** 28/04/2026
 > **Projeto Supabase:** `rlkmljeatapayiroggrp` — Região: `sa-east-1` (São Paulo)
 > **Build:** Next.js 16.2.1 / Turbopack — compilação TypeScript sem erros
+
+> Última consolidação: abril/2026 — absorveu SISTEMA_COMPLETO.md,
+> DASHBOARD_AMENITIZ_UPDATES.md, ANALISE-SISTEMA-MCP.md, CONTEXT.md,
+> estrutura-projeto.md
 
 ---
 
@@ -781,6 +785,36 @@ npm start
 ### Backups
 - Backup automático nativo do Supabase (plano free: retenção diária)
 - Recomendado: arquivar planilhas `.xlsx` originais mensalmente em local seguro
+
+---
+
+---
+
+## 16. MCP Server
+
+O `mcp-server/` expõe o sistema como tools MCP para agentes de IA (Claude Desktop, Claude Code).
+
+- **Entry point:** `mcp-server/src/index.ts` — stdio transport
+- **Cliente Supabase:** service role key (bypassa RLS) — **nunca** a anon key
+- **Build:** `cd mcp-server && npm run build` → `dist/`
+- **Config:** copiar `.env.example` → `.env` com `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`
+- **Docs completas:** `mcp-server/README.md`
+
+### Tools implementadas
+
+| Tool | Módulo | Descrição |
+|---|---|---|
+| `get_kpis` | financeiro | KPIs agregados: faturamento, custos, lucro, margem |
+| `get_kpis_por_empreendimento` | financeiro | KPIs por empreendimento (ordenado por faturamento) |
+| `get_custos_detalhados` | financeiro | Custos agrupados por categoria com filtros |
+| `get_relatorio_semestral` | financeiro | Últimos 6 meses com variação MoM |
+| `list_empreendimentos` | imoveis | Todos os empreendimentos com contagem de apartamentos |
+| `list_apartamentos` | imoveis | Apartamentos com taxa_repasse e tipo_repasse |
+| `get_prestacao_contas` | imoveis | Prestação mensal (espelha lógica de /prestacao-contas) |
+
+### Notas de bug resolvido (consolidado de CONTEXT.md, 23/04/2026)
+
+- 2 apartamentos do empreendimento Brisas sem `amenitiz_room_id` (room_id `64e4757c` e `f0caa1ec`) — verificar se foram corrigidos com UPDATE no banco
 
 ---
 

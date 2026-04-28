@@ -52,6 +52,22 @@ test-*.ts
 temp-*.ts
 debug-*.ts
 
+# ── Planilhas / dados brutos ──
+dados jan/
+dados fev/
+dados*/
+*.xlsx
+*.xls
+data.json
+
+# ── Obsidian ──
+*.canvas
+*.base
+.obsidian/
+
+# ── Histórico arquivado ──
+.docs-historico/
+
 # ── Supabase local ──
 supabase/.branches/
 supabase/.temp/
