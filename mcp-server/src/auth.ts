@@ -9,10 +9,10 @@
  * for tables that require an authenticated user via RLS.
  */
 
-export function assertEnv(): void {
-  const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const
+export function assertEnv(required?: readonly string[]): void {
+  const requiredVars = required ?? ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
 
-  const missing = required.filter((key) => !process.env[key])
+  const missing = requiredVars.filter((key) => !process.env[key])
 
   if (missing.length > 0) {
     throw new Error(

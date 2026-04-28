@@ -6,7 +6,11 @@ import { registerImportacaoTools } from './tools/importacao.js'
 import { registerImoveisTools } from './tools/imoveis.js'
 import { registerMonitoramentoTools } from './tools/monitoramento.js'
 
-assertEnv()
+assertEnv([
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'ALUGUEASY_BASE_URL',
+])
 
 const server = new McpServer({
   name: 'alugueasy',
@@ -18,15 +22,11 @@ registerImportacaoTools(server)
 registerImoveisTools(server)
 registerMonitoramentoTools(server)
 
-async function main(): Promise<void> {
-  const transport = new StdioServerTransport()
-  await server.connect(transport)
-  // MCP stdio servers must not write to stdout (it is the transport channel).
-  // Use stderr for diagnostic output only.
-  console.error('AlugEasy MCP server running on stdio')
-}
+const transport = new StdioServerTransport()
 
-main().catch((err) => {
-  console.error('Fatal error starting AlugEasy MCP server:', err)
+server.connect(transport).then(() => {
+  process.stderr.write('AlugEasy MCP Server v1.0.0 — pronto\n')
+}).catch((err: Error) => {
+  process.stderr.write(`Erro fatal ao iniciar MCP Server: ${err.message}\n`)
   process.exit(1)
 })
