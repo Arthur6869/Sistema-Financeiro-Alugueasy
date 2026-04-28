@@ -1,7 +1,14 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ── Next.js ──
+.next/
+out/
+build/
 
-# dependencies
-/node_modules
+# ── MCP Server build ──
+mcp-server/dist/
+mcp-server/node_modules/
+
+# ── Node ──
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -9,33 +16,51 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# ── Ambiente ──
+.env
+.env.local
+.env.*.local
+.env.production
 
-# vercel
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini
+*.pem
+
+# ── Editor ──
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── TypeScript build ──
+*.tsbuildinfo
+dist/
+
+# ── Temporários / debug ──
+*.bak
+*.old
+*.backup
+*.tmp
+test-*.ts
+temp-*.ts
+debug-*.ts
+
+# ── Supabase local ──
+supabase/.branches/
+supabase/.temp/
+
+# ── Vercel ──
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# ── Coverage ──
+/coverage
+
+# ── Next.js gerado (commitado por convenção) ──
+# next-env.d.ts é gerado mas deve ser versionado conforme docs do Next.js

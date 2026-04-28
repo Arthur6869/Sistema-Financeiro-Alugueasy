@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "alugueasy": {
+      "command": "node",
+      "args": ["./mcp-server/dist/index.js"],
+      "env": {
+        "SUPABASE_URL": "https://rlkmljeatapayiroggrp.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "...",
+        "ALUGUEASY_BASE_URL": "http://localhost:3000"
+      }
+    }
+  }
+}

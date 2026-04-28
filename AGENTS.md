@@ -190,4 +190,33 @@ Sempre manter atualizado após mudanças:
 | Redirect após login = `/` (nunca `/dashboard`) | Rota `/dashboard` não existe |
 | "Prestação de Contas" já está na sidebar (`navItems`) | Adicionado — não duplicar |
 
+---
+
+## 🤖 MCP Server
+
+O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude Desktop, Claude Code).
+
+- **Localização:** `./mcp-server/`
+- **Propósito:** permite que agentes consultem KPIs, prestação de contas e dados de imóveis sem acesso direto ao banco
+- **Build:** `cd mcp-server && npm run build`
+- **Rodar:** `node mcp-server/dist/index.js` (stdio — não abre porta HTTP)
+- **Docs completas:** `./mcp-server/README.md`
+
+### Tools disponíveis
+
+| Tool | Módulo | Descrição |
+|---|---|---|
+| `get_kpis` | financeiro | KPIs agregados: faturamento, custos, lucro, margem |
+| `get_kpis_por_empreendimento` | financeiro | KPIs separados por empreendimento |
+| `get_custos_detalhados` | financeiro | Custos agrupados por categoria com filtros |
+| `get_relatorio_semestral` | financeiro | Últimos 6 meses com variação MoM |
+| `list_empreendimentos` | imoveis | Todos os empreendimentos com contagem de apts |
+| `list_apartamentos` | imoveis | Apartamentos com taxa_repasse e tipo_repasse |
+| `get_prestacao_contas` | imoveis | Prestação mensal de um apt (mesma lógica de /prestacao-contas) |
+
+### Cliente Supabase no MCP
+
+O MCP usa **service role key** (não anon key) para bypassar RLS e ter acesso total de leitura.
+Nunca usar o cliente `@/lib/supabase/server` do Next.js dentro do MCP — são pacotes separados.
+
 <!-- END:nextjs-agent-rules -->
