@@ -45,9 +45,8 @@ COMMENT ON COLUMN apartamentos.modelo_contrato IS
 
     // Tenta executar via RPC com service role
     const admin = createAdminClient()
-    const { data, error } = await admin.rpc('execute_sql', {
-      sql: sql
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (admin as any).rpc('execute_sql', { sql })
 
     if (error) {
       // Se a função RPC não existe, retorna instruções

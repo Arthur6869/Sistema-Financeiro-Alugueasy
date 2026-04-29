@@ -9,7 +9,10 @@
       "Bash(npm install *)",
       "Bash(rm -f \"Sem título\" \"Sem título 1.base\" \"Sem título 1.canvas\" \"Sem título.base\" \"Sem título.canvas\")",
       "Bash(rm -rf \".obsidian\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(npx tsx *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\arthu\\OneDrive\\Documentos\\Sistema-Financeiro-Alugueasy\\supabase"
