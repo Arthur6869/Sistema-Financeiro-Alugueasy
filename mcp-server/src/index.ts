@@ -5,6 +5,8 @@ import { registerFinanceiroTools } from './tools/financeiro.js'
 import { registerImportacaoTools } from './tools/importacao.js'
 import { registerImoveisTools } from './tools/imoveis.js'
 import { registerMonitoramentoTools } from './tools/monitoramento.js'
+import { registerResources } from './resources.js'
+import { registerPrompts } from './prompts.js'
 
 assertEnv([
   'SUPABASE_URL',
@@ -21,6 +23,8 @@ registerFinanceiroTools(server)
 registerImportacaoTools(server)
 registerImoveisTools(server)
 registerMonitoramentoTools(server)
+registerResources(server)
+registerPrompts(server)
 
 const transport = new StdioServerTransport()
 
