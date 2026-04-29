@@ -76,6 +76,10 @@ Verifique cada item na ordem e marque ✅ ou ❌:
 5. [ ] Saúde do sistema — chame health_check
    → ✅ se supabase e api ok | ❌ com detalhe do erro
 
+6. [ ] Cobertura do sync — chame check_apartamentos_sem_room_id {}
+   → ✅ se total_sem_room_id = 0
+   → ❌ se há apartamentos sem mapeamento (liste quais e o impacto estimado)
+
 Produza o checklist final com:
 - Status de cada item (✅/❌)
 - Para cada ❌: ação corretiva específica com o comando MCP a executar
@@ -106,6 +110,7 @@ Coleta de dados (execute em paralelo se possível):
 - get_historico_importacoes {mes: ${mes}, ano: ${ano}}
 - resumo_executivo {mes: ${mes}, ano: ${ano}}
 - alert_margem_baixa {mes: ${mes}, ano: ${ano}, threshold_percent: 20}
+- check_apartamentos_sem_room_id {} — detecta apartamentos fora do sync
 
 Análise e diagnóstico:
 1. INFRAESTRUTURA: Supabase e API respondem? Latência aceitável?
@@ -114,6 +119,9 @@ Análise e diagnóstico:
    Algum empreendimento com custo maior que faturamento?
 4. CONFIGURAÇÃO: Todos os empreendimentos aparecem nos dados?
    Há apartamentos sem amenitiz_room_id que podem estar perdendo reservas?
+5. COBERTURA AMENITIZ: Todos os apartamentos têm amenitiz_room_id?
+   Se não, quais empreendimentos estão com cobertura parcial?
+   Qual o impacto financeiro estimado dos apartamentos invisíveis?
 
 Produza o diagnóstico com:
 - SEMÁFORO GERAL: 🟢 Operacional / 🟡 Atenção / 🔴 Crítico

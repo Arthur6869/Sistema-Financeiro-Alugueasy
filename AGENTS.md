@@ -202,7 +202,15 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 - **Rodar:** `node mcp-server/dist/index.js` (stdio — não abre porta HTTP)
 - **Docs completas:** `./mcp-server/README.md`
 
-### Tools disponíveis
+### Primitivos registrados
+
+| Primitivo | Quantidade | Itens |
+|---|---|---|
+| **Tools** | 16 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id |
+| **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
+| **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
+
+### Tools por módulo
 
 | Tool | Módulo | Descrição |
 |---|---|---|
@@ -213,6 +221,15 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `list_empreendimentos` | imoveis | Todos os empreendimentos com contagem de apts |
 | `list_apartamentos` | imoveis | Apartamentos com taxa_repasse e tipo_repasse |
 | `get_prestacao_contas` | imoveis | Prestação mensal de um apt (mesma lógica de /prestacao-contas) |
+| `sync_amenitiz` | importacao | Sincroniza reservas Amenitiz para um período |
+| `get_historico_importacoes` | importacao | Histórico de uploads e syncs por período/tipo |
+| `check_ultimo_sync` | importacao | Verifica data do último sync Amenitiz |
+| `clear_periodo` | importacao | Remove dados de um período (mês/ano) |
+| `health_check` | monitoramento | Testa conectividade Supabase e API Next.js |
+| `alert_margem_baixa` | monitoramento | Alerta empreendimentos abaixo de margem mínima |
+| `check_sync_pendente` | monitoramento | Verifica se sync está atualizado (< 3 dias) |
+| `resumo_executivo` | monitoramento | Resumo completo: KPIs + sync + alertas + tendência |
+| `check_apartamentos_sem_room_id` | monitoramento | Lista apartamentos sem amenitiz_room_id (sync parcial) |
 
 ### Cliente Supabase no MCP
 

@@ -300,4 +300,41 @@ export function registerMonitoramentoTools(server: McpServer): void {
       content: [{ type: 'text', text: JSON.stringify(await resumoExecutivo(mes, ano), null, 2) }],
     })
   )
+
+  server.tool(
+    'check_apartamentos_sem_room_id',
+    'Checks which apartments are missing their Amenitiz room_id mapping. These apartments are invisible to the sync engine — their reservations are silently dropped. Always run this after health_check to detect data gaps before syncing.',
+    {},
+    async () => {
+      const supabase = getSupabaseClient()
+
+      const { data, error } = await supabase
+        .from('apartamentos')
+        .select('id, numero, tipo_gestao, empreendimentos(nome)')
+        .is('amenitiz_room_id', null)
+        .order('empreendimento_id')
+
+      if (error) throw new Error(`Supabase error em check_apartamentos_sem_room_id: ${error.message}`)
+
+      const total = data?.length ?? 0
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            total_sem_room_id: total,
+            alerta: total > 0,
+            mensagem: total > 0
+              ? `⚠️ ${total} apartamento(s) sem amenitiz_room_id — reservas serão ignoradas no sync.`
+              : '✅ Todos os apartamentos mapeados. Sync pode rodar com cobertura total.',
+            apartamentos: data?.map((a) => ({
+              numero: a.numero,
+              empreendimento: (a.empreendimentos as any)?.nome ?? '—',
+              tipo_gestao: a.tipo_gestao,
+            })) ?? [],
+          }, null, 2),
+        }],
+      }
+    }
+  )
 }
