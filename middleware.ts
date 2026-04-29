@@ -47,6 +47,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|logo-alugueasy.png|api/import|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|logo-alugueasy.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

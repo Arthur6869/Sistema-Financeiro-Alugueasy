@@ -1,7 +1,7 @@
 # Documentação Técnica — Sistema Financeiro AlugEasy
 
-> **Versão:** 2.1.0
-> **Última atualização:** 28/04/2026
+> **Versão:** 2.2.0
+> **Última atualização:** 28/04/2026 (auditoria completa de implementação)
 > **Projeto Supabase:** `rlkmljeatapayiroggrp` — Região: `sa-east-1` (São Paulo)
 > **Build:** Next.js 16.2.1 / Turbopack — compilação TypeScript sem erros
 
@@ -815,6 +815,134 @@ O `mcp-server/` expõe o sistema como tools MCP para agentes de IA (Claude Deskt
 ### Notas de bug resolvido (consolidado de CONTEXT.md, 23/04/2026)
 
 - 2 apartamentos do empreendimento Brisas sem `amenitiz_room_id` (room_id `64e4757c` e `f0caa1ec`) — verificar se foram corrigidos com UPDATE no banco
+
+---
+
+## 17. Mapa Completo do Sistema (Cérebro da Documentação)
+
+Esta seção consolida o estado **real implementado no código** para servir como referência central do projeto.
+
+### 17.1 Arquitetura atual (implementação)
+
+- Frontend e backend no mesmo monorepo Next.js App Router (`app/`, `components/`, `lib/`)
+- Páginas protegidas em `app/(dashboard)` e login em `app/(auth)/login/page.tsx`
+- Sessão/autenticação via Supabase SSR (`lib/supabase/server.ts`, `lib/supabase/client.ts`)
+- Proteção global de rotas no middleware (`middleware.ts`)
+- APIs de negócio em `app/api/*`
+- Servidor MCP separado para consumo por agentes (`mcp-server/`)
+
+### 17.2 Mapa funcional implementado por domínio
+
+#### Dashboard e indicadores
+- Dashboard principal em `app/(dashboard)/page.tsx`
+- KPIs de faturamento, custos, lucro e margem
+- Gráficos e cards por empreendimento (`components/charts/dashboard-charts.tsx`)
+- Filtro global de período por mês/ano (`components/shared/month-year-filter.tsx`)
+
+#### Empreendimentos e apartamentos
+- Página de gestão e análise em `app/(dashboard)/empreendimentos/page.tsx`
+- Cadastro de empreendimento (`components/modals/criar-empreendimento-modal.tsx`)
+- Cadastro de apartamento (`components/modals/criar-apartamento-modal.tsx`)
+- Edição de parâmetros de repasse (`components/modals/editar-apartamento-repasse-modal.tsx`)
+- Exclusão com confirmação (`components/shared/delete-button.tsx`)
+
+#### Custos e diárias
+- Custos mensais em `app/(dashboard)/custos/page.tsx`
+- Diárias/receitas em `app/(dashboard)/diarias/page.tsx`
+- Tabelas com totalização e filtros de período
+
+#### Relatório analítico
+- Relatório semestral em `app/(dashboard)/relatorio/page.tsx`
+- Gráfico de linha com tendência em `app/(dashboard)/relatorio/charts.tsx`
+- Visão consolidada e comparativa por período
+
+#### Importação e sincronização
+- Página de importação em `app/(dashboard)/importar/page.tsx`
+- Upload/processamento via `POST /api/import` (`app/api/import/route.ts`)
+- Limpeza de dados por período via `DELETE /api/clear` (`app/api/clear/route.ts`)
+- Sync Amenitiz via `GET/POST /api/amenitiz-sync` (`app/api/amenitiz-sync/route.ts`)
+- Sync local de planilhas via `GET/POST /api/sync-local` (`app/api/sync-local/route.ts`)
+
+#### Prestação de contas e PDF
+- Prestação de contas em `app/(dashboard)/prestacao-contas/page.tsx`
+- Geração de PDF via `GET /api/prestacao-contas-pdf` (`app/api/prestacao-contas-pdf/route.tsx`)
+- Template PDF em `components/pdf/prestacao-contas-pdf.tsx`
+
+#### Usuários e administração
+- Gestão de usuários em `app/(dashboard)/usuarios/page.tsx`
+- Fluxo client de usuários em `app/(dashboard)/usuarios/usuarios-client.tsx`
+- Criação de usuários via `POST /api/usuarios` (`app/api/usuarios/route.ts`)
+
+### 17.3 Rotas implementadas
+
+#### Pública
+- `/login`
+
+#### Protegidas (autenticado)
+- `/`
+- `/empreendimentos`
+- `/apartamentos` (redireciona para `/empreendimentos`)
+- `/custos`
+- `/diarias`
+- `/relatorio`
+- `/prestacao-contas`
+- `/executar-migration`
+
+#### APIs implementadas
+- `POST /api/import`
+- `DELETE /api/clear`
+- `GET/POST /api/amenitiz-sync`
+- `GET/POST /api/sync-local`
+- `POST /api/usuarios`
+- `GET /api/prestacao-contas-pdf`
+- `POST /api/run-migration`
+
+### 17.4 Banco de dados e integrações já em uso
+
+- Núcleo: `profiles`, `empreendimentos`, `apartamentos`, `custos`, `diarias`, `importacoes`
+- Integração Amenitiz: `amenitiz_syncs`, `amenitiz_reservas`
+- Migrations em `supabase/migrations/*` (constraints, segurança de trigger, setup Amenitiz, prestação de contas)
+- Integração externa principal: Amenitiz (`lib/amenitiz.ts`)
+- MCP com service role key em `mcp-server/src/supabase.ts`
+
+### 17.5 Utilitários compartilhados importantes
+
+- Constantes e formatação: `lib/constants.ts`
+- Parser de planilhas: `lib/xlsx-parser.ts`
+- Sidebar e navegação por perfil: `components/layout/app-sidebar.tsx`
+- Ações compartilhadas (`components/shared/*`): limpar dados, sync, gerar PDF, exclusão
+
+### 17.6 Scripts e comandos operacionais
+
+#### App principal
+- `npm run dev`
+- `npm run build`
+- `npm run start`
+- `npm run lint`
+
+#### MCP server
+- `cd mcp-server && npm run build`
+- `cd mcp-server && npm run dev`
+- `cd mcp-server && npm run start`
+- `cd mcp-server && npm run typecheck`
+
+#### Script de inicialização MCP local
+- `.claude/start-alugueasy-mcp.ps1`
+
+### 17.7 Pontos de atenção (estado atual)
+
+- Há divergências históricas de documentação versus implementação em papel/permissões (`admin` vs `analista`)
+- Parte da documentação ainda cita `proxy.ts`, enquanto implementação ativa usa `middleware.ts`
+- Endpoint de importação e permissões devem ser sempre validados em conjunto (UI + API + RLS)
+- Rotas administrativas e destrutivas (`/api/clear`, `/api/run-migration`) exigem controle operacional rigoroso
+
+### 17.8 Resumo executivo do que está implementado
+
+- Sistema financeiro completo com autenticação, autorização, dashboard, relatórios e gestão de cadastros
+- Pipeline de importação e sincronização de dados financeiros por período
+- Prestação de contas com geração de PDF
+- Integração Amenitiz para dados de reservas/faturamento
+- Exposição dos dados por MCP server para uso por agentes de IA
 
 ---
 

@@ -12,9 +12,17 @@ async function callApi(
   body?: Record<string, unknown>
 ): Promise<unknown> {
   const url = `${getBaseUrl()}${path}`
+  const internalKey = process.env.ALUGUEASY_INTERNAL_API_KEY
+  if (!internalKey) {
+    throw new Error('Missing ALUGUEASY_INTERNAL_API_KEY for internal API authentication')
+  }
+
   const res = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-alugueasy-internal-key': internalKey,
+    },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {

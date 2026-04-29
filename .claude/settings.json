@@ -4,5 +4,17 @@
       "mcp__claude_ai_Supabase__list_migrations",
       "Bash(npm run:*)"
     ]
+  },
+  "mcpServers": {
+    "alugueasy": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".claude/start-alugueasy-mcp.ps1"
+      ]
+    }
   }
 }

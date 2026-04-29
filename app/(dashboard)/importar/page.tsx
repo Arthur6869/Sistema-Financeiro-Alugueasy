@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +15,6 @@ import {
 } from '@/components/ui/table'
 import {
   Upload,
-  FileSpreadsheet,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -44,22 +44,6 @@ const TIPOS = [
     color: '#7c3aed',
     grupo: 'Custos',
   },
-  {
-    id: 'diarias_adm',
-    label: 'Faturamento de Diárias — ADM',
-    desc: 'Receitas de diárias de imóveis administrados (upload manual)',
-    icon: FileSpreadsheet,
-    color: '#0891b2',
-    grupo: 'Diárias',
-  },
-  {
-    id: 'diarias_sub',
-    label: 'Faturamento de Diárias — SUB',
-    desc: 'Receitas de diárias de imóveis sublocados (upload manual)',
-    icon: FileSpreadsheet,
-    color: '#059669',
-    grupo: 'Diárias',
-  },
 ]
 
 const TIPO_LABELS: Record<string, string> = {
@@ -70,6 +54,7 @@ const TIPO_LABELS: Record<string, string> = {
 }
 
 export default function ImportarPage() {
+  const router = useRouter()
   const now = new Date()
   const [mes, setMes] = useState(now.getMonth() + 1)
   const [ano, setAno] = useState(now.getFullYear())
@@ -88,11 +73,20 @@ export default function ImportarPage() {
   // Carregar role do usuário logado
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
+      if (!user) {
+        router.push('/login')
+        return
+      }
       supabase.from('profiles').select('role').eq('id', user.id).single()
-        .then(({ data }) => setRole(data?.role ?? 'admin'))
+        .then(({ data }) => {
+          const currentRole = data?.role ?? 'admin'
+          setRole(currentRole)
+          if (currentRole !== 'analista') {
+            router.push('/')
+          }
+        })
     })
-  }, [])
+  }, [router, supabase])
 
   const loadHistorico = useCallback(async (fMes: number, fAno: number) => {
     setLoadingHistorico(true)
@@ -268,15 +262,13 @@ export default function ImportarPage() {
           </div>
 
           {/* Cards de Upload por grupo */}
-          {(['Custos', 'Diárias'] as const).map((grupo) => {
+          {(['Custos'] as const).map((grupo) => {
             const tiposGrupo = TIPOS.filter(t => t.grupo === grupo)
             return (
               <div key={grupo} className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   <span className="w-1.5 h-4 rounded-full inline-block" style={{ backgroundColor: tiposGrupo[0]?.color }} />
-                  {grupo === 'Diárias'
-                    ? 'Diárias — Upload Manual (use quando a sincronização Amenitiz não estiver disponível)'
-                    : 'Custos — Upload de Planilhas'}
+                  Custos — Upload de Planilhas
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {tiposGrupo.map((tipo) => {
@@ -331,7 +323,7 @@ export default function ImportarPage() {
                             {isLoading ? (
                               <Loader2 size={24} className="animate-spin text-gray-400" />
                             ) : (
-                              <FileSpreadsheet
+                              <Icon
                                 size={24}
                                 style={{ color: status === 'ok' ? '#22c55e' : status === 'error' ? '#ef4444' : tipo.color }}
                               />

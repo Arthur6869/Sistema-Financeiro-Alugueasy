@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, CheckCircle, Copy } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 const MIGRATION_SQL = `-- Adicionar configurações de repasse em apartamentos
 ALTER TABLE apartamentos
@@ -26,9 +28,30 @@ COMMENT ON COLUMN apartamentos.modelo_contrato IS
   'administracao ou sublocacao';`
 
 export default function MigrationPage() {
+  const router = useRouter()
+  const supabase = createClient()
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.role !== 'analista') {
+            router.push('/')
+          }
+        })
+    })
+  }, [router, supabase])
 
   async function runMigration() {
     setIsLoading(true)

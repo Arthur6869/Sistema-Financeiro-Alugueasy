@@ -1,13 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const supabase = await createClient()
+    const { data: { user }, error: authErr } = await supabase.auth.getUser()
+    if (authErr || !user) {
+      return NextResponse.json({ success: false, error: 'Não autenticado' }, { status: 401 })
+    }
 
-    // Cria cliente sem autenticação (usando chave pública)
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'analista') {
+      return NextResponse.json({ success: false, error: 'Apenas analistas podem executar migrations' }, { status: 403 })
+    }
 
     // SQL da migration
     const sql = `
@@ -32,8 +43,9 @@ COMMENT ON COLUMN apartamentos.modelo_contrato IS
   'administracao ou sublocacao';
     `
 
-    // Tenta executar via RPC
-    const { data, error } = await supabase.rpc('execute_sql', {
+    // Tenta executar via RPC com service role
+    const admin = createAdminClient()
+    const { data, error } = await admin.rpc('execute_sql', {
       sql: sql
     })
 

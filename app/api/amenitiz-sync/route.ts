@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isInternalApiRequest } from '@/lib/internal-api-auth'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   fetchTodasReservasMes,
   calcularValorLiquido,
@@ -89,22 +91,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'mes e ano são obrigatórios (1–12)' }, { status: 400 })
     }
 
-    const supabase = await createClient()
-    const { data: { user }, error: authErr } = await supabase.auth.getUser()
-    if (authErr || !user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-    }
+    const internalRequest = isInternalApiRequest(request)
+    const supabase = internalRequest ? createAdminClient() : await createClient()
+    let actorUserId: string | null = null
 
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (profile?.role !== 'analista') {
-      return NextResponse.json({ error: 'Apenas analistas podem sincronizar' }, { status: 403 })
+    if (!internalRequest) {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser()
+      if (authErr || !user) {
+        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles').select('role').eq('id', user.id).single()
+      if (profile?.role !== 'analista') {
+        return NextResponse.json({ error: 'Apenas analistas podem sincronizar' }, { status: 403 })
+      }
+
+      actorUserId = user.id
     }
 
     // Criar log de sincronização
     const { data: syncLog } = await supabase
       .from('amenitiz_syncs')
-      .insert({ mes, ano, status: 'em_andamento', sincronizado_por: user.id })
+      .insert({ mes, ano, status: 'em_andamento', sincronizado_por: actorUserId })
       .select().single()
 
     // Buscar TODOS os apartamentos com tipo_gestao e amenitiz_room_id do banco
@@ -348,7 +357,7 @@ export async function POST(request: NextRequest) {
       tipo:          'diarias_adm',
       mes, ano,
       status:        'concluido',
-      importado_por: user.id,
+      importado_por: actorUserId,
     })
 
     // Atualizar log de sincronização
@@ -377,13 +386,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET — Testar conexão (qualquer usuário autenticado)
-export async function GET() {
+// GET — Testar conexão (usuário autenticado ou chamada interna MCP)
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
-    if (error || !user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    if (!isInternalApiRequest(request)) {
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (error || !user) {
+        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+      }
     }
     const resultado = await testConnection()
     return NextResponse.json({
