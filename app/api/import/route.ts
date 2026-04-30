@@ -108,12 +108,12 @@ export async function POST(request: NextRequest) {
       if (!firstAptByEmpTipo[empId]) firstAptByEmpTipo[empId] = aptId
     })
 
-    const custosToInsert: CustoInsert[] = []
     const diariasToInsert: DiariaInsert[] = []
     const sheetsIgnorados: string[] = []
+    let custosCount = 0
 
     // =====================================================================
-    // CUSTOS
+    // CUSTOS — por apartamento, por categoria
     // =====================================================================
     if (tipo.startsWith('custos')) {
       const sheetsToProcess = workbook.SheetNames.filter(name =>
@@ -136,62 +136,83 @@ export async function POST(request: NextRequest) {
 
         if (!rows || rows.length < 2) continue
 
-        // Localizar colunas de apartamentos no cabeçalho
         const aptCols = extrairColunasApartamento(rows, empreendimento_id, aptMap)
-
-        // Localizar linha de totais com múltiplas estratégias
         const totalRowIdx = encontrarLinhaTotais(rows, aptCols)
 
-        if (aptCols.length > 0 && totalRowIdx >= 0) {
-          // ── LER POR APARTAMENTO ─────────────────────────────────────
-          const totalRow = rows[totalRowIdx]
-          let encontrou = false
-          for (const { colIdx, apartamento_id } of aptCols) {
-            // Tentar a coluna exata do apt; se vazio, tentar ±1
-            const raw = totalRow[colIdx] ?? totalRow[colIdx + 1] ?? totalRow[colIdx - 1]
-            const valor = arredondar(parseNumero(raw))
-            if (!isNaN(valor) && valor > 0) {
-              custosToInsert.push({
-                apartamento_id, valor,
-                categoria: 'Total Consolidado',
-                mes, ano, tipo_gestao
-              })
-              console.log(`[CUSTOS] ✓ ${sheetName} apt ${apartamento_id.slice(0,8)} col${colIdx} (${tipo_gestao}) → R$ ${valor}`)
-              encontrou = true
+        if (aptCols.length === 0 || totalRowIdx < 0) {
+          console.warn(`[CUSTOS] "${sheetName}" — apts=${aptCols.length} totalRow=${totalRowIdx} — aba ignorada`)
+          sheetsIgnorados.push(sheetName)
+          continue
+        }
+
+        // Descobre a linha de cabeçalho (onde estão os números de apt)
+        let headerRowIdx = 0
+        outerLoop: for (let ri = 0; ri < Math.min(10, rows.length); ri++) {
+          const row = rows[ri]
+          if (!row) continue
+          for (const { colIdx } of aptCols) {
+            const cell = row[colIdx]
+            if (cell != null && extrairNumeroApt(String(cell).trim())) {
+              headerRowIdx = ri
+              break outerLoop
             }
           }
-          if (!encontrou) {
-            console.warn(`[CUSTOS] Linha total encontrada (row ${totalRowIdx}) mas valores zerados para "${sheetName}"`)
-            sheetsIgnorados.push(sheetName)
+        }
+
+        let sheetOk = false
+
+        for (const { colIdx, apartamento_id, numero } of aptCols) {
+          const aptCustos: CustoInsert[] = []
+
+          for (let ri = headerRowIdx + 1; ri < totalRowIdx; ri++) {
+            const row = rows[ri]
+            if (!row) continue
+
+            const rawVal = row[colIdx]
+            // Categoria fica na coluna ímpar imediatamente após o valor do apt
+            const rawDesc = row[colIdx + 1]
+
+            const descStr = String(rawDesc ?? '').trim()
+            if (!descStr || descStr === '-') continue
+
+            const valor = arredondar(parseNumero(rawVal))
+            if (isNaN(valor) || valor <= 0) continue
+
+            aptCustos.push({ apartamento_id, categoria: descStr, valor, mes, ano, tipo_gestao })
           }
 
-        } else if (aptCols.length === 0 && totalRowIdx >= 0) {
-          // ── FALLBACK: sem apt detectados — total consolidado no primeiro apt ──
-          console.warn(`[CUSTOS] Sem colunas de apt detectadas em "${sheetName}" — usando total consolidado`)
-          const totalRow = rows[totalRowIdx]
-          let valor = NaN
-          for (let c = 1; c < totalRow.length; c++) {
-            const v = arredondar(parseNumero(totalRow[c]))
-            if (!isNaN(v) && v > 0) { valor = v; break }
+          if (aptCustos.length === 0) {
+            console.warn(`[CUSTOS] ${sheetName} apt ${numero}: nenhuma categoria encontrada`)
+            continue
           }
-          if (!isNaN(valor)) {
-            const apartamento_id = firstAptByEmp[empreendimento_id]
-            if (apartamento_id) {
-              custosToInsert.push({
-                apartamento_id, valor,
-                categoria: 'Total Consolidado',
-                mes, ano, tipo_gestao
-              })
-              console.log(`[CUSTOS] ✓ ${sheetName} fallback (${tipo_gestao}) → R$ ${valor}`)
-            }
+
+          // DELETE por apt antes de reinserir (evita duplicação sem apagar outros apts)
+          const { error: delErr } = await supabase
+            .from('custos').delete()
+            .eq('apartamento_id', apartamento_id)
+            .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
+
+          if (delErr) {
+            console.error(`[CUSTOS] Erro ao limpar ${sheetName} apt ${numero}:`, delErr.message)
+            continue
           }
-        } else {
-          console.warn(`[CUSTOS] Linha de totais NÃO encontrada em "${sheetName}" — aba ignorada`)
-          sheetsIgnorados.push(sheetName)
+
+          const { error: insErr } = await supabase.from('custos').insert(aptCustos)
+          if (insErr) {
+            console.error(`[CUSTOS] Erro ao inserir ${sheetName} apt ${numero}:`, insErr.message)
+            sheetsIgnorados.push(`${sheetName}:apt${numero}`)
+          } else {
+            custosCount += aptCustos.length
+            sheetOk = true
+            const soma = aptCustos.reduce((a, c) => a + c.valor, 0)
+            console.log(`[CUSTOS] ✓ ${sheetName} apt ${numero}: ${aptCustos.length} categorias, R$ ${soma.toFixed(2)}`)
+          }
         }
+
+        if (!sheetOk) sheetsIgnorados.push(sheetName)
       }
 
-      if (custosToInsert.length === 0) {
+      if (custosCount === 0) {
         return NextResponse.json({
           error: 'Nenhum custo foi encontrado no arquivo. Verifique se o arquivo correto foi enviado.'
         }, { status: 400 })
@@ -227,13 +248,10 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================================
-    // PROTEÇÃO ANTI-DUPLICAÇÃO — apagar antes de reinserir
+    // PROTEÇÃO ANTI-DUPLICAÇÃO — apenas para diárias
+    // (custos já foram processados inline por apt, com DELETE por apt antes de INSERT)
     // =====================================================================
 
-    if (custosToInsert.length > 0) {
-      await supabase.from('custos').delete()
-        .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
-    }
     if (diariasToInsert.length > 0) {
       const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
       await supabase.from('diarias').delete()
@@ -243,17 +261,8 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================================
-    // INSERIR
+    // INSERIR — apenas diárias (custos já inseridos inline no loop acima)
     // =====================================================================
-
-    if (custosToInsert.length > 0) {
-      const { error: custosError } = await supabase
-        .from('custos')
-        .upsert(custosToInsert, { onConflict: 'apartamento_id,mes,ano,categoria,tipo_gestao' })
-      if (custosError) {
-        return NextResponse.json({ error: `Erro ao inserir custos: ${custosError.message}` }, { status: 500 })
-      }
-    }
 
     if (diariasToInsert.length > 0) {
       const { error: diariasError } = await supabase
@@ -303,7 +312,7 @@ export async function POST(request: NextRequest) {
       arquivo: file.name,
       registros: {
         diarias: diariasToInsert.length,
-        custos: custosToInsert.length,
+        custos: custosCount,
       },
       nao_gravados: sheetsIgnorados,
       ...(sheetsIgnorados.length > 0 ? { aviso: `Abas não encontradas no banco: ${sheetsIgnorados.join(', ')}` } : {}),
