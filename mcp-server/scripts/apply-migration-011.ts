@@ -8,63 +8,70 @@ const supabase = createClient(
 )
 
 async function main() {
-  console.log('Aplicando migration 011_importacoes_observacao.sql...\n')
+  console.log('Aplicando migration 011...\n')
 
-  // Verificar se coluna já existe
-  const { data: cols } = await supabase
-    .rpc('exec_sql' as any, {
-      sql: `SELECT column_name FROM information_schema.columns WHERE table_name='importacoes' AND column_name='observacao'`
-    })
-    .maybeSingle()
-
-  // Tentar ALTER TABLE via upsert de schema — não suportado no JS client
-  // Usar fetch direto para o endpoint de SQL do Supabase
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-  const sql = `
-    ALTER TABLE public.importacoes ADD COLUMN IF NOT EXISTS observacao text;
-    COMMENT ON COLUMN public.importacoes.observacao IS 'Warnings ou alertas da importação. Ex: abas/empreendimentos não encontrados no banco.';
-  `
-
-  // Tenta via pg REST endpoint
-  const res = await fetch(`${url}/rest/v1/rpc/exec_sql`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`,
-      'apikey': key,
-    },
-    body: JSON.stringify({ sql }),
-  })
-
-  if (!res.ok) {
-    const body = await res.text()
-    console.log(`exec_sql não disponível (${res.status}): ${body}`)
-    console.log('\n⚠️  Execute manualmente no Supabase SQL Editor:')
-    console.log('─'.repeat(60))
-    console.log(sql.trim())
-    console.log('─'.repeat(60))
-    console.log('\nOu via Supabase CLI:')
-    console.log('  supabase db push --db-url <URL>')
-    return
-  }
-
-  console.log('✅ Migration 011 aplicada com sucesso.')
-
-  // Verificação
-  const { data: check, error } = await supabase
+  // Verificar se a coluna já existe tentando selecioná-la
+  const { error: checkErr } = await supabase
     .from('importacoes')
     .select('observacao')
     .limit(1)
-  if (error && error.message.includes('observacao')) {
-    console.error('❌ Coluna observacao ainda não existe:', error.message)
-    process.exit(1)
+
+  if (!checkErr) {
+    console.log('✅ Coluna observacao já existe em importacoes — migration 011 já aplicada.')
+
+    // Mostrar estado atual
+    const { data: importacoes } = await supabase
+      .from('importacoes')
+      .select('id, tipo, mes, ano, status, observacao')
+      .eq('mes', 1).eq('ano', 2026)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    console.log('\nÚltimas importações de jan/2026:')
+    console.table(importacoes?.map(r => ({
+      tipo: r.tipo,
+      status: r.status,
+      observacao: r.observacao ?? '(vazio)'
+    })))
+    return
   }
-  console.log('✅ Coluna observacao acessível na tabela importacoes.')
+
+  console.log('ℹ️  Coluna observacao não existe ainda.')
+
+  // Tentar via rpc se existir
+  const { error: rpcErr } = await (supabase as any).rpc('exec_sql', {
+    sql: `ALTER TABLE public.importacoes ADD COLUMN IF NOT EXISTS observacao text;
+          COMMENT ON COLUMN public.importacoes.observacao IS 'Warnings ou alertas da importação.'`
+  })
+
+  if (rpcErr) {
+    console.log('ℹ️  RPC exec_sql não disponível.\n')
+    console.log('Execute manualmente no Supabase SQL Editor:')
+    console.log('─'.repeat(60))
+    console.log('ALTER TABLE public.importacoes')
+    console.log('  ADD COLUMN IF NOT EXISTS observacao text;')
+    console.log()
+    console.log("COMMENT ON COLUMN public.importacoes.observacao IS")
+    console.log("  'Warnings ou alertas da importação.';")
+    console.log('─'.repeat(60))
+    console.log('\nURL: https://supabase.com/dashboard/project/rlkmljeatapayiroggrp/sql/new')
+  } else {
+    console.log('✅ Migration 011 aplicada com sucesso via RPC.')
+
+    const { data: importacoes } = await supabase
+      .from('importacoes')
+      .select('id, tipo, mes, ano, status, observacao')
+      .eq('mes', 1).eq('ano', 2026)
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    console.log('\nÚltimas importações de jan/2026:')
+    console.table(importacoes?.map(r => ({
+      tipo: r.tipo,
+      status: r.status,
+      observacao: r.observacao ?? '(vazio)'
+    })))
+  }
 }
 
-main().catch(err => {
-  console.error('\n❌ ERRO:', err.message)
-  process.exit(1)
-})
+main().catch(console.error)
