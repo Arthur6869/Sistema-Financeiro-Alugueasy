@@ -81,10 +81,10 @@ export async function POST(request: NextRequest) {
       return undefined
     }
 
-    // Mapa: empreendimento_id::NUMERO_UPPER → apartamento_id
+    // Mapa: empreendimento_id::NUMERO_NORMALIZADO → apartamento_id
     const aptMap: Record<string, string> = {}
     allApartamentos.forEach(a => {
-      aptMap[`${a.empreendimento_id}::${normalize(a.numero)}`] = a.id
+      aptMap[`${a.empreendimento_id}::${normalizar(a.numero)}`] = a.id
     })
 
     // Mapa: empreendimento_id → primeiro apartamento_id (fallback)
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
         const aptCols = extrairColunasApartamento(rows, empreendimento_id, aptMap)
         const totalRowIdx = encontrarLinhaTotais(rows, aptCols)
 
-        if (aptCols.length === 0 || totalRowIdx < 0) {
+        if (totalRowIdx < 0) {
           console.warn(`[CUSTOS] "${sheetName}" — apts=${aptCols.length} totalRow=${totalRowIdx} — aba ignorada`)
           sheetsIgnorados.push(sheetName)
           continue
@@ -160,6 +160,9 @@ export async function POST(request: NextRequest) {
         }
 
         let sheetOk = false
+
+        const totalLinha = extrairTotalLinha(rows[totalRowIdx] ?? [], aptCols)
+        let aptosGravados = 0
 
         for (const { colIdx, apartamento_id, numero } of aptCols) {
           const aptCustos: CustoInsert[] = []
@@ -204,8 +207,37 @@ export async function POST(request: NextRequest) {
           } else {
             custosCount += aptCustos.length
             sheetOk = true
+            aptosGravados++
             const soma = aptCustos.reduce((a, c) => a + c.valor, 0)
             console.log(`[CUSTOS] ✓ ${sheetName} apt ${numero}: ${aptCustos.length} categorias, R$ ${soma.toFixed(2)}`)
+          }
+        }
+
+        // Se nenhum apt foi gravado mas há um TOTAL na planilha,
+        // usa fallback no primeiro apt do empreendimento/tipo.
+        if (aptosGravados === 0 && totalLinha > 0) {
+          const aptFallback = allApartamentos.find(
+            a => a.empreendimento_id === empreendimento_id && a.tipo_gestao === tipo_gestao
+          )
+          if (aptFallback) {
+            await supabase
+              .from('custos').delete()
+              .eq('apartamento_id', aptFallback.id)
+              .eq('mes', mes).eq('ano', ano)
+              .eq('tipo_gestao', tipo_gestao)
+
+            await supabase.from('custos').insert({
+              apartamento_id: aptFallback.id,
+              mes,
+              ano,
+              categoria: 'Total Consolidado',
+              valor: totalLinha,
+              tipo_gestao,
+            })
+
+            console.warn(`[import] fallback TOTAL para ${sheetName}: apt ${aptFallback.numero}, R$ ${totalLinha}`)
+            custosCount++
+            sheetOk = true
           }
         }
 
@@ -351,9 +383,13 @@ interface ColApartamento {
   numero: string
 }
 
-/** Normaliza número de apartamento para comparação: remove espaços, maiúsculo */
-function normalize(s: string): string {
-  return s.trim().toUpperCase().replace(/\s+/g, '')
+/** Normaliza número de apartamento para comparação flexível */
+function normalizar(s: string): string {
+  return String(s)
+    .toLowerCase()
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\.0$/, '')
+    .trim()
 }
 
 /** Converte valor bruto (número ou string) para float */
@@ -415,7 +451,7 @@ function extrairColunasApartamento(
       if (!aptNum) continue
 
       // Tentar resolver: empreendimento_id::numero
-      const key = `${empreendimento_id}::${normalize(aptNum)}`
+      const key = `${empreendimento_id}::${normalizar(aptNum)}`
       const apartamento_id = aptMap[key]
       if (apartamento_id) {
         candidatos.push({ colIdx, apartamento_id, numero: aptNum })
@@ -488,4 +524,27 @@ function extrairNumeroApt(cell: string): string | null {
   if (s.length <= 10 && /^[A-Za-z]?\s*\d/.test(s)) return s
 
   return null
+}
+
+function extrairTotalLinha(totalRow: unknown[], aptCols: ColApartamento[]): number {
+  if (!totalRow || totalRow.length === 0) return 0
+
+  // Em planilhas padrão, TOTAL geral costuma ficar na linha de totais;
+  // priorizamos o maior valor numérico da linha como total consolidado.
+  let maior = 0
+  for (const cell of totalRow) {
+    const valor = arredondar(parseNumero(cell))
+    if (!isNaN(valor) && valor > maior) maior = valor
+  }
+
+  // Se não encontrou valor geral, tenta somar os totais por coluna de apt.
+  if (maior <= 0 && aptCols.length > 0) {
+    const somaApts = aptCols.reduce((acc, { colIdx }) => {
+      const v = arredondar(parseNumero(totalRow[colIdx]))
+      return acc + (!isNaN(v) && v > 0 ? v : 0)
+    }, 0)
+    return arredondar(somaApts)
+  }
+
+  return arredondar(maior)
 }
