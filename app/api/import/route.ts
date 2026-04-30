@@ -51,7 +51,8 @@ export async function POST(request: NextRequest) {
 
     const { data: allApartamentos } = await supabase
       .from('apartamentos')
-      .select('id, numero, empreendimento_id')
+      .select('id, numero, empreendimento_id, tipo_gestao')
+      .order('empreendimento_id')
 
     if (!allEmpreendimentos || !allApartamentos) {
       return NextResponse.json({ error: 'Erro ao carregar dados do banco' }, { status: 500 })
@@ -92,6 +93,19 @@ export async function POST(request: NextRequest) {
       if (!firstAptByEmp[a.empreendimento_id]) {
         firstAptByEmp[a.empreendimento_id] = a.id
       }
+    })
+
+    // Mapa tipo_gestao-aware: prefere apt que bate o tipo da importação.
+    // Ex: diarias_adm para BRISAS escolhe E016 (adm), não A117 (sub).
+    // Fallback para firstAptByEmp quando não há apt do tipo certo.
+    const firstAptByEmpTipo: Record<string, string> = {}
+    allApartamentos.forEach(a => {
+      if (a.tipo_gestao === tipo_gestao && !firstAptByEmpTipo[a.empreendimento_id]) {
+        firstAptByEmpTipo[a.empreendimento_id] = a.id
+      }
+    })
+    Object.entries(firstAptByEmp).forEach(([empId, aptId]) => {
+      if (!firstAptByEmpTipo[empId]) firstAptByEmpTipo[empId] = aptId
     })
 
     const custosToInsert: CustoInsert[] = []
@@ -188,11 +202,12 @@ export async function POST(request: NextRequest) {
     // DIÁRIAS (FATURAMENTO)
     // =====================================================================
     if (tipo.startsWith('diarias')) {
-      let parsed = parsePlanilhaResultado(workbook, empMap, aptMap, firstAptByEmp)
+      // Usa firstAptByEmpTipo para que BRISAS ADM escolha um apt adm (E016),
+      // não um apt sub (A117), evitando atribuição cruzada de tipo_gestao.
+      let parsed = parsePlanilhaResultado(workbook, empMap, aptMap, firstAptByEmpTipo)
 
-      // Fallback quando a aba RESULTADO não tem granularidade suficiente
       if (parsed.porApartamento.length === 0) {
-        parsed = parsePlanilhaTotais(workbook, empMap, aptMap, firstAptByEmp)
+        parsed = parsePlanilhaTotais(workbook, empMap, aptMap, firstAptByEmpTipo)
       }
 
       if (parsed.porApartamento.length === 0) {
