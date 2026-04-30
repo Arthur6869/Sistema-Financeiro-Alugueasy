@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Supabase__list_migrations",
+      "Bash(npm run:*)"
+    ]
+  },
+  "mcpServers": {
+    "alugueasy": {
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        ".claude/start-alugueasy-mcp.ps1"
+      ]
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--project-ref",
+        "rlkmljeatapayiroggrp",
+        "--read-only"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_39569e328fb931fa1292f65c0d18391462a3d0c1"
+      }
+    }
+  }
+}

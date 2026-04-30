@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Supabase__apply_migration",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(curl -s -k -H \"Authorization: Bearer f3fd0afd57a5e563ae43860a321f4daaab6a603db56f9d09db7d488c1af05d6f\" https://127.0.0.1:27124/vault/)",
+      "Bash(curl -s -k https://127.0.0.1:27124/)",
+      "Bash(node -e ' *)",
+      "Bash(npm install *)",
+      "Bash(rm -f \"Sem título\" \"Sem título 1.base\" \"Sem título 1.canvas\" \"Sem título.base\" \"Sem título.canvas\")",
+      "Bash(rm -rf \".obsidian\")",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(npx tsx *)",
+      "Bash(npx -y @supabase/mcp-server-supabase@latest --help)",
+      "Bash(npx -y @supabase/mcp-server-supabase@latest)",
+      "Bash(node -e \"const p=require\\('./node_modules/@modelcontextprotocol/sdk/package.json'\\); console.log\\('SDK version:', p.version\\)\")",
+      "Bash(git rm *)",
+      "Bash(node --env-file=../.env.local dist/index-http.js)",
+      "Bash(kill %1)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Write-Host \"Done\")",
+      "Bash(vercel --version)",
+      "Bash(gh pr create --base main --head feature/Arthur --title 'feat: MCP Server v1.0.0 + room_id mappings + production deploy' --body ' *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\arthu\\OneDrive\\Documentos\\Sistema-Financeiro-Alugueasy\\supabase"
+    ]
+  }
+}

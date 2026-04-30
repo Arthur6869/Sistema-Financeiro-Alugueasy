@@ -177,4 +177,115 @@ Sempre manter atualizado após mudanças:
 - `documentação.md` — documentação técnica completa (schema, rotas, bugs)
 - `README.md` — guia de início rápido
 - Este arquivo (`AGENTS.md`) — regras para agentes de IA
+---
+
+## ✅ Decisões de Design — não questionar, só seguir
+
+| Decisão | Motivo |
+|---|---|
+| `analista` tem mais permissões que `admin` | Sistema inverteu semanticamente por decisão de negócio |
+| Guards de acesso usam `role !== 'analista'` para bloquear não-operadores | `analista` = operador do sistema; `admin` = somente leitura |
+| Faturamento vem de `amenitiz_reservas.valor_liquido`, não de `diarias` | Dashboard atualizado na Fase 5 |
+| Sync Amenitiz = DELETE + INSERT (não upsert em `diarias`) | Garantia de consistência no período |
+| Redirect após login = `/` (nunca `/dashboard`) | Rota `/dashboard` não existe |
+| "Prestação de Contas" já está na sidebar (`navItems`) | Adicionado — não duplicar |
+
+---
+
+## 🤖 MCP Server
+
+O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude Desktop, Claude Code).
+
+- **Localização:** `./mcp-server/`
+- **Propósito:** permite que agentes consultem KPIs, prestação de contas e dados de imóveis sem acesso direto ao banco
+- **Build:** `cd mcp-server && npm run build`
+- **Rodar:** `node mcp-server/dist/index.js` (stdio — não abre porta HTTP)
+- **Docs completas:** `./mcp-server/README.md`
+
+### Primitivos registrados
+
+| Primitivo | Quantidade | Itens |
+|---|---|---|
+| **Tools** | 17 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id |
+| **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
+| **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
+
+### Tools por módulo
+
+| Tool | Módulo | Descrição |
+|---|---|---|
+| `get_kpis` | financeiro | KPIs agregados: faturamento, custos, lucro, margem |
+| `get_kpis_por_empreendimento` | financeiro | KPIs separados por empreendimento |
+| `get_custos_detalhados` | financeiro | Custos agrupados por categoria com filtros |
+| `get_relatorio_semestral` | financeiro | Últimos 6 meses com variação MoM |
+| `list_empreendimentos` | imoveis | Todos os empreendimentos com contagem de apts |
+| `list_apartamentos` | imoveis | Apartamentos com taxa_repasse e tipo_repasse |
+| `set_amenitiz_room_id` | imoveis | Mapeia um apt ao UUID Amenitiz sem abrir o Supabase (requer confirmar: true) |
+| `get_prestacao_contas` | imoveis | Prestação mensal de um apt (mesma lógica de /prestacao-contas) |
+| `sync_amenitiz` | importacao | Sincroniza reservas Amenitiz para um período |
+| `get_historico_importacoes` | importacao | Histórico de uploads e syncs por período/tipo |
+| `check_ultimo_sync` | importacao | Verifica data do último sync Amenitiz |
+| `clear_periodo` | importacao | Remove dados de um período (mês/ano) |
+| `health_check` | monitoramento | Testa conectividade Supabase e API Next.js |
+| `alert_margem_baixa` | monitoramento | Alerta empreendimentos abaixo de margem mínima |
+| `check_sync_pendente` | monitoramento | Verifica se sync está atualizado (< 3 dias) |
+| `resumo_executivo` | monitoramento | Resumo completo: KPIs + sync + alertas + tendência |
+| `check_apartamentos_sem_room_id` | monitoramento | Lista apartamentos sem amenitiz_room_id (sync parcial) |
+
+### Cliente Supabase no MCP
+
+O MCP usa **service role key** (não anon key) para bypassar RLS e ter acesso total de leitura.
+Nunca usar o cliente `@/lib/supabase/server` do Next.js dentro do MCP — são pacotes separados.
+
+---
+
+## ⚠️ Ação Manual Pendente — room_ids BRISAS/ATHOS/METROPOLITAN
+
+Os seguintes apartamentos precisam de UUID manual do painel Amenitiz
+(sem reservas nos últimos 4 meses ou sem room combinado na API):
+
+| Empreendimento | Apt | Arquivo | Observação |
+|---|---|---|---|
+| BRISAS | D137 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ candidato: "Vista do Lago" (64e4757c) |
+| BRISAS | D138 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ candidato: "Vista do Lago 2" (f0caa1ec) |
+| BRISAS | E020 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ sem reservas recentes |
+| BRISAS | E016 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ UUID anterior era de outro empreendimento (corrigido) |
+| ATHOS | 11 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ sem reservas recentes |
+| ATHOS | 908 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ UUID anterior era "AB 1209" (corrigido, agora com 1209) |
+| METROPOLITAN | 1701 - 1701A | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ rooms 1701 e 1701A já mapeados individualmente |
+
+**Como resolver:**
+1. Acessar Amenitiz Dashboard > Configurações > Quartos
+2. Localizar cada quarto pelo nome
+3. Copiar o UUID (individual_room_id)
+4. Usar a tool MCP `set_amenitiz_room_id` ou aplicar `009_room_ids_pendentes.sql`
+
+---
+
+## 📁 Estrutura de Documentação
+
+| Arquivo | Propósito | Status |
+|---|---|---|
+| `documentação.md` | Documentação técnica completa (schema, rotas, bugs) | ✅ Ativo |
+| `README.md` | Guia de início rápido | ✅ Ativo |
+| `AGENTS.md` | Regras para agentes de IA | ✅ Ativo |
+| `CLAUDE.md` | Referência ao AGENTS.md para Claude Code | ✅ Ativo |
+| `mcp-server/README.md` | Documentação do servidor MCP | ✅ Ativo |
+
+**Regra:** Qualquer nova documentação vai em `documentação.md`.
+Não criar novos arquivos .md na raiz sem aprovação explícita.
+
+---
+
+## 🚫 Arquivos que NUNCA devem estar no repositório
+
+- Planilhas Excel (`*.xlsx`, `*.xls`) — ficam no Google Drive
+- Dados brutos em pastas (`dados jan/`, `dados fev/`, etc.)
+- Scripts Python de análise manual
+- Arquivos Obsidian (`*.canvas`, `*.base`, `.obsidian/`)
+- Artefatos de build (`dist/`, `.next/`, `*.tsbuildinfo`)
+- Variáveis de ambiente (`.env.local`, `.env.production`)
+- Arquivos temporários (`*.bak`, `*.old`, `*.tmp`)
+- Dados JSON de API brutos (`data.json`, fixtures de reservas)
+
 <!-- END:nextjs-agent-rules -->

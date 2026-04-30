@@ -1,0 +1,26 @@
+{
+  "name": "alugueasy-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for AlugEasy financial system",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index-http.js",
+    "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/index-http.ts",
+    "test:e2e": "tsx scripts/test-mcp-e2e.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@supabase/supabase-js": "^2.49.4",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
