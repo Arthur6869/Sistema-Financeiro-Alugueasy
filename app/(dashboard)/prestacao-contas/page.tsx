@@ -5,19 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { GerarPdfButton } from '@/components/shared/gerar-pdf-button'
+import { ApartamentoFilter } from '@/components/shared/apartamento-filter'
 import { formatCurrency, MESES } from '@/lib/constants'
 
 type ApartamentoItem = {
   id: string
   numero: string
+  tipo_gestao: 'adm' | 'sub' | null
   taxa_repasse: number | null
   tipo_repasse: 'lucro' | 'faturamento' | null
   nome_proprietario: string | null
   modelo_contrato: 'administracao' | 'sublocacao' | null
-  empreendimentos: Array<{
+  empreendimentos: {
     id: string
     nome: string
-  }>
+  } | null
 }
 
 type Props = {
@@ -43,9 +45,10 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
 
   const { data: apartamentos } = await supabase
     .from('apartamentos')
-    .select('id, numero, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato, empreendimentos!inner(id, nome)')
+    .select('id, numero, tipo_gestao, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato, empreendimentos!inner(id, nome)')
     .order('empreendimento_id')
     .order('numero')
+    .returns<ApartamentoItem[]>()
 
   if (!apartamentos || apartamentos.length === 0) {
     return (
@@ -62,11 +65,17 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
 
   const selectedApartmentId = params.apartamento_id ?? apartamentos[0].id
   const apartamentoSelecionado = apartamentos.find((apt) => apt.id === selectedApartmentId) ?? apartamentos[0]
-  const empreendimentoNome = apartamentoSelecionado.empreendimentos?.[0]?.nome ?? 'Desconhecido'
+  const empreendimentoNome = apartamentoSelecionado.empreendimentos?.nome ?? 'Desconhecido'
+  const apartamentosOrdenados = [...apartamentos].sort((a, b) => {
+    const empA = a.empreendimentos?.nome ?? 'Desconhecido'
+    const empB = b.empreendimentos?.nome ?? 'Desconhecido'
+    if (empA !== empB) return empA.localeCompare(empB, 'pt-BR')
+    return a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true })
+  })
   const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
   const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-  const [{ data: diarias }, { data: custos }] = await Promise.all([
+  const [{ data: diarias }, { data: custos }, { data: reservas }] = await Promise.all([
     supabase
       .from('diarias')
       .select('valor, tipo_gestao')
@@ -79,10 +88,29 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
       .eq('apartamento_id', apartamentoSelecionado.id)
       .eq('mes', mes)
       .eq('ano', ano),
+    supabase
+      .from('amenitiz_reservas')
+      .select('valor_liquido, status, checkin, checkout')
+      .eq('individual_room_number', apartamentoSelecionado.numero)
+      .eq('mes_competencia', mes)
+      .eq('ano_competencia', ano),
   ])
 
-  const receitaAdm = diarias?.filter((item) => item.tipo_gestao === 'adm').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
-  const receitaSub = diarias?.filter((item) => item.tipo_gestao === 'sub').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
+  const receitaAdmDiarias = diarias?.filter((item) => item.tipo_gestao === 'adm').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
+  const receitaSubDiarias = diarias?.filter((item) => item.tipo_gestao === 'sub').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
+  const receitaDiariasTotal = receitaAdmDiarias + receitaSubDiarias
+  const reservasValidas = (reservas ?? []).filter((r) => !['cancelled', 'canceled', 'no_show'].includes(String(r.status ?? '').toLowerCase()))
+  const receitaReservasTotal = reservasValidas.reduce((sum, r) => sum + Number(r.valor_liquido ?? 0), 0)
+
+  // Prestação: prioriza diárias conferidas; fallback para Amenitiz quando diárias estiver vazio.
+  const usarDiarias = receitaDiariasTotal > 0
+  let receitaAdm = receitaAdmDiarias
+  let receitaSub = receitaSubDiarias
+  if (!usarDiarias && receitaReservasTotal > 0) {
+    const fallbackGestao = apartamentoSelecionado.tipo_gestao ?? (apartamentoSelecionado.modelo_contrato === 'sublocacao' ? 'sub' : 'adm')
+    if (fallbackGestao === 'sub') receitaSub = receitaReservasTotal
+    else receitaAdm = receitaReservasTotal
+  }
   const receitaTotal = receitaAdm + receitaSub
   const custosAdm = custos?.filter((item) => item.tipo_gestao === 'adm').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
   const custosSub = custos?.filter((item) => item.tipo_gestao === 'sub').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
@@ -93,6 +121,16 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
   const valorRepasse = baseCalculo * taxa
   const valorLiquidoProprietario = lucroLiquido - valorRepasse
   const margemLiquida = receitaTotal > 0 ? (lucroLiquido / receitaTotal) * 100 : 0
+  const numeroReservas = reservasValidas.length
+  const numeroDiarias = reservasValidas.reduce((sum, r) => {
+    const inDate = new Date(`${r.checkin}T00:00:00`)
+    const outDate = new Date(`${r.checkout}T00:00:00`)
+    const diffMs = outDate.getTime() - inDate.getTime()
+    const noites = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)))
+    return sum + noites
+  }, 0)
+  const valorMedioDiaria = numeroDiarias > 0 ? receitaReservasTotal / numeroDiarias : 0
+  const ticketMedioReserva = numeroReservas > 0 ? receitaReservasTotal / numeroReservas : 0
 
   const hasAdm = receitaAdm > 0 || custosAdm > 0
   const hasSub = receitaSub > 0 || custosSub > 0
@@ -110,40 +148,17 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <form className="flex flex-wrap items-center gap-3" method="get" action="/prestacao-contas">
-            <div className="min-w-[280px]">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Apartamento</label>
-              <select
-                name="apartamento_id"
-                defaultValue={apartamentoSelecionado.id}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#193660]/30"
-              >
-                {apartamentos.reduce((groups: Array<{ empreendimento: string; itens: ApartamentoItem[] }>, apt) => {
-                  const empNome = apt.empreendimentos?.[0]?.nome ?? 'Desconhecido'
-                  const group = groups.find((g) => g.empreendimento === empNome)
-                  if (group) group.itens.push(apt)
-                  else groups.push({ empreendimento: empNome, itens: [apt] })
-                  return groups
-                }, []).map((group) => (
-                  <optgroup key={group.empreendimento} label={group.empreendimento}>
-                    {group.itens.map((apt) => (
-                      <option key={apt.id} value={apt.id}>
-                        Apt {apt.numero}{apt.nome_proprietario ? ` — ${apt.nome_proprietario}` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-            <input type="hidden" name="mes" value={mes} />
-            <input type="hidden" name="ano" value={ano} />
-            <button
-              type="submit"
-              className="rounded-xl bg-[#193660] px-4 py-2 text-sm font-semibold text-white hover:bg-[#152b4d] transition"
-            >
-              Atualizar
-            </button>
-          </form>
+          <ApartamentoFilter
+            apartamentos={apartamentosOrdenados.map((apt) => ({
+              id: apt.id,
+              numero: apt.numero,
+              empreendimentoNome: apt.empreendimentos?.nome ?? 'Desconhecido',
+              nomeProprietario: apt.nome_proprietario,
+            }))}
+            apartamentoIdAtual={apartamentoSelecionado.id}
+            mes={mes}
+            ano={ano}
+          />
           <MonthYearFilter mes={mes} ano={ano} />
           <GerarPdfButton apartamentoId={apartamentoSelecionado.id} mes={mes} ano={ano} label="Gerar PDF" />
         </div>
@@ -171,7 +186,9 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-[#193660]">{formatCurrency(receitaTotal)}</p>
-                <p className="text-sm text-gray-500">Faturamento de diárias no período</p>
+                <p className="text-sm text-gray-500">
+                  {usarDiarias ? 'Faturamento conferido (diárias)' : 'Fallback Amenitiz (reservas)'}
+                </p>
               </CardContent>
             </Card>
 
@@ -203,6 +220,25 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
                 <p className="text-2xl font-bold text-[#d97706]">{formatCurrency(valorRepasse)}</p>
                 <p className="text-sm text-gray-500">{apartamentoSelecionado.taxa_repasse ?? 0}% sobre {baseCalculoLabel.toLowerCase()}</p>
               </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+            <Card className="border border-gray-100 shadow-sm">
+              <CardHeader><CardTitle className="text-sm font-semibold">Receita das Reservas</CardTitle></CardHeader>
+              <CardContent><p className="text-2xl font-bold text-[#193660]">{formatCurrency(receitaReservasTotal)}</p></CardContent>
+            </Card>
+            <Card className="border border-gray-100 shadow-sm">
+              <CardHeader><CardTitle className="text-sm font-semibold">Soma de Diárias</CardTitle></CardHeader>
+              <CardContent><p className="text-2xl font-bold text-gray-900">{numeroDiarias}</p></CardContent>
+            </Card>
+            <Card className="border border-gray-100 shadow-sm">
+              <CardHeader><CardTitle className="text-sm font-semibold">Valor Médio da Diária</CardTitle></CardHeader>
+              <CardContent><p className="text-2xl font-bold text-gray-900">{formatCurrency(valorMedioDiaria)}</p></CardContent>
+            </Card>
+            <Card className="border border-gray-100 shadow-sm">
+              <CardHeader><CardTitle className="text-sm font-semibold">Ticket Médio por Reserva</CardTitle></CardHeader>
+              <CardContent><p className="text-2xl font-bold text-gray-900">{formatCurrency(ticketMedioReserva)}</p></CardContent>
             </Card>
           </div>
 

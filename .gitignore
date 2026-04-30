@@ -74,6 +74,8 @@ supabase/.temp/
 
 # ── Vercel ──
 .vercel
+vercel/.vercel
+.env.production.local
 
 # ── Coverage ──
 /coverage
