@@ -61,9 +61,21 @@ Verifique cada item na ordem e marque ✅ ou ❌:
 1. [ ] Sync Amenitiz — chame check_sync_pendente {mes: ${mes}, ano: ${ano}}
    → ✅ se sincronizado há menos de 3 dias | ❌ se nunca ou há mais de 3 dias
 
-2. [ ] Planilhas importadas — chame get_historico_importacoes {mes: ${mes}, ano: ${ano}}
-   → ✅ se todos os 2 tipos foram importados (custos_adm, custos_sub)
-   → ❌ liste quais tipos estão faltando
+2. [ ] Planilhas importadas e validadas — execute em sequência:
+   a) chame get_historico_importacoes {mes: ${mes}, ano: ${ano}}
+      → ✅ se os 4 tipos foram importados (custos_adm, custos_sub, diarias_adm, diarias_sub)
+      → ❌ liste quais tipos estão faltando
+
+   b) chame verificar_importacao_custos {mes: ${mes}, ano: ${ano}, tipo_gestao: "adm"}
+      → ✅ se todos os empreendimentos têm dados e nenhum está zerado
+      → ❌ liste quais empreendimentos estão ausentes ou zerados e o total ADM
+
+   c) chame verificar_importacao_custos {mes: ${mes}, ano: ${ano}, tipo_gestao: "sub"}
+      → ✅ se todos os empreendimentos têm dados
+      → ❌ liste os ausentes e o total SUB
+
+   Total de custos esperado: ADM + SUB deve ser maior que R$ 100.000 para qualquer mês.
+   Se total < R$ 100.000, há dados faltando — não fechar o mês.
 
 3. [ ] KPIs positivos — chame get_kpis {mes: ${mes}, ano: ${ano}}
    → ✅ se faturamento > 0 e lucro > 0

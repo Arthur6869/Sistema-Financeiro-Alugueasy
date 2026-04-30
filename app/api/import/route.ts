@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
 
     const custosToInsert: CustoInsert[] = []
     const diariasToInsert: DiariaInsert[] = []
+    const sheetsIgnorados: string[] = []
 
     // =====================================================================
     // CUSTOS
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
         const empreendimento_id = resolverEmpId(sheetName)
         if (!empreendimento_id) {
           console.warn(`[CUSTOS] "${sheetName}" não encontrado no banco. Pulando.`)
+          sheetsIgnorados.push(sheetName)
           continue
         }
 
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest) {
           }
           if (!encontrou) {
             console.warn(`[CUSTOS] Linha total encontrada (row ${totalRowIdx}) mas valores zerados para "${sheetName}"`)
+            sheetsIgnorados.push(sheetName)
           }
 
         } else if (aptCols.length === 0 && totalRowIdx >= 0) {
@@ -170,6 +173,7 @@ export async function POST(request: NextRequest) {
           }
         } else {
           console.warn(`[CUSTOS] Linha de totais NÃO encontrada em "${sheetName}" — aba ignorada`)
+          sheetsIgnorados.push(sheetName)
         }
       }
 
@@ -249,22 +253,45 @@ export async function POST(request: NextRequest) {
     // HISTÓRICO
     // =====================================================================
 
-    await supabase.from('importacoes').insert({
+    // ── validação pós-importação ──────────────────────────────────────────
+    if (sheetsIgnorados.length > 0) {
+      console.error(`[import] AVISO: ${sheetsIgnorados.length} aba(s) não gravada(s): ${sheetsIgnorados.join(', ')}`)
+    }
+
+    const observacao = sheetsIgnorados.length > 0
+      ? `Abas ignoradas (${sheetsIgnorados.length}): ${sheetsIgnorados.join(', ')}`
+      : null
+
+    const importRecord: Record<string, unknown> = {
       nome_arquivo: file.name,
       tipo, mes, ano,
       status: 'concluido',
       importado_por: user.id,
-    })
+    }
+    if (observacao) importRecord.observacao = observacao
+
+    const { error: importErr } = await supabase.from('importacoes').insert(importRecord)
+    if (importErr) {
+      // Fallback: se a coluna observacao ainda não existe no banco, insere sem ela
+      if (importErr.message.includes('observacao')) {
+        delete importRecord.observacao
+        await supabase.from('importacoes').insert(importRecord)
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Importação concluída com sucesso.',
+      message: sheetsIgnorados.length > 0
+        ? `Importação concluída com avisos. ${sheetsIgnorados.length} aba(s) não gravada(s).`
+        : 'Importação concluída com sucesso.',
       tipo, mes, ano,
       arquivo: file.name,
       registros: {
         diarias: diariasToInsert.length,
         custos: custosToInsert.length,
-      }
+      },
+      nao_gravados: sheetsIgnorados,
+      ...(sheetsIgnorados.length > 0 ? { aviso: `Abas não encontradas no banco: ${sheetsIgnorados.join(', ')}` } : {}),
     })
 
   } catch (error: unknown) {

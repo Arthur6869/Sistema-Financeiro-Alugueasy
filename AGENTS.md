@@ -130,6 +130,32 @@ Ao modificar ou criar código, **evitar repetir os seguintes erros existentes**:
 
 ---
 
+## 🐛 Bugs Corrigidos — Histórico
+
+| Data | Bug | Causa | Correção |
+|---|---|---|---|
+| Abr/2026 | Custos jan/2026 errados no dashboard (R$ 187.974 em vez de R$ 205.775) | 7 empreendimentos com dados ausentes ou incorretos após importação parcialmente silenciosa | Migration 010 aplicada manualmente; pipeline blindado com rastreamento de `sheetsIgnorados`; tool `verificar_importacao_custos` adicionada |
+
+---
+
+## ✅ Checklist obrigatório após importar planilhas de custos
+
+Sempre após importar `custos_adm` ou `custos_sub`, verificar via MCP:
+
+```
+verificar_importacao_custos { mes: X, ano: Y, tipo_gestao: "adm" }
+verificar_importacao_custos { mes: X, ano: Y, tipo_gestao: "sub" }
+```
+
+Se qualquer empreendimento aparecer **zerado** ou **ausente**:
+1. **NÃO fechar o mês**
+2. Verificar se o empreendimento está cadastrado na tabela `empreendimentos`
+3. Verificar se os apartamentos desse empreendimento têm `empreendimento_id` correto
+4. Verificar o campo `observacao` no último registro de `importacoes` — ele lista as abas ignoradas
+5. Reimportar a planilha após corrigir o cadastro
+
+---
+
 ## 📝 Padrões de Código
 
 ### Server Component buscando dados
@@ -206,7 +232,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 17 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id |
+| **Tools** | 18 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -231,6 +257,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `check_sync_pendente` | monitoramento | Verifica se sync está atualizado (< 3 dias) |
 | `resumo_executivo` | monitoramento | Resumo completo: KPIs + sync + alertas + tendência |
 | `check_apartamentos_sem_room_id` | monitoramento | Lista apartamentos sem amenitiz_room_id (sync parcial) |
+| `verificar_importacao_custos` | monitoramento | Valida se todos os empreendimentos têm custos gravados após importação |
 
 ### Cliente Supabase no MCP
 
