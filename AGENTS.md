@@ -206,7 +206,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 16 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id |
+| **Tools** | 17 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -220,6 +220,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `get_relatorio_semestral` | financeiro | Últimos 6 meses com variação MoM |
 | `list_empreendimentos` | imoveis | Todos os empreendimentos com contagem de apts |
 | `list_apartamentos` | imoveis | Apartamentos com taxa_repasse e tipo_repasse |
+| `set_amenitiz_room_id` | imoveis | Mapeia um apt ao UUID Amenitiz sem abrir o Supabase (requer confirmar: true) |
 | `get_prestacao_contas` | imoveis | Prestação mensal de um apt (mesma lógica de /prestacao-contas) |
 | `sync_amenitiz` | importacao | Sincroniza reservas Amenitiz para um período |
 | `get_historico_importacoes` | importacao | Histórico de uploads e syncs por período/tipo |
@@ -235,6 +236,29 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 O MCP usa **service role key** (não anon key) para bypassar RLS e ter acesso total de leitura.
 Nunca usar o cliente `@/lib/supabase/server` do Next.js dentro do MCP — são pacotes separados.
+
+---
+
+## ⚠️ Ação Manual Pendente — room_ids BRISAS/ATHOS/METROPOLITAN
+
+Os seguintes apartamentos precisam de UUID manual do painel Amenitiz
+(sem reservas nos últimos 4 meses ou sem room combinado na API):
+
+| Empreendimento | Apt | Arquivo | Observação |
+|---|---|---|---|
+| BRISAS | D137 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ candidato: "Vista do Lago" (64e4757c) |
+| BRISAS | D138 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ candidato: "Vista do Lago 2" (f0caa1ec) |
+| BRISAS | E020 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ sem reservas recentes |
+| BRISAS | E016 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ UUID anterior era de outro empreendimento (corrigido) |
+| ATHOS | 11 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ sem reservas recentes |
+| ATHOS | 908 | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ UUID anterior era "AB 1209" (corrigido, agora com 1209) |
+| METROPOLITAN | 1701 - 1701A | `supabase/migrations/009_room_ids_pendentes.sql` | ⏳ rooms 1701 e 1701A já mapeados individualmente |
+
+**Como resolver:**
+1. Acessar Amenitiz Dashboard > Configurações > Quartos
+2. Localizar cada quarto pelo nome
+3. Copiar o UUID (individual_room_id)
+4. Usar a tool MCP `set_amenitiz_room_id` ou aplicar `009_room_ids_pendentes.sql`
 
 ---
 

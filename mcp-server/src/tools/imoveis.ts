@@ -84,7 +84,71 @@ Optionally filter by empreendimento name (case-insensitive partial match).`,
     }
   )
 
-  // ── 3. get_prestacao_contas ─────────────────────────────────────────────────
+  // ── 3. set_amenitiz_room_id ─────────────────────────────────────────────────
+  server.tool(
+    'set_amenitiz_room_id',
+    `Maps an apartment to its Amenitiz room UUID. Use this to fix apartments missing amenitiz_room_id
+without opening the Supabase dashboard. Always call check_apartamentos_sem_room_id before and after
+to verify the change. Requires confirmar: true to execute — first call with confirmar: false to preview.`,
+    {
+      numero: z.string().describe('Apartment number exactly as stored in the database (ex: "B119", "812", "1709")'),
+      empreendimento: z.string().describe('Property name (partial match accepted, ex: "BRISAS", "ATHOS")'),
+      amenitiz_room_id: z.string().uuid().describe('Full Amenitiz room UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)'),
+      confirmar: z.boolean().describe('Safety flag. Must be true to execute the update. Pass false to preview without changing.'),
+    },
+    async ({ numero, empreendimento, amenitiz_room_id, confirmar }) => {
+      if (!confirmar) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              executado: false,
+              mensagem: `Preview: vai mapear apt ${numero} (${empreendimento}) → ${amenitiz_room_id}. Chame novamente com confirmar: true para aplicar.`,
+            }, null, 2),
+          }],
+        }
+      }
+
+      const supabase = getSupabaseClient()
+
+      const { data: emp, error: empErr } = await supabase
+        .from('empreendimentos')
+        .select('id, nome')
+        .ilike('nome', `%${empreendimento}%`)
+        .limit(1)
+        .single()
+
+      if (empErr || !emp) {
+        throw new Error(`Empreendimento não encontrado: ${empreendimento}`)
+      }
+
+      const { data, error } = await supabase
+        .from('apartamentos')
+        .update({ amenitiz_room_id })
+        .eq('numero', numero)
+        .eq('empreendimento_id', emp.id)
+        .select('id, numero, amenitiz_room_id')
+
+      if (error) throw new Error(`Supabase error em set_amenitiz_room_id: ${error.message}`)
+      if (!data || data.length === 0) {
+        throw new Error(`Apartamento ${numero} não encontrado em ${emp.nome}`)
+      }
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            executado: true,
+            apartamento: { numero: data[0].numero, amenitiz_room_id: data[0].amenitiz_room_id },
+            empreendimento: emp.nome,
+            mensagem: '✅ Mapeamento aplicado. Execute check_apartamentos_sem_room_id para verificar.',
+          }, null, 2),
+        }],
+      }
+    }
+  )
+
+  // ── 4. get_prestacao_contas ─────────────────────────────────────────────────
   server.tool(
     'get_prestacao_contas',
     `Calculates the monthly accountability report (prestação de contas) for a specific apartment
