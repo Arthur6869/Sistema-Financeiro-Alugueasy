@@ -8,6 +8,7 @@ import {
   XCircle,
   Loader2,
   FileX,
+  Upload,
   ShieldCheck,
   Wrench,
   ChevronDown,
@@ -44,8 +45,6 @@ const fmt = (v: number) =>
   `R$ ${Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 
 const TIPO_LABELS: Record<string, string> = {
-  custos_adm: 'Custos ADM',
-  custos_sub: 'Custos SUB',
   diarias_adm: 'Faturamento ADM',
   diarias_sub: 'Faturamento SUB',
 }
@@ -106,6 +105,9 @@ export function SyncPlanilhasButton({
   const [expanded, setExpanded] = useState(false)
   const [mes, setMes] = useState(mesInicial)
   const [ano, setAno] = useState(anoInicial)
+  const [uploadingTipo, setUploadingTipo] = useState<string | null>(null)
+  const [uploadStatus, setUploadStatus] = useState<Record<string, 'ok' | 'error'>>({})
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({})
 
   async function verificar() {
     setLoading(true)
@@ -150,6 +152,40 @@ export function SyncPlanilhasButton({
     }
   }
 
+  async function enviarPlanilha(tipo: 'diarias_adm' | 'diarias_sub', file: File) {
+    setUploadingTipo(tipo)
+    setUploadStatus((prev) => ({ ...prev, [tipo]: undefined as never }))
+    setUploadErrors((prev) => ({ ...prev, [tipo]: '' }))
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('tipo', tipo)
+    formData.append('mes', String(mes))
+    formData.append('ano', String(ano))
+
+    try {
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        setUploadStatus((prev) => ({ ...prev, [tipo]: 'error' }))
+        setUploadErrors((prev) => ({ ...prev, [tipo]: body?.error ?? `HTTP ${res.status}` }))
+        return
+      }
+
+      setUploadStatus((prev) => ({ ...prev, [tipo]: 'ok' }))
+      await verificar()
+    } catch (e: unknown) {
+      setUploadStatus((prev) => ({ ...prev, [tipo]: 'error' }))
+      setUploadErrors((prev) => ({ ...prev, [tipo]: e instanceof Error ? e.message : 'Erro de rede' }))
+    } finally {
+      setUploadingTipo(null)
+    }
+  }
+
   // Resumo do relatório
   const totalOk = report?.report.filter(r => r.status === 'ok').length ?? 0
   const totalDivergente = report?.report.filter(r => r.status === 'divergente' || r.status === 'sem_dados_db').length ?? 0
@@ -167,13 +203,12 @@ export function SyncPlanilhasButton({
         </div>
         <div className="flex-1">
           <h2 className="text-base font-bold text-gray-900">
-            Verificação com Planilhas Locais
+            Contingência Local — Faturamento de Reservas
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            Compara os dados do banco com as planilhas de conferência nas pastas{' '}
-            <code className="bg-gray-100 px-1 rounded text-xs">dados jan/</code>,{' '}
-            <code className="bg-gray-100 px-1 rounded text-xs">dados fev/</code>, etc.
-            e permite corrigir divergências.
+            Use esta opção apenas quando a API da Amenitiz estiver indisponível.
+            Envie manualmente as planilhas de faturamento (ADM/SUB) e use a verificação para conferir divergências.
+            Os custos devem continuar sendo enviados no bloco de upload de custos.
           </p>
         </div>
       </div>
@@ -223,6 +258,53 @@ export function SyncPlanilhasButton({
             {expanded ? 'Ocultar' : 'Ver detalhes'}
           </button>
         )}
+      </div>
+
+      {/* Upload manual de faturamento */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        {[
+          { id: 'diarias_adm', label: 'Enviar planilha de Faturamento ADM' },
+          { id: 'diarias_sub', label: 'Enviar planilha de Faturamento SUB' },
+        ].map(({ id, label }) => {
+          const isUploading = uploadingTipo === id
+          const status = uploadStatus[id]
+          return (
+            <div key={id}>
+              <label
+                htmlFor={`upload-local-${id}`}
+                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium cursor-pointer transition-colors ${
+                  isUploading
+                    ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                    : status === 'ok'
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : status === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                <span>{isUploading ? 'Enviando...' : label}</span>
+              </label>
+              <input
+                id={`upload-local-${id}`}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                disabled={!!uploadingTipo}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) enviarPlanilha(id as 'diarias_adm' | 'diarias_sub', file)
+                  e.target.value = ''
+                }}
+              />
+              {uploadErrors[id] && (
+                <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 break-all">
+                  {uploadErrors[id]}
+                </p>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Erro geral */}
@@ -346,7 +428,7 @@ export function SyncPlanilhasButton({
         <p className="text-xs text-gray-400 mt-3">
           <strong>Importar</strong> → grava valores da planilha no banco (sem dados anteriores) ·{' '}
           <strong>Corrigir</strong> → sobrescreve valores divergentes com os da planilha ·{' '}
-          Diárias corrigidas passam a ser exibidas no dashboard no lugar dos dados da Amenitiz.
+          Fluxo exclusivo de faturamento/diárias para contingência quando a API não responde.
         </p>
       )}
     </div>

@@ -32,7 +32,17 @@ export function GerarPdfButton({ apartamentoId, mes, ano, label }: GerarPdfButto
 
       const blob = await response.blob()
       const href = URL.createObjectURL(blob)
-      window.open(href, '_blank')
+      const contentDisposition = response.headers.get('content-disposition') ?? ''
+      const match = contentDisposition.match(/filename="([^"]+)"/i)
+      const filename = match?.[1] ?? `prestacao-contas-${mes}-${ano}.pdf`
+
+      const a = document.createElement('a')
+      a.href = href
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(href)
     } catch (error) {
       alert('Erro ao gerar PDF. Tente novamente.')
     } finally {

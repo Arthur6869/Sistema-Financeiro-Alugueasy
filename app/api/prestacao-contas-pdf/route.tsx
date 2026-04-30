@@ -6,6 +6,14 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { formatCurrency, MESES } from '@/lib/constants'
 
+function slugifyFilePart(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -25,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const { data: apt, error: aptErr } = await supabase
       .from('apartamentos')
-      .select('id, numero, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato, empreendimentos(id, nome)')
+      .select('id, numero, tipo_gestao, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato, empreendimentos(id, nome)')
       .eq('id', apartamentoId)
       .single()
 
@@ -36,17 +44,30 @@ export async function GET(request: NextRequest) {
     const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
     const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-    const [{ data: diarias, error: diariasErr }, { data: custos, error: custosErr }] = await Promise.all([
+    const [{ data: diarias, error: diariasErr }, { data: custos, error: custosErr }, { data: reservas, error: reservasErr }] = await Promise.all([
       supabase.from('diarias').select('valor, tipo_gestao').eq('apartamento_id', apartamentoId).gte('data', dataInicio).lte('data', dataFim),
       supabase.from('custos').select('valor, categoria, tipo_gestao').eq('apartamento_id', apartamentoId).eq('mes', mes).eq('ano', ano),
+      supabase.from('amenitiz_reservas').select('valor_liquido, status, checkin, checkout').eq('individual_room_number', apt.numero).eq('mes_competencia', mes).eq('ano_competencia', ano),
     ])
 
-    if (diariasErr || custosErr) {
+    if (diariasErr || custosErr || reservasErr) {
       return NextResponse.json({ error: 'Erro ao buscar dados financeiros' }, { status: 500 })
     }
 
-    const receitaAdm = (diarias ?? []).filter((d) => d.tipo_gestao === 'adm').reduce((sum, d) => sum + Number(d.valor ?? 0), 0)
-    const receitaSub = (diarias ?? []).filter((d) => d.tipo_gestao === 'sub').reduce((sum, d) => sum + Number(d.valor ?? 0), 0)
+    const receitaAdmDiarias = (diarias ?? []).filter((d) => d.tipo_gestao === 'adm').reduce((sum, d) => sum + Number(d.valor ?? 0), 0)
+    const receitaSubDiarias = (diarias ?? []).filter((d) => d.tipo_gestao === 'sub').reduce((sum, d) => sum + Number(d.valor ?? 0), 0)
+    const receitaDiariasTotal = receitaAdmDiarias + receitaSubDiarias
+    const reservasValidas = (reservas ?? []).filter((r) => !['cancelled', 'canceled', 'no_show'].includes(String(r.status ?? '').toLowerCase()))
+    const receitaReservasTotal = reservasValidas.reduce((sum, r) => sum + Number(r.valor_liquido ?? 0), 0)
+
+    const usarDiarias = receitaDiariasTotal > 0
+    let receitaAdm = receitaAdmDiarias
+    let receitaSub = receitaSubDiarias
+    if (!usarDiarias && receitaReservasTotal > 0) {
+      const fallbackGestao = apt.tipo_gestao ?? (apt.modelo_contrato === 'sublocacao' ? 'sub' : 'adm')
+      if (fallbackGestao === 'sub') receitaSub = receitaReservasTotal
+      else receitaAdm = receitaReservasTotal
+    }
     const receitaTotal = receitaAdm + receitaSub
     const custosAdm = (custos ?? []).filter((c) => c.tipo_gestao === 'adm').reduce((sum, c) => sum + Number(c.valor ?? 0), 0)
     const custosSub = (custos ?? []).filter((c) => c.tipo_gestao === 'sub').reduce((sum, c) => sum + Number(c.valor ?? 0), 0)
@@ -58,6 +79,16 @@ export async function GET(request: NextRequest) {
     const valorLiquidoProprietario = lucroLiquido - valorRepasse
     const margemLiquida = receitaTotal > 0 ? ((lucroLiquido / receitaTotal) * 100).toFixed(2) : '0,00'
     const percentualCustos = receitaTotal > 0 ? `${((custosTotal / receitaTotal) * 100).toFixed(2)}%` : '0,00%'
+    const numeroReservas = reservasValidas.length
+    const numeroDiarias = reservasValidas.reduce((sum, r) => {
+      const inDate = new Date(`${r.checkin}T00:00:00`)
+      const outDate = new Date(`${r.checkout}T00:00:00`)
+      const diffMs = outDate.getTime() - inDate.getTime()
+      const noites = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)))
+      return sum + noites
+    }, 0)
+    const valorMedioDiaria = numeroDiarias > 0 ? receitaReservasTotal / numeroDiarias : 0
+    const mediaDiariasPorReserva = numeroReservas > 0 ? numeroDiarias / numeroReservas : 0
 
     const detalheCustos = (custos ?? []).map((c) => ({
       categoria: c.categoria ?? 'Desconhecido',
@@ -99,6 +130,11 @@ export async function GET(request: NextRequest) {
         custosSub={custosSub > 0 ? formatCurrency(custosSub) : ''}
         lucroSub={lucroSubNum !== 0 ? `${lucroSubNum < 0 ? '-' : ''}${formatCurrency(Math.abs(lucroSubNum))}` : ''}
         detalheCustos={detalheCustos}
+        receitaReservas={formatCurrency(receitaReservasTotal)}
+        somaDiarias={numeroDiarias}
+        valorMedioDiaria={formatCurrency(valorMedioDiaria)}
+        mediaDiariasPorReserva={mediaDiariasPorReserva.toFixed(2).replace('.', ',')}
+        usandoDiarias={usarDiarias}
         receitaTotal={receitaTotal}
         custosTotal={custosTotal}
         lucroLiquidoNum={lucroLiquido}
@@ -108,7 +144,11 @@ export async function GET(request: NextRequest) {
 
     const pdfBytes = await pdf(document).toBuffer()
 
-    const fileName = `Prestacao_${(apt.empreendimentos as Array<{nome: string}>)?.[0]?.nome ?? 'Imovel'}_${apt.numero}_${mes}_${ano}.pdf`
+    const empreendimentoNome = (apt.empreendimentos as Array<{nome: string}>)?.[0]?.nome ?? 'Imovel'
+    const empreendimentoSlug = slugifyFilePart(empreendimentoNome || 'Imovel')
+    const apartamentoSlug = slugifyFilePart(String(apt.numero ?? '000'))
+    const mesSlug = slugifyFilePart(MESES[mes - 1] ?? String(mes))
+    const fileName = `Prestacao_${empreendimentoSlug}_Apt-${apartamentoSlug}_${mesSlug}-${ano}.pdf`
 
     return new Response(pdfBytes as unknown as BodyInit, {
       status: 200,

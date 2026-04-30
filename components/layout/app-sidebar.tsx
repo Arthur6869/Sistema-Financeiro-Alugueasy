@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   LayoutDashboard,
@@ -54,9 +54,21 @@ type ModalType = 'empreendimento' | 'apartamento' | null
 export function AppSidebar({ role, fullName, email }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [collapsed, setCollapsed] = useState(false)
+
+  const mesAtual = searchParams.get('mes')
+  const anoAtual = searchParams.get('ano')
+  const periodoSelecionado = new URLSearchParams()
+  if (mesAtual) periodoSelecionado.set('mes', mesAtual)
+  if (anoAtual) periodoSelecionado.set('ano', anoAtual)
+
+  const buildHref = (baseHref: string) => {
+    const query = periodoSelecionado.toString()
+    return query ? `${baseHref}?${query}` : baseHref
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -105,7 +117,7 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
             return collapsed ? (
               <Tooltip key={item.href}>
                 <TooltipTrigger
-                  render={<Link href={item.href} />}
+                  render={<Link href={buildHref(item.href)} />}
                   className={cn(
                     'flex items-center justify-center p-2.5 rounded-lg transition-all duration-150',
                     isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -118,7 +130,7 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
             ) : (
               <Link
                 key={item.href}
-                href={item.href}
+                href={buildHref(item.href)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
                   isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -147,7 +159,7 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
                 return collapsed ? (
                   <Tooltip key={item.href}>
                     <TooltipTrigger
-                      render={<Link href={item.href} />}
+                      render={<Link href={buildHref(item.href)} />}
                       className={cn(
                         'flex items-center justify-center p-2.5 rounded-lg transition-all duration-150',
                         isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -160,7 +172,7 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
                 ) : (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={buildHref(item.href)}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
                       isActive ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'

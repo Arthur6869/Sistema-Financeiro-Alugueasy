@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
+import { parsePlanilhaResultado, parsePlanilhaTotais } from '@/lib/xlsx-parser'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,9 +14,9 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 })
     }
-    if (!['custos_adm', 'custos_sub'].includes(tipo)) {
+    if (!['custos_adm', 'custos_sub', 'diarias_adm', 'diarias_sub'].includes(tipo)) {
       return NextResponse.json({
-        error: `Tipo inválido. Para diárias, use a sincronização automática da Amenitiz em /importar.`
+        error: 'Tipo inválido. Use custos_adm, custos_sub, diarias_adm ou diarias_sub.'
       }, { status: 400 })
     }
 
@@ -99,12 +100,7 @@ export async function POST(request: NextRequest) {
     // =====================================================================
     // CUSTOS
     // =====================================================================
-    // Cada aba = um empreendimento. Apartamentos estão em pares de colunas
-    // [valor | label]. A linha de cabeçalho tem os números dos apartamentos.
-    // A linha "TOTAL:" tem o custo total de cada apartamento por coluna.
-    // =====================================================================
-
-    {
+    if (tipo.startsWith('custos')) {
       const sheetsToProcess = workbook.SheetNames.filter(name =>
         !name.toUpperCase().includes('RESULTADO') &&
         !name.toUpperCase().includes('RESUMO')
@@ -185,12 +181,46 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================================
+    // DIÁRIAS (FATURAMENTO)
+    // =====================================================================
+    if (tipo.startsWith('diarias')) {
+      let parsed = parsePlanilhaResultado(workbook, empMap, aptMap, firstAptByEmp)
+
+      // Fallback quando a aba RESULTADO não tem granularidade suficiente
+      if (parsed.porApartamento.length === 0) {
+        parsed = parsePlanilhaTotais(workbook, empMap, aptMap, firstAptByEmp)
+      }
+
+      if (parsed.porApartamento.length === 0) {
+        return NextResponse.json({
+          error: 'Nenhum faturamento foi encontrado no arquivo. Verifique se a planilha está no formato esperado.'
+        }, { status: 400 })
+      }
+
+      for (const row of parsed.porApartamento) {
+        diariasToInsert.push({
+          apartamento_id: row.apartamento_id,
+          valor: row.valor,
+          data: data_registro,
+          tipo_gestao,
+        })
+      }
+    }
+
+    // =====================================================================
     // PROTEÇÃO ANTI-DUPLICAÇÃO — apagar antes de reinserir
     // =====================================================================
 
     if (custosToInsert.length > 0) {
       await supabase.from('custos').delete()
         .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
+    }
+    if (diariasToInsert.length > 0) {
+      const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+      await supabase.from('diarias').delete()
+        .gte('data', data_registro)
+        .lte('data', dataFim)
+        .eq('tipo_gestao', tipo_gestao)
     }
 
     // =====================================================================

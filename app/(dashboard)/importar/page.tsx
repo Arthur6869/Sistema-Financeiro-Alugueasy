@@ -26,6 +26,7 @@ import {
 import { MESES, ANOS } from '@/lib/constants'
 import { AmenitizSyncButton } from '@/components/shared/amenitiz-sync-button'
 import { SyncPlanilhasButton } from '@/components/shared/sync-planilhas-button'
+import { ObsidianSyncButton } from '@/components/shared/obsidian-sync-button'
 
 const TIPOS = [
   {
@@ -260,6 +261,9 @@ export default function ImportarPage() {
             </div>
             <AmenitizSyncButton mesInicial={mes} anoInicial={ano} />
           </div>
+
+          {/* Seção Obsidian */}
+          <ObsidianSyncButton />
 
           {/* Cards de Upload por grupo */}
           {(['Custos'] as const).map((grupo) => {

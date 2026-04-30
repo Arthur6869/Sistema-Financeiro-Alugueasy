@@ -1,3 +1,480 @@
+# Contexto do Sistema Financeiro AlugEasy
+
+Atualizado em: 2026-04-29T17:46:37.903Z
+
+Este documento foi gerado automaticamente pela API interna do projeto para servir como contexto no Obsidian.
+
+## Estrutura Principal
+
+```
+.
+|-- app/
+|-- components/
+|-- lib/
+|-- mcp-server/
+|-- supabase/
+|-- README.md
+|-- documentação.md
+|-- AGENTS.md
+|-- package.json
+```
+
+## Arquivo: README.md
+
+```md
+# 🏠 AlugEasy — Sistema Financeiro
+
+Sistema web interno de gestão financeira para imóveis por temporada. Substitui o controle manual em planilhas Excel por um dashboard centralizado com banco de dados relacional, visualizações interativas e controle de acesso por perfil de usuário.
+
+---
+
+## ✨ Funcionalidades
+
+- 🔐 **Autenticação segura** com email/senha via Supabase Auth
+- 📊 **Dashboard** com KPIs de Faturamento, Custos e Lucro do mês
+- 🏢 **Gestão de Empreendimentos e Apartamentos** — visualize todas as unidades
+- 💰 **Custos** — histórico completo de despesas por unidade e categoria
+- 🌙 **Diárias** — receita por unidade com tipo de gestão (ADM/SUB)
+- 📈 **Relatório Analítico** — evolução dos últimos 6 meses com gráfico de linha e tabela pivot
+- 📤 **Importação de Planilhas** — upload direto de arquivos `.xlsx` (apenas Admin)
+- 👥 **Gestão de Usuários** — visão dos perfis cadastrados (apenas Admin)
+
+---
+
+## 🚀 Como Rodar Localmente
+
+### Pré-requisitos
+- Node.js 20+
+- npm 10+
+- Conta no [Supabase](https://supabase.com)
+
+### 1. Clonar e instalar dependências
+
+```bash
+git clone <repositório>
+cd Sistema-Financeiro-Alugueasy
+npm install
+```
+
+### 2. Configurar variáveis de ambiente
+
+Crie um arquivo `.env.local` na raiz do projeto:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key_aqui
+OBSIDIAN_API_BASE=https://127.0.0.1:27124
+OBSIDIAN_API_TOKEN=seu_token_da_api_local_do_obsidian
+```
+
+> As credenciais do projeto atual estão em `.env.local` (arquivo não versionado).
+
+`OBSIDIAN_API_BASE` e `OBSIDIAN_API_TOKEN` habilitam a sincronização de contexto do projeto para o Obsidian via rota `POST /api/obsidian/sync`.
+
+### 3. Rodar em desenvolvimento
+
+```bash
+npm run dev
+```
+
+Acesse: [http://localhost:3000](http://localhost:3000)
+
+### 4. Build de produção
+
+```bash
+npm run build
+npm start
+```
+
+---
+
+## 📁 Estrutura do Projeto
+
+```
+.
+├── app/
+│   ├── (auth)/login/          # Página de login
+│   ├── (dashboard)/           # Área protegida do sistema
+│   │   ├── layout.tsx         # Layout com sidebar
+│   │   ├── page.tsx           # Dashboard principal
+│   │   ├── empreendimentos/   # Lista de empreendimentos
+│   │   ├── apartamentos/      # Lista de unidades
+│   │   ├── custos/            # Tabela de despesas
+│   │   ├── diarias/           # Tabela de receitas
+│   │   ├── relatorio/         # Análise dos últimos 6 meses
+│   │   ├── importar/          # Upload de planilhas (admin)
+│   │   └── usuarios/          # Usuários do sistema (admin)
+│   ├── api/import/            # API Route para processar Excel
+│   ├── globals.css            # Estilos globais
+│   └── layout.tsx             # Root layout
+│
+├── components/
+│   ├── app-sidebar.tsx        # Navegação lateral
+│   ├── dashboard-charts.tsx   # Gráfico de barras
+│   └── ui/                   # Componentes shadcn/ui
+│
+├── lib/
+│   ├── constants.ts           # Constantes globais (meses, formatação)
+│   ├── utils.ts               # Utilitários (cn helper)
+│   └── supabase/
+│       ├── client.ts          # Supabase client (browser)
+│       └── server.ts          # Supabase client (servidor/SSR)
+│
+├── proxy.ts                   # Middleware de proteção de rotas
+├── documentação.md            # Documentação técnica completa
+├── AGENTS.md                  # Regras para agentes de IA
+├── .env.local                 # Variáveis de ambiente (não versionado)
+└── package.json               # Dependências
+```
+
+---
+
+## 🛠️ Stack Tecnológico
+
+| Tecnologia | Uso | Versão |
+|---|---|---|
+| Next.js | Framework web (App Router) | 16.2.1 |
+| React | Interface de usuário | 19.2.4 |
+| TypeScript | Linguagem tipada | 5.x |
+| Tailwind CSS v4 | Estilização | 4.x |
+| shadcn/ui | Componentes de UI | 4.x |
+| Supabase | Banco de dados + Auth | cloud |
+| Recharts | Gráficos interativos | 3.8.1 |
+| SheetJS (xlsx) | Leitura de planilhas Excel | 0.18.5 |
+| Lucide React | Ícones | 1.7.0 |
+
+---
+
+## 👥 Perfis de Acesso
+
+| Funcionalidade | Admin | Analista |
+|---|---|---|
+| Ver Dashboard, Relatório, Listas | ✅ | ✅ |
+| Importar Planilhas Excel | ✅ | ❌ |
+| Ver página de Usuários | ✅ | ❌ |
+| Escrever dados no banco | ✅ | ❌ |
+
+---
+
+## 📊 Banco de Dados
+
+O sistema utiliza **Supabase (PostgreSQL 17)** com as seguintes tabelas:
+
+- `profiles` — perfis e roles dos usuários
+- `empreendimentos` — grupos de imóveis
+- `apartamentos` — unidades individuais
+- `custos` — despesas mensais por unidade
+- `diarias` — receitas de diárias por unidade
+- `importacoes` — histórico de uploads de planilhas
+
+> Todas as tabelas possuem **Row Level Security (RLS)** habilitado.
+
+Para detalhes completos do schema, veja [`documentação.md`](./documentação.md).
+
+---
+
+## ⚠️ Bugs Conhecidos
+
+Existem **10 problemas identificados** no sistema atual. Os mais críticos:
+
+- Login redireciona para `/dashboard` (404) — deve ir para `/`
+- Campos errados na tabela `importacoes` na rota de upload
+- Mês/ano hardcoded em Janeiro/2026 na importação
+- Rota de importação não valida autenticação do usuário
+
+Veja a lista completa em [`documentação.md`](./documentação.md) — Seção 12.
+
+---
+
+## 📄 Documentação
+
+- **[`documentação.md`](./documentação.md)** — Documentação técnica completa: schema, rotas, componentes, bugs, segurança
+- **[`AGENTS.md`](./AGENTS.md)** — Regras para agentes de IA que trabalham neste projeto
+
+---
+
+## 📌 Notas Importantes
+
+- O projeto usa **Next.js 16** com **App Router** — APIs podem diferir das versões anteriores
+- O middleware de autenticação está em `proxy.ts` (verifique se existe `middleware.ts` importando-o)
+- Planilhas Excel devem seguir o formato específico das conferências AlugEasy (pares de colunas: número do apto / valor)
+```
+
+## Arquivo: AGENTS.md
+
+```md
+<!-- BEGIN:nextjs-agent-rules -->
+# Regras para Agentes de IA — Sistema Financeiro AlugEasy
+
+## ⚠️ Este é um projeto Next.js 16 com App Router — leia antes de qualquer código
+
+Esta versão do Next.js tem **mudanças significativas** em relação ao que pode estar no seu treinamento. Leia o guia em `node_modules/next/dist/docs/` antes de escrever qualquer código. Respeite as mensagens de deprecação.
+
+---
+
+## 📌 Contexto do Projeto
+
+| Item | Valor |
+|---|---|
+| Framework | Next.js **16.2.1** com **App Router** |
+| Runtime | React 19.2.4 |
+| Banco de dados | Supabase (PostgreSQL 17) — projeto `rlkmljeatapayiroggrp` |
+| Região Supabase | `sa-east-1` (São Paulo) |
+| Estilização | Tailwind CSS **v4** + shadcn/ui v4 |
+| Autenticação | `@supabase/ssr` 0.9.0 |
+
+---
+
+## 🏗️ Regras de Arquitetura
+
+### App Router — convenções obrigatórias
+
+- Páginas de servidor: sem `'use client'` — podem `async`, usam `cookies()`, `redirect()`, `createClient()` do server
+- Páginas/componentes de cliente: começam com `'use client'` — sem acesso direto ao banco
+- **Groups de rotas:** `(auth)` para login, `(dashboard)` para área protegida
+- Layouts com autenticação ficam em `app/(dashboard)/layout.tsx`
+- API Routes usam `export async function POST(request: NextRequest)` — **sem `pages/api/`**
+
+### Supabase — clientes distintos por contexto
+
+```ts
+// ✅ Em Server Components, layouts, api/routes:
+import { createClient } from '@/lib/supabase/server'
+const supabase = await createClient()
+
+// ✅ Em Client Components:
+import { createClient } from '@/lib/supabase/client'
+const supabase = createClient() // sem await
+```
+
+**Nunca** misturar os dois clientes no mesmo arquivo.
+
+---
+
+## 🗄️ Banco de Dados — Regras
+
+### Schema público (tabelas existentes)
+
+```
+profiles         → id (uuid), full_name, role ('admin'|'analista')
+empreendimentos  → id, nome (unique)
+apartamentos     → id, empreendimento_id (fk), numero
+                   UNIQUE (empreendimento_id, numero)
+custos           → id, apartamento_id (fk), mes, ano, categoria, valor, tipo_gestao ('adm'|'sub')
+diarias          → id, apartamento_id (fk), data, valor, tipo_gestao ('adm'|'sub')
+importacoes      → id, tipo ('custos_adm'|'custos_sub'|'diarias_adm'|'diarias_sub'),
+                   mes, ano, nome_arquivo, status ('concluido'|'erro'), importado_por
+```
+
+### Restrições que NUNCA devem ser violadas
+
+- `status` em `importacoes` aceita **apenas** `'concluido'` ou `'erro'` — **nunca** `'sucesso'`
+- `tipo` em `importacoes` aceita **apenas** `'custos_adm'`, `'custos_sub'`, `'diarias_adm'`, `'diarias_sub'`
+- `tipo_gestao` aceita **apenas** `'adm'` ou `'sub'`
+- `role` em `profiles` aceita **apenas** `'admin'` ou `'analista'`
+
+### RLS (Row Level Security)
+
+- **Sempre habilitado** em todas as tabelas
+- Leitura: qualquer usuário autenticado (`auth.role() = 'authenticated'`)
+- Escrita: apenas usuários com `role = 'admin'` na tabela `profiles`
+- **Nunca desativar RLS** sem adicionar novas políticas equivalentes
+
+---
+
+## 🛣️ Rotas — Mapa Completo
+
+| Rota | Tipo | Acesso |
+|---|---|---|
+| `/login` | Público | Todos |
+| `/` | Protegido | Autenticados |
+| `/empreendimentos` | Protegido | Autenticados |
+| `/apartamentos` | Protegido | Autenticados |
+| `/custos` | Protegido | Autenticados |
+| `/diarias` | Protegido | Autenticados |
+| `/relatorio` | Protegido | Autenticados |
+| `/importar` | Protegido | **Apenas admin** |
+| `/usuarios` | Protegido | **Apenas admin** |
+| `POST /api/import` | API Route | Deve verificar autenticação manualmente |
+
+> **Importante:** O grupo `(dashboard)` não existe como segmento de URL. A rota raiz é `/`, não `/dashboard`. Ao redirecionar, use sempre `/` para o dashboard.
+
+---
+
+## 🧩 Componentes — Padrões
+
+### shadcn/ui já instalados
+
+Card, CardContent, CardHeader, CardTitle, CardDescription, Badge, Button, Input, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tooltip, TooltipContent, TooltipTrigger, TooltipProvider
+
+### Importação correta
+
+```ts
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+// etc.
+```
+
+### Constantes globais (usar em vez de redefinir localmente)
+
+```ts
+import { MESES, MESES_ABREV, ANOS, formatCurrency } from '@/lib/constants'
+```
+
+---
+
+## 🔴 Bugs Conhecidos — NÃO reproduzir
+
+Ao modificar ou criar código, **evitar repetir os seguintes erros existentes**:
+
+1. **Redirect para `/dashboard`** — rota não existe. Sempre usar `redirect('/')` ou `router.push('/')`
+2. **`tipo_planilha`** — campo não existe. Usar `tipo`
+3. **`status: 'sucesso'`** — valor inválido. Usar `status: 'concluido'`
+4. **`mes`/`ano` hardcoded** — sempre receber do formulário/request
+5. **Rota `/api/import` pública** — sempre verificar `user` e `role === 'admin'` no início do handler
+
+---
+
+## 📝 Padrões de Código
+
+### Server Component buscando dados
+
+```tsx
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+
+export default async function MinhaPagina() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data } = await supabase.from('tabela').select('*')
+
+  return <div>{/* JSX com dados */}</div>
+}
+```
+
+### API Route com autenticação
+
+```ts
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role').eq('id', user.id).single()
+  if (profile?.role !== 'admin')
+    return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+
+  // lógica principal...
+}
+```
+
+---
+
+## 📂 Documentação
+
+Sempre manter atualizado após mudanças:
+- `documentação.md` — documentação técnica completa (schema, rotas, bugs)
+- `README.md` — guia de início rápido
+- Este arquivo (`AGENTS.md`) — regras para agentes de IA
+---
+
+## ✅ Decisões de Design — não questionar, só seguir
+
+| Decisão | Motivo |
+|---|---|
+| `analista` tem mais permissões que `admin` | Sistema inverteu semanticamente por decisão de negócio |
+| Guards de acesso usam `role !== 'analista'` para bloquear não-operadores | `analista` = operador do sistema; `admin` = somente leitura |
+| Faturamento vem de `amenitiz_reservas.valor_liquido`, não de `diarias` | Dashboard atualizado na Fase 5 |
+| Sync Amenitiz = DELETE + INSERT (não upsert em `diarias`) | Garantia de consistência no período |
+| Redirect após login = `/` (nunca `/dashboard`) | Rota `/dashboard` não existe |
+| "Prestação de Contas" já está na sidebar (`navItems`) | Adicionado — não duplicar |
+
+---
+
+## 🤖 MCP Server
+
+O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude Desktop, Claude Code).
+
+- **Localização:** `./mcp-server/`
+- **Propósito:** permite que agentes consultem KPIs, prestação de contas e dados de imóveis sem acesso direto ao banco
+- **Build:** `cd mcp-server && npm run build`
+- **Rodar:** `node mcp-server/dist/index.js` (stdio — não abre porta HTTP)
+- **Docs completas:** `./mcp-server/README.md`
+
+### Primitivos registrados
+
+| Primitivo | Quantidade | Itens |
+|---|---|---|
+| **Tools** | 16 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id |
+| **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
+| **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
+
+### Tools por módulo
+
+| Tool | Módulo | Descrição |
+|---|---|---|
+| `get_kpis` | financeiro | KPIs agregados: faturamento, custos, lucro, margem |
+| `get_kpis_por_empreendimento` | financeiro | KPIs separados por empreendimento |
+| `get_custos_detalhados` | financeiro | Custos agrupados por categoria com filtros |
+| `get_relatorio_semestral` | financeiro | Últimos 6 meses com variação MoM |
+| `list_empreendimentos` | imoveis | Todos os empreendimentos com contagem de apts |
+| `list_apartamentos` | imoveis | Apartamentos com taxa_repasse e tipo_repasse |
+| `get_prestacao_contas` | imoveis | Prestação mensal de um apt (mesma lógica de /prestacao-contas) |
+| `sync_amenitiz` | importacao | Sincroniza reservas Amenitiz para um período |
+| `get_historico_importacoes` | importacao | Histórico de uploads e syncs por período/tipo |
+| `check_ultimo_sync` | importacao | Verifica data do último sync Amenitiz |
+| `clear_periodo` | importacao | Remove dados de um período (mês/ano) |
+| `health_check` | monitoramento | Testa conectividade Supabase e API Next.js |
+| `alert_margem_baixa` | monitoramento | Alerta empreendimentos abaixo de margem mínima |
+| `check_sync_pendente` | monitoramento | Verifica se sync está atualizado (< 3 dias) |
+| `resumo_executivo` | monitoramento | Resumo completo: KPIs + sync + alertas + tendência |
+| `check_apartamentos_sem_room_id` | monitoramento | Lista apartamentos sem amenitiz_room_id (sync parcial) |
+
+### Cliente Supabase no MCP
+
+O MCP usa **service role key** (não anon key) para bypassar RLS e ter acesso total de leitura.
+Nunca usar o cliente `@/lib/supabase/server` do Next.js dentro do MCP — são pacotes separados.
+
+---
+
+## 📁 Estrutura de Documentação
+
+| Arquivo | Propósito | Status |
+|---|---|---|
+| `documentação.md` | Documentação técnica completa (schema, rotas, bugs) | ✅ Ativo |
+| `README.md` | Guia de início rápido | ✅ Ativo |
+| `AGENTS.md` | Regras para agentes de IA | ✅ Ativo |
+| `CLAUDE.md` | Referência ao AGENTS.md para Claude Code | ✅ Ativo |
+| `mcp-server/README.md` | Documentação do servidor MCP | ✅ Ativo |
+
+**Regra:** Qualquer nova documentação vai em `documentação.md`.
+Não criar novos arquivos .md na raiz sem aprovação explícita.
+
+---
+
+## 🚫 Arquivos que NUNCA devem estar no repositório
+
+- Planilhas Excel (`*.xlsx`, `*.xls`) — ficam no Google Drive
+- Dados brutos em pastas (`dados jan/`, `dados fev/`, etc.)
+- Scripts Python de análise manual
+- Arquivos Obsidian (`*.canvas`, `*.base`, `.obsidian/`)
+- Artefatos de build (`dist/`, `.next/`, `*.tsbuildinfo`)
+- Variáveis de ambiente (`.env.local`, `.env.production`)
+- Arquivos temporários (`*.bak`, `*.old`, `*.tmp`)
+- Dados JSON de API brutos (`data.json`, fixtures de reservas)
+
+<!-- END:nextjs-agent-rules -->
+```
+
+## Arquivo: documentação.md
+
+```md
 # Documentação Técnica — Sistema Financeiro AlugEasy
 
 > **Versão:** 2.2.0
@@ -986,3 +1463,4 @@ Esta seção consolida o estado **real implementado no código** para servir com
 ---
 
 > **REGRA:** Esta documentação deve ser atualizada **sempre** que houver mudanças no schema do banco, novas rotas, alterações de regras de negócio, novos componentes ou correções de bugs.
+```

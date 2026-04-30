@@ -59,6 +59,11 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   competenciaText: { fontSize: 9, color: AZUL, fontWeight: 'bold' },
+  competenciaLinha: {
+    marginTop: 6,
+    fontSize: 9,
+    color: CINZA_TEXTO,
+  },
 
   // ── Faixa de informações do imóvel ─────────────────────────────────────
   infoBar: {
@@ -217,6 +222,13 @@ const styles = StyleSheet.create({
     borderLeftColor: AZUL,
   },
   disclaimerText: { fontSize: 7.5, color: CINZA_TEXTO, lineHeight: 1.5 },
+  emptyState: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 8.5,
+    color: CINZA_TEXTO,
+    textAlign: 'center',
+  },
 })
 
 interface DetalheCusto {
@@ -248,6 +260,11 @@ export interface PrestacaoContasPdfProps {
   custosSub: string
   lucroSub: string
   detalheCustos: DetalheCusto[]
+  receitaReservas: string
+  somaDiarias: number
+  valorMedioDiaria: string
+  mediaDiariasPorReserva: string
+  usandoDiarias: boolean
   // valores numéricos para barra visual
   receitaTotal?: number
   custosTotal?: number
@@ -278,6 +295,11 @@ export function PrestacaoContasPdf({
   custosSub,
   lucroSub,
   detalheCustos,
+  receitaReservas,
+  somaDiarias,
+  valorMedioDiaria,
+  mediaDiariasPorReserva,
+  usandoDiarias,
   receitaTotal = 0,
   custosTotal = 0,
   lucroLiquidoNum = 0,
@@ -300,6 +322,7 @@ export function PrestacaoContasPdf({
   })
 
   const modeloLabel = modeloContrato === 'sublocacao' ? 'Sublocação' : 'Administração'
+  const periodoRef = `${mesNome}/${ano}`
 
   return (
     <Document>
@@ -311,7 +334,7 @@ export function PrestacaoContasPdf({
             <Image src={logoBase64} style={styles.logo} />
             <View style={styles.headerTitles}>
               <Text style={styles.docTitle}>Prestação de Contas</Text>
-              <Text style={styles.docSubtitle}>Relatório Mensal de Faturamento e Custos</Text>
+              <Text style={styles.docSubtitle}>Relatório Mensal Financeiro</Text>
             </View>
           </View>
           <View style={styles.headerRight}>
@@ -322,6 +345,9 @@ export function PrestacaoContasPdf({
             </View>
           </View>
         </View>
+        <Text style={styles.competenciaLinha}>
+          Competência: {periodoRef} — {nomeProprietario || 'Proprietário não configurado'}
+        </Text>
 
         {/* ── FAIXA INFO ─────────────────────────────────────────────────── */}
         <View style={styles.infoBar}>
@@ -348,7 +374,6 @@ export function PrestacaoContasPdf({
         </View>
 
         {/* ── KPI CARDS ──────────────────────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>Resumo Financeiro</Text>
         <View style={styles.kpiRow}>
           {/* Receita */}
           <View style={[styles.kpiCard, { borderColor: '#bfdbfe' }]}>
@@ -356,7 +381,7 @@ export function PrestacaoContasPdf({
             <View style={[styles.kpiBody, { backgroundColor: AZUL_CLARO }]}>
               <Text style={styles.kpiLabel}>Receita Bruta</Text>
               <Text style={[styles.kpiValue, { color: AZUL }]}>{receitaBruta}</Text>
-              <Text style={styles.kpiNote}>Faturamento do período</Text>
+              <Text style={styles.kpiNote}>Faturamento no período</Text>
             </View>
           </View>
 
@@ -366,7 +391,7 @@ export function PrestacaoContasPdf({
             <View style={[styles.kpiBody, { backgroundColor: VERMELHO_BG }]}>
               <Text style={styles.kpiLabel}>Custos Totais</Text>
               <Text style={[styles.kpiValue, { color: VERMELHO }]}>{custosTotais}</Text>
-              <Text style={styles.kpiNote}>{percentualCustos} do faturamento</Text>
+              <Text style={styles.kpiNote}>{percentualCustos} do faturamento bruto</Text>
               {/* Barra visual de custos */}
               <View style={styles.progressBarBg}>
                 <View style={[styles.progressBarFill, { backgroundColor: VERMELHO, width: `${custosPct}%` }]} />
@@ -392,80 +417,107 @@ export function PrestacaoContasPdf({
           <View style={[styles.kpiCard, { borderColor: AMBAR_BORDA }]}>
             <View style={[styles.kpiAccent, { backgroundColor: AMBAR }]} />
             <View style={[styles.kpiBody, { backgroundColor: AMBAR_BG }]}>
-              <Text style={styles.kpiLabel}>Repasse AlugEasy</Text>
+              <Text style={styles.kpiLabel}>Repasse</Text>
               <Text style={[styles.kpiValue, { color: AMBAR }]}>{repasse}</Text>
               <Text style={styles.kpiNote}>{baseCalculoLabel}</Text>
             </View>
           </View>
         </View>
 
+        {/* ── RESUMO OPERACIONAL (MODELO PDF) ───────────────────────────── */}
+        <Text style={styles.sectionTitle}>Indicadores Operacionais</Text>
+        <View style={styles.table}>
+          <View style={styles.tableHead}>
+            <Text style={[styles.tableHeadCell, { flex: 2.4 }]}>Indicador</Text>
+            <Text style={[styles.tableHeadCell, { flex: 1.6, textAlign: 'right' }]}>Valor</Text>
+          </View>
+          <View style={styles.tableRow}>
+            <Text style={[styles.tableCell, { flex: 2.4 }]}>Receita das Reservas</Text>
+            <Text style={[styles.tableCellRight, { flex: 1.6 }]}>{receitaReservas}</Text>
+          </View>
+          <View style={[styles.tableRow, styles.tableRowAlt]}>
+            <Text style={[styles.tableCell, { flex: 2.4 }]}>Soma de Diárias</Text>
+            <Text style={[styles.tableCellRight, { flex: 1.6 }]}>{somaDiarias}</Text>
+          </View>
+          <View style={styles.tableRow}>
+            <Text style={[styles.tableCell, { flex: 2.4 }]}>Valor Médio da Diária</Text>
+            <Text style={[styles.tableCellRight, { flex: 1.6 }]}>{valorMedioDiaria}</Text>
+          </View>
+          <View style={[styles.tableRow, styles.tableRowAlt]}>
+            <Text style={[styles.tableCell, { flex: 2.4 }]}>Média de Diárias por Reserva</Text>
+            <Text style={[styles.tableCellRight, { flex: 1.6 }]}>{mediaDiariasPorReserva}</Text>
+          </View>
+          <View style={styles.tableTotalRow}>
+            <Text style={[styles.tableTotalLabel, { flex: 2.4 }]}>Fonte de faturamento usada</Text>
+            <Text style={[styles.tableTotalValue, { flex: 1.6 }]}>
+              {usandoDiarias ? 'Diárias conferidas' : 'Amenitiz (fallback)'}
+            </Text>
+          </View>
+        </View>
+
         {/* ── ADM vs SUB ─────────────────────────────────────────────────── */}
-        {(hasAdm || hasSub) && (
-          <>
-            <Text style={styles.sectionTitle}>Detalhamento por Tipo de Gestão</Text>
-            <View style={styles.table}>
-              <View style={styles.tableHead}>
-                <Text style={[styles.tableHeadCell, { flex: 2 }]}>Tipo de Gestão</Text>
-                <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Faturamento</Text>
-                <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Custos</Text>
-                <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Lucro</Text>
-              </View>
-              {hasAdm && (
-                <View style={styles.tableRow}>
-                  <Text style={[styles.tableCell, { flex: 2 }]}>Administração Direta (ADM)</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{receitaAdm || '—'}</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{custosAdm || '—'}</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5, color: lucroAdm?.startsWith('-') ? VERMELHO : VERDE }]}>{lucroAdm || '—'}</Text>
-                </View>
-              )}
-              {hasSub && (
-                <View style={[styles.tableRow, styles.tableRowAlt]}>
-                  <Text style={[styles.tableCell, { flex: 2 }]}>Sublocação (SUB)</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{receitaSub || '—'}</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{custosSub || '—'}</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5, color: lucroSub?.startsWith('-') ? VERMELHO : VERDE }]}>{lucroSub || '—'}</Text>
-                </View>
-              )}
-              <View style={styles.tableTotalRow}>
-                <Text style={[styles.tableTotalLabel, { flex: 2 }]}>Total Consolidado</Text>
-                <Text style={[styles.tableTotalValue, { flex: 1.5 }]}>{receitaBruta}</Text>
-                <Text style={[styles.tableTotalValue, { flex: 1.5 }]}>{custosTotais}</Text>
-                <Text style={[styles.tableTotalValue, { flex: 1.5, color: lucroNegativo ? VERMELHO : VERDE }]}>{lucroLiquido}</Text>
-              </View>
+        <Text style={styles.sectionTitle}>ADM vs SUB</Text>
+        <View style={styles.table}>
+          <View style={styles.tableHead}>
+            <Text style={[styles.tableHeadCell, { flex: 2 }]}>Tipo</Text>
+            <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Faturamento</Text>
+            <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Custos</Text>
+            <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Lucro</Text>
+          </View>
+          {hasAdm && (
+            <View style={styles.tableRow}>
+              <Text style={[styles.tableCell, { flex: 2 }]}>ADM</Text>
+              <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{receitaAdm || '—'}</Text>
+              <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{custosAdm || '—'}</Text>
+              <Text style={[styles.tableCellRight, { flex: 1.5, color: lucroAdm?.startsWith('-') ? VERMELHO : VERDE }]}>{lucroAdm || '—'}</Text>
             </View>
-          </>
-        )}
+          )}
+          {hasSub && (
+            <View style={[styles.tableRow, styles.tableRowAlt]}>
+              <Text style={[styles.tableCell, { flex: 2 }]}>SUB</Text>
+              <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{receitaSub || '—'}</Text>
+              <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{custosSub || '—'}</Text>
+              <Text style={[styles.tableCellRight, { flex: 1.5, color: lucroSub?.startsWith('-') ? VERMELHO : VERDE }]}>{lucroSub || '—'}</Text>
+            </View>
+          )}
+          <View style={styles.tableTotalRow}>
+            <Text style={[styles.tableTotalLabel, { flex: 2 }]}>Total</Text>
+            <Text style={[styles.tableTotalValue, { flex: 1.5 }]}>{receitaBruta}</Text>
+            <Text style={[styles.tableTotalValue, { flex: 1.5 }]}>{custosTotais}</Text>
+            <Text style={[styles.tableTotalValue, { flex: 1.5, color: lucroNegativo ? VERMELHO : VERDE }]}>{lucroLiquido}</Text>
+          </View>
+        </View>
 
         {/* ── CUSTOS DETALHADOS ──────────────────────────────────────────── */}
-        {detalheCustos.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>Custos Detalhados</Text>
-            <View style={styles.table}>
-              <View style={styles.tableHead}>
-                <Text style={[styles.tableHeadCell, { flex: 3 }]}>Categoria</Text>
-                <Text style={[styles.tableHeadCell, { flex: 1 }]}>Gestão</Text>
-                <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Valor</Text>
+        <Text style={styles.sectionTitle}>Custos Detalhados</Text>
+        <View style={styles.table}>
+          <View style={styles.tableHead}>
+            <Text style={[styles.tableHeadCell, { flex: 3 }]}>Categoria</Text>
+            <Text style={[styles.tableHeadCell, { flex: 1 }]}>Gestão</Text>
+            <Text style={[styles.tableHeadCell, { flex: 1.5, textAlign: 'right' }]}>Valor</Text>
+          </View>
+          {detalheCustos.length > 0 ? (
+            detalheCustos.map((item, i) => (
+              <View key={i} style={[styles.tableRow, i % 2 !== 0 ? styles.tableRowAlt : {}]}>
+                <Text style={[styles.tableCell, { flex: 3 }]}>{item.categoria}</Text>
+                <Text style={[styles.tableCell, { flex: 1 }]}>{item.tipoGestao}</Text>
+                <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{item.valor}</Text>
               </View>
-              {detalheCustos.map((item, i) => (
-                <View key={i} style={[styles.tableRow, i % 2 !== 0 ? styles.tableRowAlt : {}]}>
-                  <Text style={[styles.tableCell, { flex: 3 }]}>{item.categoria}</Text>
-                  <Text style={[styles.tableCell, { flex: 1 }]}>{item.tipoGestao}</Text>
-                  <Text style={[styles.tableCellRight, { flex: 1.5 }]}>{item.valor}</Text>
-                </View>
-              ))}
-              <View style={styles.tableTotalRow}>
-                <Text style={[styles.tableTotalLabel, { flex: 3 }]}>Total de Custos</Text>
-                <Text style={[styles.tableTotalLabel, { flex: 1 }]} />
-                <Text style={[styles.tableTotalValue, { flex: 1.5 }]}>{custosTotais}</Text>
-              </View>
-            </View>
-          </>
-        )}
+            ))
+          ) : (
+            <Text style={styles.emptyState}>Nenhum custo cadastrado para este período</Text>
+          )}
+          <View style={styles.tableTotalRow}>
+            <Text style={[styles.tableTotalLabel, { flex: 3 }]}>Total</Text>
+            <Text style={[styles.tableTotalLabel, { flex: 1 }]} />
+            <Text style={[styles.tableTotalValue, { flex: 1.5 }]}>{custosTotais}</Text>
+          </View>
+        </View>
 
         {/* ── CÁLCULO DO REPASSE ─────────────────────────────────────────── */}
         <View style={styles.repasseBox}>
           <View style={styles.repasseHeader}>
-            <Text style={styles.repasseHeaderText}>Cálculo do Repasse ao Proprietário</Text>
+            <Text style={styles.repasseHeaderText}>Demonstrativo de Repasse ao Proprietário</Text>
           </View>
           <View style={styles.repasseBody}>
             <View style={styles.repasseRow}>

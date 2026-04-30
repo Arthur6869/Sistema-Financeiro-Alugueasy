@@ -1,14 +1,14 @@
 /**
  * /api/sync-local
  *
- * GET  ?ano=2026   → Escaneia as pastas "dados *" do projeto, parseia os xlsx e
- *                    compara com o banco. Retorna relatório de divergências.
+ * GET  ?ano=2026   → Escaneia as pastas "dados *" do projeto, parseia os xlsx de
+ *                    faturamento (diárias) e compara com o banco.
  *
  * POST { mes, ano, tipo } → Aplica a correção: re-importa o xlsx local para o banco.
- *   - custos_adm / custos_sub  → grava na tabela `custos`
  *   - diarias_adm / diarias_sub → grava na tabela `diarias` (totais mensais por apt)
  *
  * Acesso: apenas usuários autenticados (GET) / role='analista' (POST)
+ * Observação: endpoint de contingência para quando a API Amenitiz estiver indisponível.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -33,7 +33,7 @@ const MES_ABREV: Record<string, number> = {
 // ─── Detecção de tipo e mês a partir do nome do arquivo ──────────────────────
 
 /**
- * Extrai tipo ('custos_adm' | 'custos_sub' | 'diarias_adm' | 'diarias_sub')
+ * Extrai tipo ('diarias_adm' | 'diarias_sub')
  * e mês (1–12) a partir do nome do arquivo xlsx.
  *
  * Exemplos de nomes aceitos:
@@ -48,9 +48,7 @@ function parseNomeArquivo(filename: string): { tipo: string; mes: number } | nul
     .replace(/[\u0300-\u036f]/g, '')
 
   let tipo: string | null = null
-  if (upper.includes('CUSTO') && upper.includes('ADM')) tipo = 'custos_adm'
-  else if (upper.includes('CUSTO') && upper.includes('SUB')) tipo = 'custos_sub'
-  else if (upper.includes('DIARIA') && upper.includes('ADM')) tipo = 'diarias_adm'
+  if (upper.includes('DIARIA') && upper.includes('ADM')) tipo = 'diarias_adm'
   else if (upper.includes('DIARIA') && upper.includes('SUB')) tipo = 'diarias_sub'
 
   if (!tipo) return null
@@ -171,8 +169,9 @@ export async function GET(request: NextRequest) {
   const mesParam = searchParams.get('mes')
   const mesFiltro = mesParam ? parseInt(mesParam) : null  // null = todos os meses
 
-  // Descobrir arquivos e filtrar pelo mês selecionado
+  // Descobrir arquivos de faturamento/diárias e filtrar pelo mês selecionado
   const todosArquivos = descobrirArquivos(ano)
+    .filter(a => a.tipo.startsWith('diarias'))
   const arquivos = mesFiltro
     ? todosArquivos.filter(a => a.mes === mesFiltro)
     : todosArquivos
@@ -182,7 +181,7 @@ export async function GET(request: NextRequest) {
       report: [],
       totalArquivos: 0,
       ano,
-      aviso: 'Nenhuma pasta "dados *" encontrada no projeto. Coloque as planilhas em pastas nomeadas como "dados jan", "dados fev", etc.',
+      aviso: 'Nenhuma planilha local foi encontrada para verificação automática neste projeto.',
     })
   }
 
@@ -192,7 +191,7 @@ export async function GET(request: NextRequest) {
       totalArquivos: 0,
       ano,
       mes: mesFiltro,
-      aviso: `Nenhum arquivo encontrado para o período selecionado (mês ${mesFiltro}/${ano}). Verifique se a pasta correspondente existe no projeto.`,
+      aviso: `Nenhuma planilha local encontrada para o período selecionado (${mesFiltro}/${ano}).`,
     })
   }
 
@@ -224,36 +223,25 @@ export async function GET(request: NextRequest) {
     const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
     const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-    if (tipo.startsWith('custos')) {
-      const { data } = await supabase
-        .from('custos')
-        .select('valor')
-        .eq('mes', mes)
-        .eq('ano', ano)
-        .eq('tipo_gestao', tipo_gestao)
+    // Diárias: verificar tabela diarias primeiro (xlsx-sourced)
+    const { data: diariasData } = await supabase
+      .from('diarias')
+      .select('valor')
+      .gte('data', dataInicio)
+      .lte('data', dataFim)
+      .eq('tipo_gestao', tipo_gestao)
 
-      valorDB = arredondar((data ?? []).reduce((acc: number, r: { valor: number }) => acc + (r.valor || 0), 0))
+    if (diariasData && diariasData.length > 0) {
+      valorDB = arredondar(diariasData.reduce((acc: number, r: { valor: number }) => acc + (r.valor || 0), 0))
     } else {
-      // Diárias: verificar tabela diarias primeiro (xlsx-sourced)
-      const { data: diariasData } = await supabase
-        .from('diarias')
-        .select('valor')
-        .gte('data', dataInicio)
-        .lte('data', dataFim)
-        .eq('tipo_gestao', tipo_gestao)
+      // Fallback: amenitiz_reservas (sem filtro de tipo_gestao pois não é coluna direta)
+      const { data: reservasData } = await supabase
+        .from('amenitiz_reservas')
+        .select('valor_liquido')
+        .eq('mes_competencia', mes)
+        .eq('ano_competencia', ano)
 
-      if (diariasData && diariasData.length > 0) {
-        valorDB = arredondar(diariasData.reduce((acc: number, r: { valor: number }) => acc + (r.valor || 0), 0))
-      } else {
-        // Fallback: amenitiz_reservas (sem filtro de tipo_gestao pois não é coluna direta)
-        const { data: reservasData } = await supabase
-          .from('amenitiz_reservas')
-          .select('valor_liquido')
-          .eq('mes_competencia', mes)
-          .eq('ano_competencia', ano)
-
-        valorDB = arredondar((reservasData ?? []).reduce((acc: number, r: { valor_liquido: number }) => acc + (r.valor_liquido || 0), 0))
-      }
+      valorDB = arredondar((reservasData ?? []).reduce((acc: number, r: { valor_liquido: number }) => acc + (r.valor_liquido || 0), 0))
     }
 
     // ── Calcular divergência ─────────────────────────────────────────
@@ -307,6 +295,11 @@ export async function POST(request: NextRequest) {
   if (!mes || !ano || !tipo) {
     return NextResponse.json({ error: 'mes, ano e tipo são obrigatórios' }, { status: 400 })
   }
+  if (!String(tipo).startsWith('diarias')) {
+    return NextResponse.json({
+      error: 'Este endpoint aceita apenas planilhas de faturamento (diarias_adm ou diarias_sub).',
+    }, { status: 400 })
+  }
 
   const tipo_gestao = tipo.includes('adm') ? 'adm' : 'sub'
 
@@ -349,43 +342,23 @@ export async function POST(request: NextRequest) {
   const dataRef = `${ano}-${String(mes).padStart(2, '0')}-01`
   const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-  if (tipo.startsWith('custos')) {
-    // ── CUSTOS: apagar e reinserir ──────────────────────────────────
-    await supabase.from('custos').delete()
-      .eq('mes', mes)
-      .eq('ano', ano)
-      .eq('tipo_gestao', tipo_gestao)
+  // ── DIÁRIAS: armazenar totais mensais por apartamento na tabela diarias ──
+  // Apagar registros xlsx-sourced existentes para o período
+  await supabase.from('diarias').delete()
+    .gte('data', dataRef)
+    .lte('data', dataFim)
+    .eq('tipo_gestao', tipo_gestao)
 
-    const records = parsed.porApartamento.map(r => ({
-      apartamento_id: r.apartamento_id,
-      valor: r.valor,
-      categoria: 'Total Consolidado',
-      mes, ano, tipo_gestao,
-    }))
+  const records = parsed.porApartamento.map(r => ({
+    apartamento_id: r.apartamento_id,
+    valor: r.valor,
+    data: dataRef,   // data = primeiro dia do mês (representação mensal)
+    tipo_gestao,
+  }))
 
-    const { error } = await supabase.from('custos').insert(records)
-    if (error) {
-      return NextResponse.json({ error: `Erro ao inserir custos: ${error.message}` }, { status: 500 })
-    }
-  } else {
-    // ── DIÁRIAS: armazenar totais mensais por apartamento na tabela diarias ──
-    // Apagar registros xlsx-sourced existentes para o período
-    await supabase.from('diarias').delete()
-      .gte('data', dataRef)
-      .lte('data', dataFim)
-      .eq('tipo_gestao', tipo_gestao)
-
-    const records = parsed.porApartamento.map(r => ({
-      apartamento_id: r.apartamento_id,
-      valor: r.valor,
-      data: dataRef,   // data = primeiro dia do mês (representação mensal)
-      tipo_gestao,
-    }))
-
-    const { error } = await supabase.from('diarias').insert(records)
-    if (error) {
-      return NextResponse.json({ error: `Erro ao inserir diárias: ${error.message}` }, { status: 500 })
-    }
+  const { error } = await supabase.from('diarias').insert(records)
+  if (error) {
+    return NextResponse.json({ error: `Erro ao inserir diárias: ${error.message}` }, { status: 500 })
   }
 
   // ── Registrar no histórico de importações ─────────────────────────

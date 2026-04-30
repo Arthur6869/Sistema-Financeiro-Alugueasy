@@ -39,9 +39,13 @@ Crie um arquivo `.env.local` na raiz do projeto:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key_aqui
+OBSIDIAN_API_BASE=https://127.0.0.1:27124
+OBSIDIAN_API_TOKEN=seu_token_da_api_local_do_obsidian
 ```
 
 > As credenciais do projeto atual estão em `.env.local` (arquivo não versionado).
+
+`OBSIDIAN_API_BASE` e `OBSIDIAN_API_TOKEN` habilitam a sincronização de contexto do projeto para o Obsidian via rota `POST /api/obsidian/sync`.
 
 ### 3. Rodar em desenvolvimento
 
