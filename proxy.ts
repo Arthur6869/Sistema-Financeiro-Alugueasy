@@ -42,6 +42,25 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
+  // Redirecionamento por role após confirmar autenticação
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const role = profile?.role ?? 'analista'
+
+  // Proprietário tentando acessar rotas internas → redireciona para portal
+  if (role === 'proprietario' && !pathname.startsWith('/proprietario')) {
+    return NextResponse.redirect(new URL('/proprietario', request.url))
+  }
+
+  // Analista/admin tentando acessar rotas do proprietário → redireciona para dashboard
+  if (role !== 'proprietario' && pathname.startsWith('/proprietario')) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
   return supabaseResponse
 }
 

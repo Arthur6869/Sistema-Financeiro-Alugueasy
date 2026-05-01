@@ -255,6 +255,64 @@ async function resumoExecutivo(mes: number, ano: number) {
   }
 }
 
+async function verificarImportacaoCustos(
+  mes: number,
+  ano: number,
+  tipo_gestao: 'adm' | 'sub' | 'ambos'
+) {
+  const supabase = getSupabaseClient()
+  const tipos = tipo_gestao === 'ambos' ? ['adm', 'sub'] : [tipo_gestao]
+  const resultado: Record<string, unknown> = {}
+
+  for (const tg of tipos) {
+    const { data, error } = await supabase
+      .from('custos')
+      .select('valor, apartamentos(numero, empreendimentos(nome))')
+      .eq('mes', mes)
+      .eq('ano', ano)
+      .eq('tipo_gestao', tg)
+
+    if (error) throw new Error(`Supabase error em verificar_importacao_custos (${tg}): ${error.message}`)
+
+    const por_emp: Record<string, number> = {}
+    for (const r of data ?? []) {
+      const raw = (r.apartamentos as unknown)
+      const apt = Array.isArray(raw) ? (raw[0] as { empreendimentos?: { nome?: string } } | undefined) : (raw as { empreendimentos?: { nome?: string } } | null)
+      const emp = apt?.empreendimentos?.nome ?? '?'
+      por_emp[emp] = (por_emp[emp] ?? 0) + (r.valor ?? 0)
+    }
+
+    const total = Object.values(por_emp).reduce((a, b) => a + b, 0)
+    const zerados = Object.entries(por_emp).filter(([, v]) => v === 0).map(([k]) => k)
+
+    resultado[tg] = {
+      total: Math.round(total * 100) / 100,
+      empreendimentos_com_dados: Object.keys(por_emp).length,
+      empreendimentos_zerados: zerados,
+      breakdown: Object.entries(por_emp)
+        .sort(([, a], [, b]) => b - a)
+        .map(([emp, val]) => ({
+          empreendimento: emp,
+          total: Math.round(val * 100) / 100,
+          status: val > 0 ? 'ok' : 'zerado',
+        })),
+    }
+  }
+
+  const alerta = Object.values(resultado).some(
+    (r: any) => r.empreendimentos_zerados?.length > 0 || r.empreendimentos_com_dados < 5
+  )
+
+  return {
+    periodo: `${String(mes).padStart(2, '0')}/${ano}`,
+    ...resultado,
+    alerta,
+    mensagem: alerta
+      ? '⚠️ Dados de custos incompletos — verifique empreendimentos zerados ou ausentes antes de fechar o mês.'
+      : '✅ Todos os empreendimentos com custos gravados corretamente.',
+  }
+}
+
 export function registerMonitoramentoTools(server: McpServer): void {
   const mesSchema = z.number().int().min(1).max(12).describe('Mês (1-12)')
   const anoSchema = z.number().int().min(2020).max(2030).describe('Ano (ex: 2026)')
@@ -302,6 +360,24 @@ export function registerMonitoramentoTools(server: McpServer): void {
   )
 
   server.tool(
+    'verificar_importacao_custos',
+    'Validates that all expected empreendimentos have cost data in the database for a given month/year and management type. Use after every custos import to detect missing or incorrect data before closing the month.',
+    {
+      mes: z.number().int().min(1).max(12).describe('Month (1-12)'),
+      ano: z.number().int().min(2020).max(2030).describe('Year'),
+      tipo_gestao: z.enum(['adm', 'sub', 'ambos']).default('ambos').describe(
+        'Management type to validate. Use "ambos" to check both ADM and SUB at once.'
+      ),
+    },
+    async ({ mes, ano, tipo_gestao }) => ({
+      content: [{
+        type: 'text' as const,
+        text: JSON.stringify(await verificarImportacaoCustos(mes, ano, tipo_gestao), null, 2),
+      }],
+    })
+  )
+
+  server.tool(
     'check_apartamentos_sem_room_id',
     'Checks which apartments are missing their Amenitiz room_id mapping. These apartments are invisible to the sync engine — their reservations are silently dropped. Always run this after health_check to detect data gaps before syncing.',
     {},
@@ -332,6 +408,61 @@ export function registerMonitoramentoTools(server: McpServer): void {
               empreendimento: (a.empreendimentos as any)?.nome ?? '—',
               tipo_gestao: a.tipo_gestao,
             })) ?? [],
+          }, null, 2),
+        }],
+      }
+    }
+  )
+
+  server.tool(
+    'listar_proprietarios',
+    'Lists all registered proprietário users with their linked apartments and access status. Use this to audit portal access, verify vinculos, or troubleshoot portal issues.',
+    {},
+    async () => {
+      const supabase = getSupabaseClient()
+
+      const { data: proprietarios, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('role', 'proprietario')
+        .order('full_name')
+
+      if (profErr) throw new Error(`Supabase error em listar_proprietarios (profiles): ${profErr.message}`)
+
+      const resultado = await Promise.all(
+        (proprietarios ?? []).map(async (p) => {
+          const { data: vinculos, error: vinErr } = await supabase
+            .from('proprietario_apartamentos')
+            .select('ativo, apartamentos(numero, tipo_gestao, taxa_repasse, tipo_repasse, empreendimentos(nome))')
+            .eq('proprietario_id', p.id)
+
+          if (vinErr) throw new Error(`Supabase error em listar_proprietarios (vinculos): ${vinErr.message}`)
+
+          const apartamentos = (vinculos ?? []).map((v: any) => ({
+            numero: v.apartamentos?.numero ?? '?',
+            empreendimento: v.apartamentos?.empreendimentos?.nome ?? '?',
+            tipo_gestao: v.apartamentos?.tipo_gestao ?? '?',
+            taxa_repasse: v.apartamentos?.taxa_repasse ?? 0,
+            tipo_repasse: v.apartamentos?.tipo_repasse ?? 'lucro',
+            ativo: v.ativo,
+          }))
+
+          return {
+            id: p.id,
+            nome: p.full_name,
+            email: p.email,
+            total_apartamentos: apartamentos.filter((a) => a.ativo).length,
+            apartamentos,
+          }
+        })
+      )
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            total_proprietarios: resultado.length,
+            proprietarios: resultado,
           }, null, 2),
         }],
       }

@@ -328,9 +328,25 @@ Log de histórico de cada upload de planilha realizado.
 
 ---
 
+### 5.8 Tabela `proprietario_apartamentos`
+
+Criada na migration `014_portal_proprietario.sql`. Vincula usuários com role `proprietario` aos seus imóveis.
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| `id` | uuid PK | Identificador único |
+| `proprietario_id` | uuid FK → auth.users | Usuário proprietário |
+| `apartamento_id` | uuid FK → apartamentos | Apartamento vinculado |
+| `ativo` | boolean DEFAULT true | Soft delete — desativar em vez de deletar |
+| `created_at` | timestamptz | Data do vínculo |
+
+UNIQUE: `(proprietario_id, apartamento_id)`
+
+---
+
 ### 5.7 Políticas de Row Level Security (RLS)
 
-RLS está **habilitado em todas as 6 tabelas**.
+RLS está **habilitado em todas as 7 tabelas**.
 
 | Tabela | Ação | Quem pode executar |
 |---|---|---|
@@ -369,7 +385,23 @@ RLS está **habilitado em todas as 6 tabelas**.
 | `/relatorio` | `(dashboard)/relatorio/page.tsx` | Todos | Relatório analítico: últimos 6 meses automáticos, gráfico de linha (Faturamento/Custos/Lucro), tabela pivot (Categorias × Meses), KPIs ADM vs SUB. |
 | `/prestacao-contas` | `(dashboard)/prestacao-contas/page.tsx` | Todos | Visualização de prestação de contas por apartamento com geração de PDF |
 | `/importar` | `(dashboard)/importar/page.tsx` | **Admin only** | Upload de planilhas Excel em 4 tipos. Histórico de importações buscado do banco. |
-| `/usuarios` | `(dashboard)/usuarios/page.tsx` | **Admin only** | Lista de todos os usuários com nome, role e data de cadastro. |
+| `/usuarios` | `(dashboard)/usuarios/page.tsx` | **Admin only** | Lista usuários internos (admin/analista) e proprietários. Permite cadastrar e gerenciar vínculos de proprietários. |
+
+### 6.4 Rotas do Portal do Proprietário
+
+Grupo de rotas isolado `app/(proprietario)/` — layout e UX completamente separados do sistema interno.
+
+| Rota | Arquivo | Acesso | Descrição |
+|------|---------|--------|-----------|
+| `/proprietario` | `app/(proprietario)/proprietario/page.tsx` | `proprietario` | Dashboard: 4 KPIs (faturamento, custos, lucro, repasse), cards por apt se >1, gráfico de evolução dos últimos 6 meses |
+| `/proprietario/extrato` | `app/(proprietario)/proprietario/extrato/page.tsx` | `proprietario` | Extrato detalhado com custos por categoria, cálculo de repasse, botão PDF por apartamento, estados vazios quando sem dados |
+| `/proprietario/historico` | `app/(proprietario)/proprietario/historico/page.tsx` | `proprietario` | Tabela dos últimos 12 meses com status pills (Em andamento/Fechado/Sem dados), linha de totais acumulados |
+
+**Componentes exclusivos do portal:**
+- `components/proprietario/evolucao-chart.tsx` — Recharts LineChart (Faturamento/Lucro/Repasse)
+- `components/proprietario/logout-button.tsx` — Client component com signOut + redirect
+- `components/modals/cadastrar-proprietario-modal.tsx` — Multi-select de apts por empreendimento
+- `components/modals/gerenciar-proprietario-modal.tsx` — Checkbox para editar vínculos ativos
 
 ### 6.3 Detalhes das Páginas
 
@@ -694,25 +726,28 @@ O parser faz matching por nome (case insensitive) entre o nome na planilha e os 
 
 ## 10. Controle de Acesso por Role
 
-| Funcionalidade | `admin` | `analista` |
-|---|---|---|
-| Visualizar Dashboard (`/`) | ✅ | ✅ |
-| Ver Empreendimentos | ✅ | ✅ |
-| Ver Custos | ✅ | ✅ |
-| Ver Diárias | ✅ | ✅ |
-| Ver Relatório Analítico | ✅ | ✅ |
-| Criar Empreendimento/Apartamento | ✅ | ❌ (RLS bloqueia) |
-| Excluir Empreendimento/Apartamento | ✅ | ❌ (RLS bloqueia) |
-| Importar Planilhas (`/importar`) | ✅ | ❌ (redirect na página) |
-| Ver Usuários (`/usuarios`) | ✅ | ❌ (redirect para `/`) |
-| Limpar dados do período | ✅ | ❌ (API verifica role) |
-| Escrever no banco (via RLS) | ✅ | ❌ |
+> **Nota sobre semântica invertida:** neste sistema, `analista` é o operador com acesso total ao sistema interno; `admin` é somente-leitura. `proprietario` só acessa o portal próprio.
 
-**Camadas de proteção para admins:**
-1. **Sidebar** — Itens admin ocultos para analistas
-2. **Server Component** — Verificação de role + redirect no servidor
-3. **RLS** — Banco bloqueia INSERT/UPDATE/DELETE para não-admins
-4. **API Routes** — Verificação manual de autenticação e role
+| Funcionalidade | `analista` | `admin` | `proprietario` |
+|---|---|---|---|
+| Dashboard interno (`/`) | ✅ | ✅ | ❌ → redirect `/proprietario` |
+| Ver Empreendimentos | ✅ | ✅ | ❌ |
+| Ver Custos / Diárias | ✅ | ✅ | ❌ |
+| Ver Relatório Analítico | ✅ | ✅ | ❌ |
+| Criar Empreendimento/Apartamento | ✅ | ❌ (RLS) | ❌ |
+| Importar Planilhas (`/importar`) | ✅ | ❌ (redirect) | ❌ |
+| Gerenciar Usuários (`/usuarios`) | ✅ | ❌ (redirect) | ❌ |
+| Limpar dados do período | ✅ | ❌ (API verifica) | ❌ |
+| Portal `/proprietario` | ❌ → redirect `/` | ❌ → redirect `/` | ✅ |
+| Ver seus apartamentos | N/A | N/A | ✅ (RLS filtra) |
+| Ver dados de outros proprietários | N/A | N/A | ❌ (RLS bloqueia) |
+| Baixar PDF do extrato | N/A | N/A | ✅ (seus apts) |
+
+**Camadas de proteção:**
+1. **proxy.ts (middleware)** — redireciona por role antes de renderizar qualquer página
+2. **Layout Server Component** — `DashboardLayout` expulsa `proprietario`; `(proprietario)/layout.tsx` expulsa não-proprietários
+3. **RLS** — banco filtra dados por `proprietario_apartamentos.proprietario_id = auth.uid()`
+4. **API Routes** — verificam autenticação e role individualmente
 
 ---
 
@@ -771,6 +806,9 @@ O middleware intercepta **todas** as requisições antes de chegarem às página
 | B8 | 🟠 Alto | Corrigido | Constraints UNIQUE adicionadas via migration `001`. API usa `upsert` com `onConflict` como camada extra. | `supabase/migrations/001_...sql` + `api/import/route.ts` |
 | B9 | 🔴 Segurança | Corrigido | Função `handle_new_user()` recriada com `SET search_path = public` via migration `002`. | `supabase/migrations/002_...sql` |
 | B10 | 🟡 Médio | A verificar | `.env.local` pode ter espaços no final das variáveis. | `.env.local` |
+| B11 | 🟠 Alto | Corrigido | Constraint `profiles_role_check` não incluía `'proprietario'` — bloqueava cadastro de proprietários. | `migration 014` |
+| B12 | 🟠 Alto | Corrigido | RLS policy `FOR ALL` sem `WITH CHECK` bloqueava INSERT do analista em `proprietario_apartamentos`. | `migration 015` |
+| B13 | 🟠 Alto | Corrigido | Policy SELECT `proprietario_ve_seus_vinculos` não foi criada na aplicação parcial da migration 014 — portal mostrava "Nenhum apartamento vinculado" mesmo com dados corretos. | `migration 016` |
 
 ---
 
@@ -922,6 +960,7 @@ Esta seção consolida o estado **real implementado no código** para servir com
 - `/empreendimentos`
 - `/apartamentos` (redireciona para `/empreendimentos`)
 - `/custos`
+- `/custos/manual`
 - `/diarias`
 - `/relatorio`
 - `/prestacao-contas`
@@ -929,6 +968,8 @@ Esta seção consolida o estado **real implementado no código** para servir com
 
 #### APIs implementadas
 - `POST /api/import`
+- `GET/POST /api/custos-manual`
+- `PATCH/DELETE /api/custos-manual/:id`
 - `DELETE /api/clear`
 - `GET/POST /api/amenitiz-sync`
 - `GET/POST /api/sync-local`
@@ -979,9 +1020,144 @@ Esta seção consolida o estado **real implementado no código** para servir com
 
 - Sistema financeiro completo com autenticação, autorização, dashboard, relatórios e gestão de cadastros
 - Pipeline de importação e sincronização de dados financeiros por período
+- Lançamento manual de custos por competência, empreendimento e apartamento (com edição/exclusão)
 - Prestação de contas com geração de PDF
 - Integração Amenitiz para dados de reservas/faturamento
 - Exposição dos dados por MCP server para uso por agentes de IA
+
+### 17.9 Lançamento Manual de Custos
+
+Fluxo implementado para permitir inserir custos diretamente no sistema sem planilha.
+O upload por planilha/PDF permanece ativo como opção paralela.
+
+#### Rotas e componentes
+- Tela: `/custos/manual` (`app/(dashboard)/custos/manual/page.tsx`)
+- Sidebar: item "Lançamento Manual" em `components/layout/app-sidebar.tsx`
+- Componentes:
+  - `components/custos/manual-cost-filters.tsx`
+  - `components/custos/manual-cost-form.tsx`
+  - `components/custos/manual-cost-table.tsx`
+  - `components/custos/manual-cost-actions.tsx`
+
+#### APIs
+- `GET /api/custos-manual`: lista lançamentos por `mes`, `ano`, `tipo_gestao` e opcionalmente `empreendimento_id`
+- `POST /api/custos-manual`: cria lançamento manual
+- `PATCH /api/custos-manual/:id`: edita lançamento manual
+- `DELETE /api/custos-manual/:id`: exclui lançamento manual
+
+#### Regras de duplicidade
+- Bloqueia duplicado exato para a mesma competência:
+  - `apartamento_id`, `mes`, `ano`, `categoria`, `tipo_gestao`, `valor`
+- Retorna erro amigável (`409`) em tentativas de duplicação.
+- Custos diferentes no mesmo período podem coexistir.
+
+#### Schema da tabela `custos` (metadados de origem)
+Migration: `supabase/migrations/013_custos_manual_metadata.sql`
+- `origem` (`manual` | `importacao`) default `importacao`
+- `observacao` (`text`, nullable)
+- `criado_por` (`uuid`, nullable, FK para `auth.users.id`)
+
+#### Permissões
+- Leitura: usuário autenticado.
+- Criação/edição/exclusão manual: perfil `analista`.
+- Lançamentos de origem `importacao` não são editados/excluídos pela tela manual.
+
+#### Troubleshooting rápido
+- Erro de coluna inexistente (`origem`/`observacao`/`criado_por`): aplicar migration 013.
+- Erro 403 ao salvar: usuário não está com perfil `analista`.
+- Erro 409 ao salvar/editar: já existe custo idêntico na mesma competência.
+
+---
+
+---
+
+## 18. Portal do Proprietário
+
+### Visão geral
+
+Módulo separado dentro do mesmo Next.js que oferece ao proprietário do imóvel uma visão financeira de seus apartamentos — sem acesso ao sistema interno (dashboard, importação, relatórios).
+
+### Roles
+
+| Role | Acesso | Criado por |
+|---|---|---|
+| `proprietario` | Restrito ao portal `/proprietario` | Analista em `/usuarios` |
+| `admin` / `analista` | Sistema interno — bloqueados no portal | — |
+
+### Fluxo de acesso
+
+```
+Login → middleware detecta role → 'proprietario' → redirect /proprietario
+                                 → 'admin'/'analista' → passa normalmente
+Proprietário tenta acessar rota interna → redirect /proprietario (middleware)
+Admin/analista tenta acessar /proprietario → redirect / (middleware)
+```
+
+### Rotas do portal
+
+| Rota | Arquivo | Descrição |
+|---|---|---|
+| `/proprietario` | `app/(proprietario)/proprietario/page.tsx` | Dashboard: KPIs, cards por apt, gráfico 6 meses |
+| `/proprietario/extrato` | `app/(proprietario)/proprietario/extrato/page.tsx` | Extrato detalhado por apt com custos por categoria |
+| `/proprietario/historico` | `app/(proprietario)/proprietario/historico/page.tsx` | Tabela últimos 12 meses |
+
+### Banco de dados — nova tabela
+
+**`proprietario_apartamentos`** (`supabase/migrations/014_portal_proprietario.sql`)
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `proprietario_id` | `uuid` | FK `auth.users.id` |
+| `apartamento_id` | `uuid` | FK `apartamentos.id` |
+| `ativo` | `boolean` | Soft delete — false = sem acesso |
+| `created_at` | `timestamptz` | — |
+
+UNIQUE: `(proprietario_id, apartamento_id)`
+
+### Segurança
+
+- RLS em `proprietario_apartamentos`: proprietário lê apenas seus próprios; analista gerencia todos
+- RLS em `custos`: policy `proprietario_le_custos` — subquery via vínculo ativo
+- RLS em `diarias`: policy `proprietario_le_diarias` — subquery via vínculo ativo
+- RLS em `amenitiz_reservas`: policy `proprietario_le_reservas` — JOIN apartamentos via número
+- Middleware (`middleware.ts` → `proxy.ts`): bloqueia acesso cruzado entre portais por role
+
+### Componentes criados
+
+| Componente | Arquivo | Tipo |
+|---|---|---|
+| `LogoutButton` | `components/proprietario/logout-button.tsx` | Client |
+| `EvolucaoChart` | `components/proprietario/evolucao-chart.tsx` | Client (Recharts) |
+| `CadastrarProprietarioModal` | `components/modals/cadastrar-proprietario-modal.tsx` | Client |
+| `GerenciarProprietarioModal` | `components/modals/gerenciar-proprietario-modal.tsx` | Client |
+
+### APIs criadas/atualizadas
+
+| Endpoint | Verbo | Descrição |
+|---|---|---|
+| `/api/proprietario-apartamentos` | GET | Lista vínculos de um proprietário |
+| `/api/proprietario-apartamentos` | POST | Vincula novos apartamentos (upsert) |
+| `/api/proprietario-apartamentos` | DELETE | Soft delete de vínculo (ativo=false) |
+| `/api/proprietario-apartamentos` | PATCH | Sincroniza lista completa de apts ativos |
+| `/api/usuarios` | POST | Agora aceita `role: 'proprietario'` + `apartamento_ids[]` |
+
+### Cálculo de repasse (igual à prestação de contas)
+
+```
+base = tipo_repasse === 'faturamento' ? faturamento : lucro
+repasse = base * (taxa_repasse / 100)
+valor_proprietario = lucro - repasse
+```
+
+### Como testar
+
+1. Aplicar `supabase/migrations/014_portal_proprietario.sql` no Supabase SQL Editor
+2. Acessar `/usuarios` como analista
+3. Criar um proprietário via "Novo Proprietário" — vincular apartamentos
+4. Fazer logout e logar com as credenciais do proprietário
+5. Sistema redireciona automaticamente para `/proprietario`
+6. Verificar que o proprietário não consegue acessar `/`, `/custos`, etc.
 
 ---
 

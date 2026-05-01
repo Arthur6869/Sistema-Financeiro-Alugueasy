@@ -51,7 +51,8 @@ export async function POST(request: NextRequest) {
 
     const { data: allApartamentos } = await supabase
       .from('apartamentos')
-      .select('id, numero, empreendimento_id')
+      .select('id, numero, empreendimento_id, tipo_gestao')
+      .order('empreendimento_id')
 
     if (!allEmpreendimentos || !allApartamentos) {
       return NextResponse.json({ error: 'Erro ao carregar dados do banco' }, { status: 500 })
@@ -80,10 +81,10 @@ export async function POST(request: NextRequest) {
       return undefined
     }
 
-    // Mapa: empreendimento_id::NUMERO_UPPER → apartamento_id
+    // Mapa: empreendimento_id::NUMERO_NORMALIZADO → apartamento_id
     const aptMap: Record<string, string> = {}
     allApartamentos.forEach(a => {
-      aptMap[`${a.empreendimento_id}::${normalize(a.numero)}`] = a.id
+      aptMap[`${a.empreendimento_id}::${normalizar(a.numero)}`] = a.id
     })
 
     // Mapa: empreendimento_id → primeiro apartamento_id (fallback)
@@ -94,11 +95,25 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const custosToInsert: CustoInsert[] = []
+    // Mapa tipo_gestao-aware: prefere apt que bate o tipo da importação.
+    // Ex: diarias_adm para BRISAS escolhe E016 (adm), não A117 (sub).
+    // Fallback para firstAptByEmp quando não há apt do tipo certo.
+    const firstAptByEmpTipo: Record<string, string> = {}
+    allApartamentos.forEach(a => {
+      if (a.tipo_gestao === tipo_gestao && !firstAptByEmpTipo[a.empreendimento_id]) {
+        firstAptByEmpTipo[a.empreendimento_id] = a.id
+      }
+    })
+    Object.entries(firstAptByEmp).forEach(([empId, aptId]) => {
+      if (!firstAptByEmpTipo[empId]) firstAptByEmpTipo[empId] = aptId
+    })
+
     const diariasToInsert: DiariaInsert[] = []
+    const sheetsIgnorados: string[] = []
+    let custosCount = 0
 
     // =====================================================================
-    // CUSTOS
+    // CUSTOS — por apartamento, por categoria
     // =====================================================================
     if (tipo.startsWith('custos')) {
       const sheetsToProcess = workbook.SheetNames.filter(name =>
@@ -112,6 +127,7 @@ export async function POST(request: NextRequest) {
         const empreendimento_id = resolverEmpId(sheetName)
         if (!empreendimento_id) {
           console.warn(`[CUSTOS] "${sheetName}" não encontrado no banco. Pulando.`)
+          sheetsIgnorados.push(sheetName)
           continue
         }
 
@@ -120,60 +136,115 @@ export async function POST(request: NextRequest) {
 
         if (!rows || rows.length < 2) continue
 
-        // Localizar colunas de apartamentos no cabeçalho
         const aptCols = extrairColunasApartamento(rows, empreendimento_id, aptMap)
-
-        // Localizar linha de totais com múltiplas estratégias
         const totalRowIdx = encontrarLinhaTotais(rows, aptCols)
 
-        if (aptCols.length > 0 && totalRowIdx >= 0) {
-          // ── LER POR APARTAMENTO ─────────────────────────────────────
-          const totalRow = rows[totalRowIdx]
-          let encontrou = false
-          for (const { colIdx, apartamento_id } of aptCols) {
-            // Tentar a coluna exata do apt; se vazio, tentar ±1
-            const raw = totalRow[colIdx] ?? totalRow[colIdx + 1] ?? totalRow[colIdx - 1]
-            const valor = arredondar(parseNumero(raw))
-            if (!isNaN(valor) && valor > 0) {
-              custosToInsert.push({
-                apartamento_id, valor,
-                categoria: 'Total Consolidado',
-                mes, ano, tipo_gestao
-              })
-              console.log(`[CUSTOS] ✓ ${sheetName} apt ${apartamento_id.slice(0,8)} col${colIdx} (${tipo_gestao}) → R$ ${valor}`)
-              encontrou = true
+        if (totalRowIdx < 0) {
+          console.warn(`[CUSTOS] "${sheetName}" — apts=${aptCols.length} totalRow=${totalRowIdx} — aba ignorada`)
+          sheetsIgnorados.push(sheetName)
+          continue
+        }
+
+        // Descobre a linha de cabeçalho (onde estão os números de apt)
+        let headerRowIdx = 0
+        outerLoop: for (let ri = 0; ri < Math.min(10, rows.length); ri++) {
+          const row = rows[ri]
+          if (!row) continue
+          for (const { colIdx } of aptCols) {
+            const cell = row[colIdx]
+            if (cell != null && extrairNumeroApt(String(cell).trim())) {
+              headerRowIdx = ri
+              break outerLoop
             }
           }
-          if (!encontrou) {
-            console.warn(`[CUSTOS] Linha total encontrada (row ${totalRowIdx}) mas valores zerados para "${sheetName}"`)
+        }
+
+        let sheetOk = false
+
+        const totalLinha = extrairTotalLinha(rows[totalRowIdx] ?? [], aptCols)
+        let aptosGravados = 0
+
+        for (const { colIdx, apartamento_id, numero } of aptCols) {
+          const aptCustos: CustoInsert[] = []
+
+          for (let ri = headerRowIdx + 1; ri < totalRowIdx; ri++) {
+            const row = rows[ri]
+            if (!row) continue
+
+            const rawVal = row[colIdx]
+            // Categoria fica na coluna ímpar imediatamente após o valor do apt
+            const rawDesc = row[colIdx + 1]
+
+            const descStr = String(rawDesc ?? '').trim()
+            if (!descStr || descStr === '-') continue
+
+            const valor = arredondar(parseNumero(rawVal))
+            if (isNaN(valor) || valor <= 0) continue
+
+            aptCustos.push({ apartamento_id, categoria: descStr, valor, mes, ano, tipo_gestao })
           }
 
-        } else if (aptCols.length === 0 && totalRowIdx >= 0) {
-          // ── FALLBACK: sem apt detectados — total consolidado no primeiro apt ──
-          console.warn(`[CUSTOS] Sem colunas de apt detectadas em "${sheetName}" — usando total consolidado`)
-          const totalRow = rows[totalRowIdx]
-          let valor = NaN
-          for (let c = 1; c < totalRow.length; c++) {
-            const v = arredondar(parseNumero(totalRow[c]))
-            if (!isNaN(v) && v > 0) { valor = v; break }
+          if (aptCustos.length === 0) {
+            console.warn(`[CUSTOS] ${sheetName} apt ${numero}: nenhuma categoria encontrada`)
+            continue
           }
-          if (!isNaN(valor)) {
-            const apartamento_id = firstAptByEmp[empreendimento_id]
-            if (apartamento_id) {
-              custosToInsert.push({
-                apartamento_id, valor,
-                categoria: 'Total Consolidado',
-                mes, ano, tipo_gestao
-              })
-              console.log(`[CUSTOS] ✓ ${sheetName} fallback (${tipo_gestao}) → R$ ${valor}`)
-            }
+
+          // DELETE por apt antes de reinserir (evita duplicação sem apagar outros apts)
+          const { error: delErr } = await supabase
+            .from('custos').delete()
+            .eq('apartamento_id', apartamento_id)
+            .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
+
+          if (delErr) {
+            console.error(`[CUSTOS] Erro ao limpar ${sheetName} apt ${numero}:`, delErr.message)
+            continue
           }
-        } else {
-          console.warn(`[CUSTOS] Linha de totais NÃO encontrada em "${sheetName}" — aba ignorada`)
+
+          const { error: insErr } = await supabase.from('custos').insert(aptCustos)
+          if (insErr) {
+            console.error(`[CUSTOS] Erro ao inserir ${sheetName} apt ${numero}:`, insErr.message)
+            sheetsIgnorados.push(`${sheetName}:apt${numero}`)
+          } else {
+            custosCount += aptCustos.length
+            sheetOk = true
+            aptosGravados++
+            const soma = aptCustos.reduce((a, c) => a + c.valor, 0)
+            console.log(`[CUSTOS] ✓ ${sheetName} apt ${numero}: ${aptCustos.length} categorias, R$ ${soma.toFixed(2)}`)
+          }
         }
+
+        // Se nenhum apt foi gravado mas há um TOTAL na planilha,
+        // usa fallback no primeiro apt do empreendimento/tipo.
+        if (aptosGravados === 0 && totalLinha > 0) {
+          const aptFallback = allApartamentos.find(
+            a => a.empreendimento_id === empreendimento_id && a.tipo_gestao === tipo_gestao
+          )
+          if (aptFallback) {
+            await supabase
+              .from('custos').delete()
+              .eq('apartamento_id', aptFallback.id)
+              .eq('mes', mes).eq('ano', ano)
+              .eq('tipo_gestao', tipo_gestao)
+
+            await supabase.from('custos').insert({
+              apartamento_id: aptFallback.id,
+              mes,
+              ano,
+              categoria: 'Total Consolidado',
+              valor: totalLinha,
+              tipo_gestao,
+            })
+
+            console.warn(`[import] fallback TOTAL para ${sheetName}: apt ${aptFallback.numero}, R$ ${totalLinha}`)
+            custosCount++
+            sheetOk = true
+          }
+        }
+
+        if (!sheetOk) sheetsIgnorados.push(sheetName)
       }
 
-      if (custosToInsert.length === 0) {
+      if (custosCount === 0) {
         return NextResponse.json({
           error: 'Nenhum custo foi encontrado no arquivo. Verifique se o arquivo correto foi enviado.'
         }, { status: 400 })
@@ -184,11 +255,12 @@ export async function POST(request: NextRequest) {
     // DIÁRIAS (FATURAMENTO)
     // =====================================================================
     if (tipo.startsWith('diarias')) {
-      let parsed = parsePlanilhaResultado(workbook, empMap, aptMap, firstAptByEmp)
+      // Usa firstAptByEmpTipo para que BRISAS ADM escolha um apt adm (E016),
+      // não um apt sub (A117), evitando atribuição cruzada de tipo_gestao.
+      let parsed = parsePlanilhaResultado(workbook, empMap, aptMap, firstAptByEmpTipo)
 
-      // Fallback quando a aba RESULTADO não tem granularidade suficiente
       if (parsed.porApartamento.length === 0) {
-        parsed = parsePlanilhaTotais(workbook, empMap, aptMap, firstAptByEmp)
+        parsed = parsePlanilhaTotais(workbook, empMap, aptMap, firstAptByEmpTipo)
       }
 
       if (parsed.porApartamento.length === 0) {
@@ -208,13 +280,10 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================================
-    // PROTEÇÃO ANTI-DUPLICAÇÃO — apagar antes de reinserir
+    // PROTEÇÃO ANTI-DUPLICAÇÃO — apenas para diárias
+    // (custos já foram processados inline por apt, com DELETE por apt antes de INSERT)
     // =====================================================================
 
-    if (custosToInsert.length > 0) {
-      await supabase.from('custos').delete()
-        .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
-    }
     if (diariasToInsert.length > 0) {
       const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
       await supabase.from('diarias').delete()
@@ -224,17 +293,8 @@ export async function POST(request: NextRequest) {
     }
 
     // =====================================================================
-    // INSERIR
+    // INSERIR — apenas diárias (custos já inseridos inline no loop acima)
     // =====================================================================
-
-    if (custosToInsert.length > 0) {
-      const { error: custosError } = await supabase
-        .from('custos')
-        .upsert(custosToInsert, { onConflict: 'apartamento_id,mes,ano,categoria,tipo_gestao' })
-      if (custosError) {
-        return NextResponse.json({ error: `Erro ao inserir custos: ${custosError.message}` }, { status: 500 })
-      }
-    }
 
     if (diariasToInsert.length > 0) {
       const { error: diariasError } = await supabase
@@ -249,22 +309,45 @@ export async function POST(request: NextRequest) {
     // HISTÓRICO
     // =====================================================================
 
-    await supabase.from('importacoes').insert({
+    // ── validação pós-importação ──────────────────────────────────────────
+    if (sheetsIgnorados.length > 0) {
+      console.error(`[import] AVISO: ${sheetsIgnorados.length} aba(s) não gravada(s): ${sheetsIgnorados.join(', ')}`)
+    }
+
+    const observacao = sheetsIgnorados.length > 0
+      ? `Abas ignoradas (${sheetsIgnorados.length}): ${sheetsIgnorados.join(', ')}`
+      : null
+
+    const importRecord: Record<string, unknown> = {
       nome_arquivo: file.name,
       tipo, mes, ano,
       status: 'concluido',
       importado_por: user.id,
-    })
+    }
+    if (observacao) importRecord.observacao = observacao
+
+    const { error: importErr } = await supabase.from('importacoes').insert(importRecord)
+    if (importErr) {
+      // Fallback: se a coluna observacao ainda não existe no banco, insere sem ela
+      if (importErr.message.includes('observacao')) {
+        delete importRecord.observacao
+        await supabase.from('importacoes').insert(importRecord)
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Importação concluída com sucesso.',
+      message: sheetsIgnorados.length > 0
+        ? `Importação concluída com avisos. ${sheetsIgnorados.length} aba(s) não gravada(s).`
+        : 'Importação concluída com sucesso.',
       tipo, mes, ano,
       arquivo: file.name,
       registros: {
         diarias: diariasToInsert.length,
-        custos: custosToInsert.length,
-      }
+        custos: custosCount,
+      },
+      nao_gravados: sheetsIgnorados,
+      ...(sheetsIgnorados.length > 0 ? { aviso: `Abas não encontradas no banco: ${sheetsIgnorados.join(', ')}` } : {}),
     })
 
   } catch (error: unknown) {
@@ -300,9 +383,13 @@ interface ColApartamento {
   numero: string
 }
 
-/** Normaliza número de apartamento para comparação: remove espaços, maiúsculo */
-function normalize(s: string): string {
-  return s.trim().toUpperCase().replace(/\s+/g, '')
+/** Normaliza número de apartamento para comparação flexível */
+function normalizar(s: string): string {
+  return String(s)
+    .toLowerCase()
+    .replace(/\s*-\s*/g, '-')
+    .replace(/\.0$/, '')
+    .trim()
 }
 
 /** Converte valor bruto (número ou string) para float */
@@ -364,7 +451,7 @@ function extrairColunasApartamento(
       if (!aptNum) continue
 
       // Tentar resolver: empreendimento_id::numero
-      const key = `${empreendimento_id}::${normalize(aptNum)}`
+      const key = `${empreendimento_id}::${normalizar(aptNum)}`
       const apartamento_id = aptMap[key]
       if (apartamento_id) {
         candidatos.push({ colIdx, apartamento_id, numero: aptNum })
@@ -437,4 +524,27 @@ function extrairNumeroApt(cell: string): string | null {
   if (s.length <= 10 && /^[A-Za-z]?\s*\d/.test(s)) return s
 
   return null
+}
+
+function extrairTotalLinha(totalRow: unknown[], aptCols: ColApartamento[]): number {
+  if (!totalRow || totalRow.length === 0) return 0
+
+  // Em planilhas padrão, TOTAL geral costuma ficar na linha de totais;
+  // priorizamos o maior valor numérico da linha como total consolidado.
+  let maior = 0
+  for (const cell of totalRow) {
+    const valor = arredondar(parseNumero(cell))
+    if (!isNaN(valor) && valor > maior) maior = valor
+  }
+
+  // Se não encontrou valor geral, tenta somar os totais por coluna de apt.
+  if (maior <= 0 && aptCols.length > 0) {
+    const somaApts = aptCols.reduce((acc, { colIdx }) => {
+      const v = arredondar(parseNumero(totalRow[colIdx]))
+      return acc + (!isNaN(v) && v > 0 ? v : 0)
+    }, 0)
+    return arredondar(somaApts)
+  }
+
+  return arredondar(maior)
 }
