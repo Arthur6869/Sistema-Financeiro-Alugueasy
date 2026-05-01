@@ -3,9 +3,8 @@ import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
-import { GerarPdfButton } from '@/components/shared/gerar-pdf-button'
 import { formatCurrency, MESES } from '@/lib/constants'
-import { Home } from 'lucide-react'
+import { Home, FileText, TrendingUp, Receipt } from 'lucide-react'
 
 type SearchParams = Promise<{ mes?: string; ano?: string }>
 
@@ -56,8 +55,8 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
   const now = new Date()
   const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
   const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+  const mesLabel = `${MESES[mes - 1]} ${ano}`
 
-  // Buscar apartamentos vinculados
   const { data: vinculos } = await supabase
     .from('proprietario_apartamentos')
     .select('apartamentos(id, numero, tipo_gestao, taxa_repasse, tipo_repasse, empreendimentos(nome))')
@@ -99,9 +98,6 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
       .lte('data', dataFim),
   ])
 
-  const mesLabel = `${MESES[mes - 1]} ${ano}`
-
-  // Calcular totais agregados
   const totalFaturamento = (diariasData ?? []).reduce((s, d) => s + (d.valor ?? 0), 0)
   const totalCustos = (custosData ?? []).reduce((s, c) => s + (c.valor ?? 0), 0)
   const totalLucro = totalFaturamento - totalCustos
@@ -109,44 +105,52 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-8">
       {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Extrato Detalhado</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{mesLabel}</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Extrato Detalhado — {mesLabel}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Demonstrativo completo de faturamento, custos e repasse
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <MonthYearFilter mes={mes} ano={ano} />
-          <GerarPdfButton
-            apartamentoId={aptIds[0]}
-            mes={mes}
-            ano={ano}
-            label="Baixar PDF"
-          />
-        </div>
+        <MonthYearFilter mes={mes} ano={ano} />
       </div>
 
       {/* Resumo global */}
       <div className="grid grid-cols-3 gap-4">
-        <Card className="border border-gray-100 shadow-sm">
-          <CardContent className="pt-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Faturamento</p>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="h-1 bg-[#193660]" />
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp size={14} className="text-[#193660]" />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Faturamento</span>
+            </div>
             <p className="text-xl font-bold text-[#193660]">{formatCurrency(totalFaturamento)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-100 shadow-sm">
-          <CardContent className="pt-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Custos</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="h-1 bg-red-400" />
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Receipt size={14} className="text-red-500" />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Custos</span>
+            </div>
             <p className="text-xl font-bold text-red-600">{formatCurrency(totalCustos)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-100 shadow-sm">
-          <CardContent className="pt-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Lucro</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className={`h-1 ${totalLucro >= 0 ? 'bg-green-400' : 'bg-red-400'}`} />
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp size={14} className={totalLucro >= 0 ? 'text-green-500' : 'text-red-500'} />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Lucro</span>
+            </div>
             <p className={`text-xl font-bold ${totalLucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(totalLucro)}
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Detalhamento por apartamento */}
@@ -167,88 +171,112 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
           const tipoRepasse = apt.tipo_repasse ?? 'lucro'
           const repasse = calcularRepasse(faturamento, lucro, taxaRepasse, tipoRepasse)
           const valorProprietario = lucro - repasse
+          const semFaturamento = faturamento === 0
+          const semCustos = custosPorCategoria.length === 0
 
           return (
             <Card key={apt.id} className="border border-gray-100 shadow-sm overflow-hidden">
               <CardHeader className="bg-gray-50 border-b border-gray-100 py-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                     <Home size={14} className="text-[#193660]" />
                     Apt {apt.numero} — {apt.empreendimentos?.nome}
                   </CardTitle>
-                  <Badge
-                    variant="outline"
-                    className={apt.tipo_gestao === 'adm'
-                      ? 'border-blue-200 bg-blue-50 text-blue-700 text-xs'
-                      : 'border-purple-200 bg-purple-50 text-purple-700 text-xs'}
-                  >
-                    {apt.tipo_gestao === 'adm' ? 'Administração' : 'Sublocação'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={apt.tipo_gestao === 'adm'
+                        ? 'border-blue-200 bg-blue-50 text-blue-700 text-xs'
+                        : 'border-purple-200 bg-purple-50 text-purple-700 text-xs'}
+                    >
+                      {apt.tipo_gestao === 'adm' ? 'Administração' : 'Sublocação'}
+                    </Badge>
+                    <a
+                      href={`/api/prestacao-contas-pdf?apartamento_id=${apt.id}&mes=${mes}&ano=${ano}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-medium text-[#193660] bg-white border border-[#193660] hover:bg-[#193660] hover:text-white transition-colors rounded-md px-2.5 py-1"
+                    >
+                      <FileText size={12} />
+                      Baixar PDF
+                    </a>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <table className="w-full text-sm">
-                  <tbody>
-                    {/* Faturamento */}
-                    <tr className="border-b border-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-700">Faturamento</td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-[#193660]">
-                        {formatCurrency(faturamento)}
-                      </td>
-                    </tr>
-
-                    {/* Custos — header */}
-                    <tr className="bg-gray-50">
-                      <td colSpan={2} className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Custos — {formatCurrency(custos)}
-                      </td>
-                    </tr>
-
-                    {/* Custos por categoria */}
-                    {custosPorCategoria.length === 0 ? (
-                      <tr>
-                        <td colSpan={2} className="px-4 py-2 text-gray-400 text-xs italic text-center">
-                          Nenhum custo registrado neste período
+                {semFaturamento && semCustos ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-gray-400">
+                    <FileText size={28} className="mb-2 text-gray-200" />
+                    <p className="text-sm">Nenhum dado disponível para {mesLabel}</p>
+                    <p className="text-xs mt-1">Os dados podem levar alguns dias para ser processados</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {/* Faturamento */}
+                      <tr className="border-b border-gray-50">
+                        <td className="px-4 py-2.5 font-medium text-gray-700">Faturamento</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-[#193660]">
+                          {semFaturamento
+                            ? <span className="text-gray-400 font-normal italic text-xs">Faturamento não disponível</span>
+                            : formatCurrency(faturamento)
+                          }
                         </td>
                       </tr>
-                    ) : (
-                      custosPorCategoria.map((c, i) => (
-                        <tr key={i} className="border-b border-gray-50">
-                          <td className="px-4 py-2 pl-8 text-gray-500">{c.categoria}</td>
-                          <td className="px-4 py-2 text-right text-gray-700">
-                            {formatCurrency(c.valor)}
+
+                      {/* Custos — header */}
+                      <tr className="bg-gray-50">
+                        <td colSpan={2} className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Custos {!semCustos && `— ${formatCurrency(custos)}`}
+                        </td>
+                      </tr>
+
+                      {/* Custos por categoria */}
+                      {semCustos ? (
+                        <tr>
+                          <td colSpan={2} className="px-4 py-3 text-gray-400 text-xs italic text-center">
+                            Custos não disponíveis para este período
                           </td>
                         </tr>
-                      ))
-                    )}
+                      ) : (
+                        custosPorCategoria.map((c, i) => (
+                          <tr key={i} className="border-b border-gray-50">
+                            <td className="px-4 py-2 pl-8 text-gray-500">{c.categoria}</td>
+                            <td className="px-4 py-2 text-right text-gray-700">
+                              {formatCurrency(c.valor)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
 
-                    {/* Lucro */}
-                    <tr className="border-t border-gray-200">
-                      <td className="px-4 py-2.5 font-medium text-gray-700">Lucro</td>
-                      <td className={`px-4 py-2.5 text-right font-semibold ${lucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(lucro)}
-                      </td>
-                    </tr>
+                      {/* Lucro */}
+                      <tr className="border-t border-gray-200">
+                        <td className="px-4 py-2.5 font-medium text-gray-700">Lucro</td>
+                        <td className={`px-4 py-2.5 text-right font-semibold ${lucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatCurrency(lucro)}
+                        </td>
+                      </tr>
 
-                    {/* Taxa repasse */}
-                    <tr className="border-b border-gray-50">
-                      <td className="px-4 py-2 text-gray-500">
-                        Taxa repasse ({taxaRepasse}% sobre {tipoRepasse === 'faturamento' ? 'faturamento' : 'lucro'})
-                      </td>
-                      <td className="px-4 py-2 text-right text-amber-600">
-                        {formatCurrency(repasse)}
-                      </td>
-                    </tr>
+                      {/* Taxa repasse */}
+                      <tr className="border-b border-gray-50">
+                        <td className="px-4 py-2 text-gray-500">
+                          Taxa repasse ({taxaRepasse}% sobre {tipoRepasse === 'faturamento' ? 'faturamento' : 'lucro'})
+                        </td>
+                        <td className="px-4 py-2 text-right text-amber-600">
+                          − {formatCurrency(repasse)}
+                        </td>
+                      </tr>
 
-                    {/* Valor ao proprietário */}
-                    <tr className="bg-gray-50">
-                      <td className="px-4 py-3 font-bold text-gray-800">Seu valor</td>
-                      <td className={`px-4 py-3 text-right font-bold text-lg ${valorProprietario >= 0 ? 'text-[#193660]' : 'text-red-600'}`}>
-                        {formatCurrency(valorProprietario)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                      {/* Valor ao proprietário */}
+                      <tr className="bg-[#193660]/5">
+                        <td className="px-4 py-3 font-bold text-gray-800">Seu repasse</td>
+                        <td className={`px-4 py-3 text-right font-bold text-lg ${valorProprietario >= 0 ? 'text-[#193660]' : 'text-red-600'}`}>
+                          {formatCurrency(valorProprietario)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
               </CardContent>
             </Card>
           )

@@ -413,4 +413,59 @@ export function registerMonitoramentoTools(server: McpServer): void {
       }
     }
   )
+
+  server.tool(
+    'listar_proprietarios',
+    'Lists all registered proprietário users with their linked apartments and access status. Use this to audit portal access, verify vinculos, or troubleshoot portal issues.',
+    {},
+    async () => {
+      const supabase = getSupabaseClient()
+
+      const { data: proprietarios, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('role', 'proprietario')
+        .order('full_name')
+
+      if (profErr) throw new Error(`Supabase error em listar_proprietarios (profiles): ${profErr.message}`)
+
+      const resultado = await Promise.all(
+        (proprietarios ?? []).map(async (p) => {
+          const { data: vinculos, error: vinErr } = await supabase
+            .from('proprietario_apartamentos')
+            .select('ativo, apartamentos(numero, tipo_gestao, taxa_repasse, tipo_repasse, empreendimentos(nome))')
+            .eq('proprietario_id', p.id)
+
+          if (vinErr) throw new Error(`Supabase error em listar_proprietarios (vinculos): ${vinErr.message}`)
+
+          const apartamentos = (vinculos ?? []).map((v: any) => ({
+            numero: v.apartamentos?.numero ?? '?',
+            empreendimento: v.apartamentos?.empreendimentos?.nome ?? '?',
+            tipo_gestao: v.apartamentos?.tipo_gestao ?? '?',
+            taxa_repasse: v.apartamentos?.taxa_repasse ?? 0,
+            tipo_repasse: v.apartamentos?.tipo_repasse ?? 'lucro',
+            ativo: v.ativo,
+          }))
+
+          return {
+            id: p.id,
+            nome: p.full_name,
+            email: p.email,
+            total_apartamentos: apartamentos.filter((a) => a.ativo).length,
+            apartamentos,
+          }
+        })
+      )
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            total_proprietarios: resultado.length,
+            proprietarios: resultado,
+          }, null, 2),
+        }],
+      }
+    }
+  )
 }

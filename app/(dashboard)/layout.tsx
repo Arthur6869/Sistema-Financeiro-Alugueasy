@@ -23,6 +23,8 @@ export default async function DashboardLayout({
   const fullName = profile?.full_name ?? user.email ?? 'Usuário'
   const email = user.email ?? ''
 
+  if (role === 'proprietario') redirect('/proprietario')
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <AppSidebar role={role} fullName={fullName} email={email} />

@@ -51,14 +51,17 @@ const supabase = createClient() // sem await
 ### Schema público (tabelas existentes)
 
 ```
-profiles         → id (uuid), full_name, role ('admin'|'analista')
-empreendimentos  → id, nome (unique)
-apartamentos     → id, empreendimento_id (fk), numero
-                   UNIQUE (empreendimento_id, numero)
-custos           → id, apartamento_id (fk), mes, ano, categoria, valor, tipo_gestao ('adm'|'sub')
-diarias          → id, apartamento_id (fk), data, valor, tipo_gestao ('adm'|'sub')
-importacoes      → id, tipo ('custos_adm'|'custos_sub'|'diarias_adm'|'diarias_sub'),
-                   mes, ano, nome_arquivo, status ('concluido'|'erro'), importado_por
+profiles                    → id (uuid), full_name, role ('admin'|'analista'|'proprietario')
+empreendimentos             → id, nome (unique)
+apartamentos                → id, empreendimento_id (fk), numero
+                               UNIQUE (empreendimento_id, numero)
+custos                      → id, apartamento_id (fk), mes, ano, categoria, valor, tipo_gestao ('adm'|'sub')
+diarias                     → id, apartamento_id (fk), data, valor, tipo_gestao ('adm'|'sub')
+importacoes                 → id, tipo ('custos_adm'|'custos_sub'|'diarias_adm'|'diarias_sub'),
+                               mes, ano, nome_arquivo, status ('concluido'|'erro'), importado_por
+proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento_id (fk apartamentos),
+                               ativo boolean DEFAULT true
+                               UNIQUE (proprietario_id, apartamento_id)
 ```
 
 ### Restrições que NUNCA devem ser violadas
@@ -66,7 +69,7 @@ importacoes      → id, tipo ('custos_adm'|'custos_sub'|'diarias_adm'|'diarias_
 - `status` em `importacoes` aceita **apenas** `'concluido'` ou `'erro'` — **nunca** `'sucesso'`
 - `tipo` em `importacoes` aceita **apenas** `'custos_adm'`, `'custos_sub'`, `'diarias_adm'`, `'diarias_sub'`
 - `tipo_gestao` aceita **apenas** `'adm'` ou `'sub'`
-- `role` em `profiles` aceita **apenas** `'admin'` ou `'analista'`
+- `role` em `profiles` aceita **apenas** `'admin'`, `'analista'` ou `'proprietario'`
 
 ### RLS (Row Level Security)
 
@@ -269,7 +272,7 @@ proprietario_apartamentos:
 |---|---|
 | `analista` tem mais permissões que `admin` | Sistema inverteu semanticamente por decisão de negócio |
 | Guards de acesso usam `role !== 'analista'` para bloquear não-operadores | `analista` = operador do sistema; `admin` = somente leitura |
-| Faturamento vem de `amenitiz_reservas.valor_liquido`, não de `diarias` | Dashboard atualizado na Fase 5 |
+| Faturamento vem de `diarias.valor` (xlsx importado), não de `amenitiz_reservas` | `diarias` é fonte primária de receita; `amenitiz_reservas` é auxiliar para contagem de noites |
 | Sync Amenitiz = DELETE + INSERT (não upsert em `diarias`) | Garantia de consistência no período |
 | Redirect após login = `/` (nunca `/dashboard`) | Rota `/dashboard` não existe |
 | "Prestação de Contas" já está na sidebar (`navItems`) | Adicionado — não duplicar |
@@ -291,7 +294,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 18 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos |
+| **Tools** | 19 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -317,6 +320,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `resumo_executivo` | monitoramento | Resumo completo: KPIs + sync + alertas + tendência |
 | `check_apartamentos_sem_room_id` | monitoramento | Lista apartamentos sem amenitiz_room_id (sync parcial) |
 | `verificar_importacao_custos` | monitoramento | Valida se todos os empreendimentos têm custos gravados após importação |
+| `listar_proprietarios` | monitoramento | Lista usuários com role=proprietario e seus apartamentos vinculados (ativo/inativo) |
 
 ### Cliente Supabase no MCP
 
