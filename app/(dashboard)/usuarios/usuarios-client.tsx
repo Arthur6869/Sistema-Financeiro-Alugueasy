@@ -15,6 +15,7 @@ import { Users, Shield, Eye, Home } from 'lucide-react'
 import { CadastrarUsuarioModal } from '@/components/modals/cadastrar-usuario-modal'
 import { CadastrarProprietarioModal } from '@/components/modals/cadastrar-proprietario-modal'
 import { GerenciarProprietarioModal } from '@/components/modals/gerenciar-proprietario-modal'
+import { EnviarExtratoButton } from '@/components/modals/enviar-extrato-button'
 
 interface Profile {
   id: string
@@ -157,7 +158,7 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
                 <TableHead className="text-gray-500 font-medium">Nome</TableHead>
                 <TableHead className="text-gray-500 font-medium">Apartamentos</TableHead>
                 <TableHead className="text-gray-500 font-medium">Cadastrado em</TableHead>
-                <TableHead className="text-gray-500 font-medium w-40">Ações</TableHead>
+                <TableHead className="text-gray-500 font-medium w-56">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -199,12 +200,18 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
                       {new Date(profile.created_at).toLocaleDateString('pt-BR')}
                     </TableCell>
                     <TableCell>
-                      <GerenciarProprietarioModal
-                        proprietarioId={profile.id}
-                        proprietarioNome={profile.full_name}
-                        todosApartamentos={apartamentos}
-                        vinculosIniciais={vinculosProp}
-                      />
+                      <div className="flex items-center gap-2">
+                        <GerenciarProprietarioModal
+                          proprietarioId={profile.id}
+                          proprietarioNome={profile.full_name}
+                          todosApartamentos={apartamentos}
+                          vinculosIniciais={vinculosProp}
+                        />
+                        <EnviarExtratoButton
+                          proprietarioId={profile.id}
+                          proprietarioNome={profile.full_name}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

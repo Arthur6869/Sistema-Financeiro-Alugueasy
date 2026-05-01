@@ -294,7 +294,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 19 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios |
+| **Tools** | 20 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -321,6 +321,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `check_apartamentos_sem_room_id` | monitoramento | Lista apartamentos sem amenitiz_room_id (sync parcial) |
 | `verificar_importacao_custos` | monitoramento | Valida se todos os empreendimentos têm custos gravados após importação |
 | `listar_proprietarios` | monitoramento | Lista usuários com role=proprietario e seus apartamentos vinculados (ativo/inativo) |
+| `enviar_extrato_email` | importacao | Envia extrato mensal HTML por email ao proprietário via Resend (requer RESEND_API_KEY configurado) |
 
 ### Cliente Supabase no MCP
 

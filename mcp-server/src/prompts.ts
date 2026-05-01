@@ -27,6 +27,10 @@ Execute na seguinte ordem:
 5. Chame get_custos_detalhados {mes: ${mes}, ano: ${ano}} — para o ranking de categorias.
 6. Chame get_relatorio_semestral — para tendência dos últimos 6 meses.
 7. Chame alert_margem_baixa {mes: ${mes}, ano: ${ano}, threshold_percent: 20}.
+8. Chame listar_proprietarios {} para ver quais proprietários têm apartamentos com dados neste período.
+9. Para cada proprietário com dados disponíveis (faturamento > 0), pergunte:
+   "Deseja enviar o extrato por email para [Nome]?
+   Use: enviar_extrato_email { proprietario_id: '...', mes: ${mes}, ano: ${ano} }"
 
 Com todos os dados em mãos, produza um relatório em português com:
 - Resumo executivo (3 linhas): faturamento, lucro, margem

@@ -190,4 +190,21 @@ export function registerImportacaoTools(server: McpServer): void {
       content: [{ type: 'text', text: JSON.stringify(await clearPeriodo(mes, ano, confirmar), null, 2) }],
     })
   )
+
+  server.tool(
+    'enviar_extrato_email',
+    'Sends the monthly financial statement email to a property owner. Use after closing the month to notify owners. Requires the owner\'s UUID, month, and year. Fetches financial data from diarias + custos tables and generates a styled HTML email via Resend.',
+    {
+      proprietario_id: z.string().uuid()
+        .describe('UUID of the proprietario user (from profiles table, role=proprietario)'),
+      mes: z.number().int().min(1).max(12).describe('Month number (1=Janeiro, 12=Dezembro)'),
+      ano: z.number().int().min(2024).max(2030).describe('Year (e.g. 2026)'),
+    },
+    async ({ proprietario_id, mes, ano }) => {
+      const result = await callApi('/api/enviar-extrato-email', 'POST', { proprietario_id, mes, ano })
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      }
+    }
+  )
 }
