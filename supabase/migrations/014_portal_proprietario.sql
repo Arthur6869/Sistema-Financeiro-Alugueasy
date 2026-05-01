@@ -24,10 +24,16 @@ CREATE POLICY "proprietario_ve_seus_vinculos"
   ON proprietario_apartamentos FOR SELECT
   USING (proprietario_id = auth.uid());
 
--- Analista gerencia todos os vínculos
+-- Analista gerencia todos os vínculos (WITH CHECK necessário para INSERT)
 CREATE POLICY "analista_gerencia_vinculos"
   ON proprietario_apartamentos FOR ALL
   USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid() AND role = 'analista'
+    )
+  )
+  WITH CHECK (
     EXISTS (
       SELECT 1 FROM profiles
       WHERE id = auth.uid() AND role = 'analista'
