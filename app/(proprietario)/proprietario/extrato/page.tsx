@@ -1,10 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { formatCurrency, MESES } from '@/lib/constants'
-import { Home, FileText, TrendingUp, Receipt } from 'lucide-react'
+import { Home, TrendingUp, Receipt } from 'lucide-react'
+import { ExtratoAptCard } from '@/components/proprietario/extrato-apt-card'
 
 type SearchParams = Promise<{ mes?: string; ano?: string }>
 
@@ -103,14 +102,14 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
   const totalLucro = totalFaturamento - totalCustos
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Extrato Detalhado — {mesLabel}
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+            Extrato — {mesLabel}
           </h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <p className="text-gray-500 text-sm mt-1 hidden sm:block">
             Demonstrativo completo de faturamento, custos e repasse
           </p>
         </div>
@@ -118,35 +117,35 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
       </div>
 
       {/* Resumo global */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 md:gap-4">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="h-1 bg-[#193660]" />
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp size={14} className="text-[#193660]" />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Faturamento</span>
+          <div className="p-3 md:p-4">
+            <div className="flex items-center gap-1.5 mb-1.5 md:mb-2">
+              <TrendingUp size={12} className="text-[#193660]" />
+              <span className="text-[10px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide">Fat.</span>
             </div>
-            <p className="text-xl font-bold text-[#193660]">{formatCurrency(totalFaturamento)}</p>
+            <p className="text-sm md:text-xl font-bold text-[#193660]">{formatCurrency(totalFaturamento)}</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="h-1 bg-red-400" />
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Receipt size={14} className="text-red-500" />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Custos</span>
+          <div className="p-3 md:p-4">
+            <div className="flex items-center gap-1.5 mb-1.5 md:mb-2">
+              <Receipt size={12} className="text-red-500" />
+              <span className="text-[10px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide">Custos</span>
             </div>
-            <p className="text-xl font-bold text-red-600">{formatCurrency(totalCustos)}</p>
+            <p className="text-sm md:text-xl font-bold text-red-600">{formatCurrency(totalCustos)}</p>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className={`h-1 ${totalLucro >= 0 ? 'bg-green-400' : 'bg-red-400'}`} />
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp size={14} className={totalLucro >= 0 ? 'text-green-500' : 'text-red-500'} />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Lucro</span>
+          <div className="p-3 md:p-4">
+            <div className="flex items-center gap-1.5 mb-1.5 md:mb-2">
+              <TrendingUp size={12} className={totalLucro >= 0 ? 'text-green-500' : 'text-red-500'} />
+              <span className="text-[10px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide">Lucro</span>
             </div>
-            <p className={`text-xl font-bold ${totalLucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <p className={`text-sm md:text-xl font-bold ${totalLucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(totalLucro)}
             </p>
           </div>
@@ -154,8 +153,8 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
       </div>
 
       {/* Detalhamento por apartamento */}
-      <div className="space-y-6">
-        <h2 className="text-base font-semibold text-gray-800">Detalhamento por Apartamento</h2>
+      <div className="space-y-4 md:space-y-6">
+        <h2 className="text-sm md:text-base font-semibold text-gray-800">Detalhamento por Apartamento</h2>
 
         {apartamentos.map(apt => {
           const faturamento = (diariasData ?? [])
@@ -171,114 +170,28 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
           const tipoRepasse = apt.tipo_repasse ?? 'lucro'
           const repasse = calcularRepasse(faturamento, lucro, taxaRepasse, tipoRepasse)
           const valorProprietario = lucro - repasse
-          const semFaturamento = faturamento === 0
-          const semCustos = custosPorCategoria.length === 0
 
           return (
-            <Card key={apt.id} className="border border-gray-100 shadow-sm overflow-hidden">
-              <CardHeader className="bg-gray-50 border-b border-gray-100 py-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <CardTitle className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                    <Home size={14} className="text-[#193660]" />
-                    Apt {apt.numero} — {apt.empreendimentos?.nome}
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={apt.tipo_gestao === 'adm'
-                        ? 'border-blue-200 bg-blue-50 text-blue-700 text-xs'
-                        : 'border-purple-200 bg-purple-50 text-purple-700 text-xs'}
-                    >
-                      {apt.tipo_gestao === 'adm' ? 'Administração' : 'Sublocação'}
-                    </Badge>
-                    <a
-                      href={`/api/prestacao-contas-pdf?apartamento_id=${apt.id}&mes=${mes}&ano=${ano}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs font-medium text-[#193660] bg-white border border-[#193660] hover:bg-[#193660] hover:text-white transition-colors rounded-md px-2.5 py-1"
-                    >
-                      <FileText size={12} />
-                      Baixar PDF
-                    </a>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                {semFaturamento && semCustos ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-center text-gray-400">
-                    <FileText size={28} className="mb-2 text-gray-200" />
-                    <p className="text-sm">Nenhum dado disponível para {mesLabel}</p>
-                    <p className="text-xs mt-1">Os dados podem levar alguns dias para ser processados</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {/* Faturamento */}
-                      <tr className="border-b border-gray-50">
-                        <td className="px-4 py-2.5 font-medium text-gray-700">Faturamento</td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-[#193660]">
-                          {semFaturamento
-                            ? <span className="text-gray-400 font-normal italic text-xs">Faturamento não disponível</span>
-                            : formatCurrency(faturamento)
-                          }
-                        </td>
-                      </tr>
-
-                      {/* Custos — header */}
-                      <tr className="bg-gray-50">
-                        <td colSpan={2} className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          Custos {!semCustos && `— ${formatCurrency(custos)}`}
-                        </td>
-                      </tr>
-
-                      {/* Custos por categoria */}
-                      {semCustos ? (
-                        <tr>
-                          <td colSpan={2} className="px-4 py-3 text-gray-400 text-xs italic text-center">
-                            Custos não disponíveis para este período
-                          </td>
-                        </tr>
-                      ) : (
-                        custosPorCategoria.map((c, i) => (
-                          <tr key={i} className="border-b border-gray-50">
-                            <td className="px-4 py-2 pl-8 text-gray-500">{c.categoria}</td>
-                            <td className="px-4 py-2 text-right text-gray-700">
-                              {formatCurrency(c.valor)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-
-                      {/* Lucro */}
-                      <tr className="border-t border-gray-200">
-                        <td className="px-4 py-2.5 font-medium text-gray-700">Lucro</td>
-                        <td className={`px-4 py-2.5 text-right font-semibold ${lucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatCurrency(lucro)}
-                        </td>
-                      </tr>
-
-                      {/* Taxa repasse */}
-                      <tr className="border-b border-gray-50">
-                        <td className="px-4 py-2 text-gray-500">
-                          Taxa repasse ({taxaRepasse}% sobre {tipoRepasse === 'faturamento' ? 'faturamento' : 'lucro'})
-                        </td>
-                        <td className="px-4 py-2 text-right text-amber-600">
-                          − {formatCurrency(repasse)}
-                        </td>
-                      </tr>
-
-                      {/* Valor ao proprietário */}
-                      <tr className="bg-[#193660]/5">
-                        <td className="px-4 py-3 font-bold text-gray-800">Seu repasse</td>
-                        <td className={`px-4 py-3 text-right font-bold text-lg ${valorProprietario >= 0 ? 'text-[#193660]' : 'text-red-600'}`}>
-                          {formatCurrency(valorProprietario)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                )}
-              </CardContent>
-            </Card>
+            <ExtratoAptCard
+              key={apt.id}
+              aptId={apt.id}
+              numero={apt.numero}
+              empreendimento={apt.empreendimentos?.nome ?? null}
+              tipoGestao={apt.tipo_gestao}
+              faturamento={faturamento}
+              custos={custos}
+              lucro={lucro}
+              repasse={repasse}
+              valorProprietario={valorProprietario}
+              taxaRepasse={taxaRepasse}
+              tipoRepasse={tipoRepasse}
+              custosPorCategoria={custosPorCategoria.map(c => ({ categoria: c.categoria, valor: c.valor ?? 0 }))}
+              semFaturamento={faturamento === 0}
+              semCustos={custosPorCategoria.length === 0}
+              mesLabel={mesLabel}
+              mes={mes}
+              ano={ano}
+            />
           )
         })}
       </div>
