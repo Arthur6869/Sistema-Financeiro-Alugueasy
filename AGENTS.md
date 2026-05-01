@@ -205,6 +205,64 @@ Sempre manter atualizado após mudanças:
 - Este arquivo (`AGENTS.md`) — regras para agentes de IA
 ---
 
+## 🏠 Portal do Proprietário
+
+### Rotas
+
+| Rota | Acesso | Descrição |
+|---|---|---|
+| `/proprietario` | `proprietario` | Dashboard com KPIs, cards por apt e gráfico de evolução |
+| `/proprietario/extrato` | `proprietario` | Extrato detalhado por apartamento — custos por categoria, cálculo de repasse |
+| `/proprietario/historico` | `proprietario` | Tabela dos últimos 12 meses com link para extrato |
+
+### Regras obrigatórias
+
+- Proprietário **NUNCA** acessa rotas fora de `/proprietario` — middleware bloqueia e redireciona
+- Admin/analista tentando acessar `/proprietario` → redirecionados para `/`
+- Todos os dados são filtrados por `proprietario_apartamentos.ativo = true`
+- RLS garante isolamento completo — proprietário não vê dados de outros proprietários
+- Cálculo de repasse: igual à prestação de contas (`taxa_repasse` + `tipo_repasse`)
+- `tipo_repasse = 'faturamento'` → base do repasse é o faturamento; `'lucro'` → base é o lucro
+
+### Nova tabela
+
+```
+proprietario_apartamentos:
+  id              uuid PK
+  proprietario_id uuid FK auth.users
+  apartamento_id  uuid FK apartamentos
+  ativo           boolean DEFAULT true   ← soft delete
+  UNIQUE (proprietario_id, apartamento_id)
+```
+
+### RLS expandida (migration 014)
+
+- `proprietario_apartamentos` → proprietário lê próprios; analista gerencia todos
+- `custos` → nova policy `proprietario_le_custos` via subquery na tabela de vínculos
+- `diarias` → nova policy `proprietario_le_diarias` via subquery na tabela de vínculos
+- `amenitiz_reservas` → nova policy `proprietario_le_reservas` via JOIN apartamentos
+
+### Role expandido
+
+`profiles.role` agora aceita `'admin' | 'analista' | 'proprietario'`
+
+### Gestão de proprietários
+
+- Criação em `/usuarios` → seção "Proprietários" → botão "Novo Proprietário"
+- Cada proprietário pode ter N apartamentos (vinculados via `proprietario_apartamentos`)
+- `GerenciarProprietarioModal` permite adicionar/remover apartamentos por checkbox sem excluir o usuário
+
+### APIs relacionadas
+
+| Endpoint | Verbo | Descrição |
+|---|---|---|
+| `/api/proprietario-apartamentos` | GET | Lista vínculos de um proprietário |
+| `/api/proprietario-apartamentos` | POST | Vincula novos apartamentos |
+| `/api/proprietario-apartamentos` | DELETE | Soft delete de um vínculo (ativo=false) |
+| `/api/proprietario-apartamentos` | PATCH | Sincroniza lista completa de apts ativos |
+
+---
+
 ## ✅ Decisões de Design — não questionar, só seguir
 
 | Decisão | Motivo |
@@ -215,6 +273,7 @@ Sempre manter atualizado após mudanças:
 | Sync Amenitiz = DELETE + INSERT (não upsert em `diarias`) | Garantia de consistência no período |
 | Redirect após login = `/` (nunca `/dashboard`) | Rota `/dashboard` não existe |
 | "Prestação de Contas" já está na sidebar (`navItems`) | Adicionado — não duplicar |
+| Portal do Proprietário usa `proxy.ts` para redirecionamento por role | Next.js 16.x usa `proxy.ts` como arquivo de proxy/middleware nativo — NÃO criar `middleware.ts` paralelo |
 
 ---
 

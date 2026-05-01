@@ -922,6 +922,7 @@ Esta seção consolida o estado **real implementado no código** para servir com
 - `/empreendimentos`
 - `/apartamentos` (redireciona para `/empreendimentos`)
 - `/custos`
+- `/custos/manual`
 - `/diarias`
 - `/relatorio`
 - `/prestacao-contas`
@@ -929,6 +930,8 @@ Esta seção consolida o estado **real implementado no código** para servir com
 
 #### APIs implementadas
 - `POST /api/import`
+- `GET/POST /api/custos-manual`
+- `PATCH/DELETE /api/custos-manual/:id`
 - `DELETE /api/clear`
 - `GET/POST /api/amenitiz-sync`
 - `GET/POST /api/sync-local`
@@ -979,9 +982,144 @@ Esta seção consolida o estado **real implementado no código** para servir com
 
 - Sistema financeiro completo com autenticação, autorização, dashboard, relatórios e gestão de cadastros
 - Pipeline de importação e sincronização de dados financeiros por período
+- Lançamento manual de custos por competência, empreendimento e apartamento (com edição/exclusão)
 - Prestação de contas com geração de PDF
 - Integração Amenitiz para dados de reservas/faturamento
 - Exposição dos dados por MCP server para uso por agentes de IA
+
+### 17.9 Lançamento Manual de Custos
+
+Fluxo implementado para permitir inserir custos diretamente no sistema sem planilha.
+O upload por planilha/PDF permanece ativo como opção paralela.
+
+#### Rotas e componentes
+- Tela: `/custos/manual` (`app/(dashboard)/custos/manual/page.tsx`)
+- Sidebar: item "Lançamento Manual" em `components/layout/app-sidebar.tsx`
+- Componentes:
+  - `components/custos/manual-cost-filters.tsx`
+  - `components/custos/manual-cost-form.tsx`
+  - `components/custos/manual-cost-table.tsx`
+  - `components/custos/manual-cost-actions.tsx`
+
+#### APIs
+- `GET /api/custos-manual`: lista lançamentos por `mes`, `ano`, `tipo_gestao` e opcionalmente `empreendimento_id`
+- `POST /api/custos-manual`: cria lançamento manual
+- `PATCH /api/custos-manual/:id`: edita lançamento manual
+- `DELETE /api/custos-manual/:id`: exclui lançamento manual
+
+#### Regras de duplicidade
+- Bloqueia duplicado exato para a mesma competência:
+  - `apartamento_id`, `mes`, `ano`, `categoria`, `tipo_gestao`, `valor`
+- Retorna erro amigável (`409`) em tentativas de duplicação.
+- Custos diferentes no mesmo período podem coexistir.
+
+#### Schema da tabela `custos` (metadados de origem)
+Migration: `supabase/migrations/013_custos_manual_metadata.sql`
+- `origem` (`manual` | `importacao`) default `importacao`
+- `observacao` (`text`, nullable)
+- `criado_por` (`uuid`, nullable, FK para `auth.users.id`)
+
+#### Permissões
+- Leitura: usuário autenticado.
+- Criação/edição/exclusão manual: perfil `analista`.
+- Lançamentos de origem `importacao` não são editados/excluídos pela tela manual.
+
+#### Troubleshooting rápido
+- Erro de coluna inexistente (`origem`/`observacao`/`criado_por`): aplicar migration 013.
+- Erro 403 ao salvar: usuário não está com perfil `analista`.
+- Erro 409 ao salvar/editar: já existe custo idêntico na mesma competência.
+
+---
+
+---
+
+## 18. Portal do Proprietário
+
+### Visão geral
+
+Módulo separado dentro do mesmo Next.js que oferece ao proprietário do imóvel uma visão financeira de seus apartamentos — sem acesso ao sistema interno (dashboard, importação, relatórios).
+
+### Roles
+
+| Role | Acesso | Criado por |
+|---|---|---|
+| `proprietario` | Restrito ao portal `/proprietario` | Analista em `/usuarios` |
+| `admin` / `analista` | Sistema interno — bloqueados no portal | — |
+
+### Fluxo de acesso
+
+```
+Login → middleware detecta role → 'proprietario' → redirect /proprietario
+                                 → 'admin'/'analista' → passa normalmente
+Proprietário tenta acessar rota interna → redirect /proprietario (middleware)
+Admin/analista tenta acessar /proprietario → redirect / (middleware)
+```
+
+### Rotas do portal
+
+| Rota | Arquivo | Descrição |
+|---|---|---|
+| `/proprietario` | `app/(proprietario)/proprietario/page.tsx` | Dashboard: KPIs, cards por apt, gráfico 6 meses |
+| `/proprietario/extrato` | `app/(proprietario)/proprietario/extrato/page.tsx` | Extrato detalhado por apt com custos por categoria |
+| `/proprietario/historico` | `app/(proprietario)/proprietario/historico/page.tsx` | Tabela últimos 12 meses |
+
+### Banco de dados — nova tabela
+
+**`proprietario_apartamentos`** (`supabase/migrations/014_portal_proprietario.sql`)
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `proprietario_id` | `uuid` | FK `auth.users.id` |
+| `apartamento_id` | `uuid` | FK `apartamentos.id` |
+| `ativo` | `boolean` | Soft delete — false = sem acesso |
+| `created_at` | `timestamptz` | — |
+
+UNIQUE: `(proprietario_id, apartamento_id)`
+
+### Segurança
+
+- RLS em `proprietario_apartamentos`: proprietário lê apenas seus próprios; analista gerencia todos
+- RLS em `custos`: policy `proprietario_le_custos` — subquery via vínculo ativo
+- RLS em `diarias`: policy `proprietario_le_diarias` — subquery via vínculo ativo
+- RLS em `amenitiz_reservas`: policy `proprietario_le_reservas` — JOIN apartamentos via número
+- Middleware (`middleware.ts` → `proxy.ts`): bloqueia acesso cruzado entre portais por role
+
+### Componentes criados
+
+| Componente | Arquivo | Tipo |
+|---|---|---|
+| `LogoutButton` | `components/proprietario/logout-button.tsx` | Client |
+| `EvolucaoChart` | `components/proprietario/evolucao-chart.tsx` | Client (Recharts) |
+| `CadastrarProprietarioModal` | `components/modals/cadastrar-proprietario-modal.tsx` | Client |
+| `GerenciarProprietarioModal` | `components/modals/gerenciar-proprietario-modal.tsx` | Client |
+
+### APIs criadas/atualizadas
+
+| Endpoint | Verbo | Descrição |
+|---|---|---|
+| `/api/proprietario-apartamentos` | GET | Lista vínculos de um proprietário |
+| `/api/proprietario-apartamentos` | POST | Vincula novos apartamentos (upsert) |
+| `/api/proprietario-apartamentos` | DELETE | Soft delete de vínculo (ativo=false) |
+| `/api/proprietario-apartamentos` | PATCH | Sincroniza lista completa de apts ativos |
+| `/api/usuarios` | POST | Agora aceita `role: 'proprietario'` + `apartamento_ids[]` |
+
+### Cálculo de repasse (igual à prestação de contas)
+
+```
+base = tipo_repasse === 'faturamento' ? faturamento : lucro
+repasse = base * (taxa_repasse / 100)
+valor_proprietario = lucro - repasse
+```
+
+### Como testar
+
+1. Aplicar `supabase/migrations/014_portal_proprietario.sql` no Supabase SQL Editor
+2. Acessar `/usuarios` como analista
+3. Criar um proprietário via "Novo Proprietário" — vincular apartamentos
+4. Fazer logout e logar com as credenciais do proprietário
+5. Sistema redireciona automaticamente para `/proprietario`
+6. Verificar que o proprietário não consegue acessar `/`, `/custos`, etc.
 
 ---
 

@@ -17,10 +17,23 @@ export default async function UsuariosPage() {
 
   if (myProfile?.role !== 'analista') redirect('/')
 
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, role, created_at')
-    .order('created_at')
+  const [
+    { data: profiles },
+    { data: apartamentosData },
+    { data: vinculosData },
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, role, created_at')
+      .order('created_at'),
+    supabase
+      .from('apartamentos')
+      .select('id, numero, tipo_gestao, empreendimentos(nome)')
+      .order('numero'),
+    supabase
+      .from('proprietario_apartamentos')
+      .select('proprietario_id, apartamento_id, ativo'),
+  ])
 
   return (
     <div className="p-8">
@@ -38,7 +51,20 @@ export default async function UsuariosPage() {
         </div>
       </div>
 
-      <UsuariosClient profiles={profiles ?? []} />
+      <UsuariosClient
+        profiles={profiles ?? []}
+        apartamentos={(apartamentosData ?? []) as unknown as Array<{
+          id: string
+          numero: string
+          tipo_gestao: string | null
+          empreendimentos: { nome: string } | null
+        }>}
+        vinculos={(vinculosData ?? []) as Array<{
+          proprietario_id: string
+          apartamento_id: string
+          ativo: boolean
+        }>}
+      />
     </div>
   )
 }

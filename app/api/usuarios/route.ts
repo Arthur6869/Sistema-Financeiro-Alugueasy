@@ -26,17 +26,18 @@ export async function POST(request: NextRequest) {
 
   // ── Validar body ─────────────────────────────────────────────────────────
   const body = await request.json()
-  const { full_name, email, password, role } = body as {
+  const { full_name, email, password, role, apartamento_ids } = body as {
     full_name: string
     email: string
     password: string
-    role: 'admin' | 'analista'
+    role: 'admin' | 'analista' | 'proprietario'
+    apartamento_ids?: string[]
   }
 
   if (!full_name?.trim() || !email?.trim() || !password || !role) {
     return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
   }
-  if (!['admin', 'analista'].includes(role)) {
+  if (!['admin', 'analista', 'proprietario'].includes(role)) {
     return NextResponse.json({ error: 'Role inválido' }, { status: 400 })
   }
   if (password.length < 6) {
@@ -82,6 +83,20 @@ export async function POST(request: NextRequest) {
       { error: `Erro ao salvar perfil: ${profileErr.message}` },
       { status: 500 }
     )
+  }
+
+  // Vincular apartamentos se role for proprietario e apartamento_ids foi fornecido
+  if (role === 'proprietario' && Array.isArray(apartamento_ids) && apartamento_ids.length > 0) {
+    await adminClient
+      .from('proprietario_apartamentos')
+      .upsert(
+        apartamento_ids.map(apartamento_id => ({
+          proprietario_id: newUser.user.id,
+          apartamento_id,
+          ativo: true,
+        })),
+        { onConflict: 'proprietario_id,apartamento_id' }
+      )
   }
 
   return NextResponse.json({
