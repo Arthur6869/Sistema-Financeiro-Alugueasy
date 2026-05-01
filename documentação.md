@@ -328,9 +328,25 @@ Log de histórico de cada upload de planilha realizado.
 
 ---
 
+### 5.8 Tabela `proprietario_apartamentos`
+
+Criada na migration `014_portal_proprietario.sql`. Vincula usuários com role `proprietario` aos seus imóveis.
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| `id` | uuid PK | Identificador único |
+| `proprietario_id` | uuid FK → auth.users | Usuário proprietário |
+| `apartamento_id` | uuid FK → apartamentos | Apartamento vinculado |
+| `ativo` | boolean DEFAULT true | Soft delete — desativar em vez de deletar |
+| `created_at` | timestamptz | Data do vínculo |
+
+UNIQUE: `(proprietario_id, apartamento_id)`
+
+---
+
 ### 5.7 Políticas de Row Level Security (RLS)
 
-RLS está **habilitado em todas as 6 tabelas**.
+RLS está **habilitado em todas as 7 tabelas**.
 
 | Tabela | Ação | Quem pode executar |
 |---|---|---|
@@ -369,7 +385,23 @@ RLS está **habilitado em todas as 6 tabelas**.
 | `/relatorio` | `(dashboard)/relatorio/page.tsx` | Todos | Relatório analítico: últimos 6 meses automáticos, gráfico de linha (Faturamento/Custos/Lucro), tabela pivot (Categorias × Meses), KPIs ADM vs SUB. |
 | `/prestacao-contas` | `(dashboard)/prestacao-contas/page.tsx` | Todos | Visualização de prestação de contas por apartamento com geração de PDF |
 | `/importar` | `(dashboard)/importar/page.tsx` | **Admin only** | Upload de planilhas Excel em 4 tipos. Histórico de importações buscado do banco. |
-| `/usuarios` | `(dashboard)/usuarios/page.tsx` | **Admin only** | Lista de todos os usuários com nome, role e data de cadastro. |
+| `/usuarios` | `(dashboard)/usuarios/page.tsx` | **Admin only** | Lista usuários internos (admin/analista) e proprietários. Permite cadastrar e gerenciar vínculos de proprietários. |
+
+### 6.4 Rotas do Portal do Proprietário
+
+Grupo de rotas isolado `app/(proprietario)/` — layout e UX completamente separados do sistema interno.
+
+| Rota | Arquivo | Acesso | Descrição |
+|------|---------|--------|-----------|
+| `/proprietario` | `app/(proprietario)/proprietario/page.tsx` | `proprietario` | Dashboard: 4 KPIs (faturamento, custos, lucro, repasse), cards por apt se >1, gráfico de evolução dos últimos 6 meses |
+| `/proprietario/extrato` | `app/(proprietario)/proprietario/extrato/page.tsx` | `proprietario` | Extrato detalhado com custos por categoria, cálculo de repasse, botão PDF por apartamento, estados vazios quando sem dados |
+| `/proprietario/historico` | `app/(proprietario)/proprietario/historico/page.tsx` | `proprietario` | Tabela dos últimos 12 meses com status pills (Em andamento/Fechado/Sem dados), linha de totais acumulados |
+
+**Componentes exclusivos do portal:**
+- `components/proprietario/evolucao-chart.tsx` — Recharts LineChart (Faturamento/Lucro/Repasse)
+- `components/proprietario/logout-button.tsx` — Client component com signOut + redirect
+- `components/modals/cadastrar-proprietario-modal.tsx` — Multi-select de apts por empreendimento
+- `components/modals/gerenciar-proprietario-modal.tsx` — Checkbox para editar vínculos ativos
 
 ### 6.3 Detalhes das Páginas
 
@@ -694,25 +726,28 @@ O parser faz matching por nome (case insensitive) entre o nome na planilha e os 
 
 ## 10. Controle de Acesso por Role
 
-| Funcionalidade | `admin` | `analista` |
-|---|---|---|
-| Visualizar Dashboard (`/`) | ✅ | ✅ |
-| Ver Empreendimentos | ✅ | ✅ |
-| Ver Custos | ✅ | ✅ |
-| Ver Diárias | ✅ | ✅ |
-| Ver Relatório Analítico | ✅ | ✅ |
-| Criar Empreendimento/Apartamento | ✅ | ❌ (RLS bloqueia) |
-| Excluir Empreendimento/Apartamento | ✅ | ❌ (RLS bloqueia) |
-| Importar Planilhas (`/importar`) | ✅ | ❌ (redirect na página) |
-| Ver Usuários (`/usuarios`) | ✅ | ❌ (redirect para `/`) |
-| Limpar dados do período | ✅ | ❌ (API verifica role) |
-| Escrever no banco (via RLS) | ✅ | ❌ |
+> **Nota sobre semântica invertida:** neste sistema, `analista` é o operador com acesso total ao sistema interno; `admin` é somente-leitura. `proprietario` só acessa o portal próprio.
 
-**Camadas de proteção para admins:**
-1. **Sidebar** — Itens admin ocultos para analistas
-2. **Server Component** — Verificação de role + redirect no servidor
-3. **RLS** — Banco bloqueia INSERT/UPDATE/DELETE para não-admins
-4. **API Routes** — Verificação manual de autenticação e role
+| Funcionalidade | `analista` | `admin` | `proprietario` |
+|---|---|---|---|
+| Dashboard interno (`/`) | ✅ | ✅ | ❌ → redirect `/proprietario` |
+| Ver Empreendimentos | ✅ | ✅ | ❌ |
+| Ver Custos / Diárias | ✅ | ✅ | ❌ |
+| Ver Relatório Analítico | ✅ | ✅ | ❌ |
+| Criar Empreendimento/Apartamento | ✅ | ❌ (RLS) | ❌ |
+| Importar Planilhas (`/importar`) | ✅ | ❌ (redirect) | ❌ |
+| Gerenciar Usuários (`/usuarios`) | ✅ | ❌ (redirect) | ❌ |
+| Limpar dados do período | ✅ | ❌ (API verifica) | ❌ |
+| Portal `/proprietario` | ❌ → redirect `/` | ❌ → redirect `/` | ✅ |
+| Ver seus apartamentos | N/A | N/A | ✅ (RLS filtra) |
+| Ver dados de outros proprietários | N/A | N/A | ❌ (RLS bloqueia) |
+| Baixar PDF do extrato | N/A | N/A | ✅ (seus apts) |
+
+**Camadas de proteção:**
+1. **proxy.ts (middleware)** — redireciona por role antes de renderizar qualquer página
+2. **Layout Server Component** — `DashboardLayout` expulsa `proprietario`; `(proprietario)/layout.tsx` expulsa não-proprietários
+3. **RLS** — banco filtra dados por `proprietario_apartamentos.proprietario_id = auth.uid()`
+4. **API Routes** — verificam autenticação e role individualmente
 
 ---
 
@@ -771,6 +806,9 @@ O middleware intercepta **todas** as requisições antes de chegarem às página
 | B8 | 🟠 Alto | Corrigido | Constraints UNIQUE adicionadas via migration `001`. API usa `upsert` com `onConflict` como camada extra. | `supabase/migrations/001_...sql` + `api/import/route.ts` |
 | B9 | 🔴 Segurança | Corrigido | Função `handle_new_user()` recriada com `SET search_path = public` via migration `002`. | `supabase/migrations/002_...sql` |
 | B10 | 🟡 Médio | A verificar | `.env.local` pode ter espaços no final das variáveis. | `.env.local` |
+| B11 | 🟠 Alto | Corrigido | Constraint `profiles_role_check` não incluía `'proprietario'` — bloqueava cadastro de proprietários. | `migration 014` |
+| B12 | 🟠 Alto | Corrigido | RLS policy `FOR ALL` sem `WITH CHECK` bloqueava INSERT do analista em `proprietario_apartamentos`. | `migration 015` |
+| B13 | 🟠 Alto | Corrigido | Policy SELECT `proprietario_ve_seus_vinculos` não foi criada na aplicação parcial da migration 014 — portal mostrava "Nenhum apartamento vinculado" mesmo com dados corretos. | `migration 016` |
 
 ---
 
