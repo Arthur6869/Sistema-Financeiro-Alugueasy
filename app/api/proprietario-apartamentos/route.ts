@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true, vinculados: apartamento_ids.length })
 }
 
-// DELETE — soft delete de vínculo (ativo = false) ou remoção por IDs
+// DELETE — soft delete de vínculo (ativo = false)
 export async function DELETE(request: NextRequest) {
   const supabase = await createClient()
   const { erro } = await verificarAnalista(supabase)
@@ -86,7 +86,7 @@ export async function DELETE(request: NextRequest) {
   return NextResponse.json({ success: true })
 }
 
-// PATCH — sincroniza vínculos: recebe lista completa de apt_ids ativos para um proprietário
+// PATCH — sincroniza lista completa de apt_ids ativos para um proprietário
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient()
   const { erro } = await verificarAnalista(supabase)
@@ -103,10 +103,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Buscar vínculos existentes
-  const { data: existentes } = await supabase
+  const { data: existentes, error: fetchErr } = await supabase
     .from('proprietario_apartamentos')
     .select('id, apartamento_id, ativo')
     .eq('proprietario_id', proprietario_id)
+
+  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
 
   const existentesMap = new Map((existentes ?? []).map(e => [e.apartamento_id, e]))
 
@@ -126,17 +128,20 @@ export async function PATCH(request: NextRequest) {
     .map(e => e.apartamento_id)
 
   if (toUpsert.length > 0) {
-    await supabase
+    const { error: upsertErr } = await supabase
       .from('proprietario_apartamentos')
       .upsert(toUpsert, { onConflict: 'proprietario_id,apartamento_id' })
+    if (upsertErr) return NextResponse.json({ error: upsertErr.message }, { status: 500 })
   }
 
   if (toDesativar.length > 0) {
-    await supabase
+    const { error: desativarErr } = await supabase
       .from('proprietario_apartamentos')
       .update({ ativo: false })
       .eq('proprietario_id', proprietario_id)
       .in('apartamento_id', toDesativar)
+    if (desativarErr) return NextResponse.json({ error: desativarErr.message }, { status: 500 })
   }
+
   return NextResponse.json({ success: true })
 }
