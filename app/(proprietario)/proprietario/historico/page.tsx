@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency, MESES } from '@/lib/constants'
 import { Home, History } from 'lucide-react'
 import Link from 'next/link'
+import { HistoricoCardsMobile } from '@/components/proprietario/historico-cards-mobile'
 
 type ApartamentoVinculo = {
   id: string
@@ -125,18 +126,30 @@ export default async function HistoricoPropPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <History size={20} className="text-[#193660]" />
-          <h1 className="text-2xl font-bold text-gray-900">Histórico</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Histórico</h1>
         </div>
         <p className="text-gray-500 text-sm">
-          Últimos 12 meses — clique no mês para ver o extrato detalhado
+          Últimos 12 meses — toque no mês para ver o extrato
         </p>
       </div>
 
-      <Card className="border border-gray-100 shadow-sm overflow-hidden">
+      {/* Cards mobile (substituem a tabela) */}
+      <HistoricoCardsMobile dados={dados.map(d => ({
+        m: d.m,
+        a: d.a,
+        faturamento: d.faturamento,
+        lucro: d.lucro,
+        valorProprietario: d.valorProprietario,
+        semDados: d.semDados,
+        status: d.status,
+      }))} />
+
+      {/* Tabela desktop */}
+      <Card className="hidden md:block border border-gray-100 shadow-sm overflow-hidden">
         <CardHeader className="py-3 bg-gray-50 border-b border-gray-100">
           <CardTitle className="text-sm font-semibold text-gray-700">Resumo Mensal</CardTitle>
         </CardHeader>

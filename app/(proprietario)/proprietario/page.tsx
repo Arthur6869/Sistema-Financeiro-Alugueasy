@@ -140,15 +140,15 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
   const mesesComDados = historicoData.filter(h => h.faturamento > 0 || h.lucro !== 0).length
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Saudação */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 md:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">
             Olá, {primeiroNome}! 👋
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Aqui está o resumo dos seus imóveis em{' '}
+            Resumo dos seus imóveis em{' '}
             <span className="font-medium text-gray-700">{mesLabel}</span>
           </p>
         </div>
@@ -166,7 +166,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {/* Faturamento */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="h-1 bg-[#193660]" />
@@ -175,7 +175,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               <TrendingUp size={15} className="text-[#193660]" />
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Faturamento</span>
             </div>
-            <p className="text-2xl font-bold text-[#193660]">{formatCurrency(totalFaturamento)}</p>
+            <p className="text-lg md:text-2xl font-bold text-[#193660]">{formatCurrency(totalFaturamento)}</p>
             <p className="text-xs text-gray-400 mt-1">{mesLabel}</p>
           </div>
         </div>
@@ -188,7 +188,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               <Receipt size={15} className="text-red-500" />
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Custos</span>
             </div>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(totalCustos)}</p>
+            <p className="text-lg md:text-2xl font-bold text-red-600">{formatCurrency(totalCustos)}</p>
             <p className="text-xs text-gray-400 mt-1">{mesLabel}</p>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
                 : <TrendingDown size={15} className="text-red-500" />}
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Lucro Líquido</span>
             </div>
-            <p className={`text-2xl font-bold ${totalLucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <p className={`text-lg md:text-2xl font-bold ${totalLucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(totalLucro)}
             </p>
             <p className="text-xs text-gray-400 mt-1">{mesLabel}</p>
@@ -218,7 +218,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               <Wallet size={15} className="text-amber-500" />
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Seu Repasse</span>
             </div>
-            <p className={`text-2xl font-bold ${totalValorProprietario >= 0 ? 'text-amber-600' : 'text-red-600'}`}>
+            <p className={`text-lg md:text-2xl font-bold ${totalValorProprietario >= 0 ? 'text-amber-600' : 'text-red-600'}`}>
               {formatCurrency(totalValorProprietario)}
             </p>
             <p className="text-xs text-gray-400 mt-1">Após taxa AlugEasy</p>
@@ -280,7 +280,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
                     </div>
                     <Link
                       href={`/proprietario/extrato?mes=${mes}&ano=${ano}`}
-                      className="text-xs text-[#193660] hover:underline"
+                      className="text-xs font-medium text-[#193660] border border-[#193660]/30 rounded-lg px-3 py-1.5 hover:bg-[#193660] hover:text-white transition-colors w-full md:w-auto text-center mt-2 md:mt-0 block md:inline-block"
                     >
                       Ver extrato →
                     </Link>
@@ -305,7 +305,9 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               Histórico disponível após 2 meses de operação
             </div>
           ) : (
-            <EvolucaoChart data={historicoData} />
+            <div className="h-48 md:h-64">
+              <EvolucaoChart data={historicoData} />
+            </div>
           )}
         </CardContent>
       </Card>

@@ -29,11 +29,11 @@ function formatK(value: number) {
 
 export function EvolucaoChart({ data }: Props) {
   return (
-    <ResponsiveContainer width="100%" height={240}>
-      <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-        <YAxis tickFormatter={formatK} tick={{ fontSize: 11 }} width={60} />
+        <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+        <YAxis tickFormatter={formatK} tick={{ fontSize: 10 }} width={52} />
         <Tooltip
           formatter={(value) =>
             typeof value === 'number'
