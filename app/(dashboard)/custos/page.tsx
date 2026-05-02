@@ -1,21 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Receipt, ChevronLeft, ChevronRight } from 'lucide-react'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { CustosEditavelTabela } from '@/components/custos/custos-editavel-tabela'
 
 const PAGE_SIZE = 50
 
@@ -35,26 +27,39 @@ export default async function CustosPage({
   const page = params.page ? Math.max(1, parseInt(params.page)) : 1
   const offset = (page - 1) * PAGE_SIZE
 
-  let query = supabase
-    .from('custos')
-    .select('*, apartamentos(numero, empreendimentos(nome))', { count: 'exact' })
-    .order('categoria')
-    .range(offset, offset + PAGE_SIZE - 1)
+  const [{ data: profile }, custosResult, totalResult, categoriasResult] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).single(),
 
-  if (mes > 0) query = query.eq('mes', mes) as typeof query
-  if (ano > 0) query = query.eq('ano', ano) as typeof query
+    supabase
+      .from('custos')
+      .select(`
+        id, categoria, valor, tipo_gestao, origem, observacao, mes, ano,
+        apartamentos ( numero, empreendimentos ( nome ) )
+      `, { count: 'exact' })
+      .eq('mes', mes)
+      .eq('ano', ano)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1),
 
-  const { data: custos, count } = await query
+    supabase
+      .from('custos')
+      .select('valor')
+      .eq('mes', mes)
+      .eq('ano', ano),
 
-  const totalRegistros = count ?? 0
+    supabase
+      .from('custos')
+      .select('categoria')
+      .order('categoria'),
+  ])
+
+  const custos = custosResult.data ?? []
+  const totalRegistros = custosResult.count ?? 0
   const totalPages = Math.ceil(totalRegistros / PAGE_SIZE)
-
-  // Total geral do período (sem paginação) para o sumário
-  let totalQuery = supabase.from('custos').select('valor')
-  if (mes > 0) totalQuery = totalQuery.eq('mes', mes) as typeof totalQuery
-  if (ano > 0) totalQuery = totalQuery.eq('ano', ano) as typeof totalQuery
-  const { data: todosCustos } = await totalQuery
-  const total = todosCustos?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+  const total = totalResult.data?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+  const categorias = [...new Set(
+    (categoriasResult.data ?? []).map(r => r.categoria).filter(Boolean)
+  )]
 
   const periodoLabel =
     mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
@@ -62,17 +67,11 @@ export default async function CustosPage({
     ano > 0 ? `Todos os meses de ${ano}` :
     'Todos os períodos'
 
-  // Montar URL base para paginação preservando filtros
   const baseUrl = new URLSearchParams()
   if (mes > 0) baseUrl.set('mes', String(mes))
   if (ano > 0) baseUrl.set('ano', String(ano))
-  const paginaAnteriorUrl = page > 1
-    ? `/custos?${baseUrl.toString()}&page=${page - 1}`
-    : null
-  const proximaPaginaUrl = page < totalPages
-    ? `/custos?${baseUrl.toString()}&page=${page + 1}`
-    : null
-
+  const paginaAnteriorUrl = page > 1 ? `/custos?${baseUrl.toString()}&page=${page - 1}` : null
+  const proximaPaginaUrl = page < totalPages ? `/custos?${baseUrl.toString()}&page=${page + 1}` : null
   const inicioRegistro = totalRegistros > 0 ? offset + 1 : 0
   const fimRegistro = Math.min(offset + PAGE_SIZE, totalRegistros)
 
@@ -110,47 +109,11 @@ export default async function CustosPage({
           )}
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-100">
-                <TableHead className="text-gray-500 font-medium">Imóvel</TableHead>
-                <TableHead className="text-gray-500 font-medium">Categoria</TableHead>
-                <TableHead className="text-gray-500 font-medium">Gestão</TableHead>
-                <TableHead className="text-gray-500 font-medium text-right">Valor</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {custos && custos.length > 0 ? (
-                custos.map((custo) => (
-                  <TableRow key={custo.id} className="border-gray-100 hover:bg-gray-50">
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-gray-900">{custo.apartamentos?.numero}</span>
-                        <span className="text-xs text-gray-400">
-                          {(custo.apartamentos?.empreendimentos as { nome?: string } | null)?.nome}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-gray-600 font-medium">{custo.categoria}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={custo.tipo_gestao === 'adm' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}>
-                        {custo.tipo_gestao.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-bold text-gray-900">
-                      R$ {custo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-gray-400 py-12">
-                    Nenhum custo encontrado para {periodoLabel}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <CustosEditavelTabela
+            custos={custos as any}
+            role={profile?.role ?? 'admin'}
+            categoriasSugeridas={categorias}
+          />
 
           {/* Paginação */}
           {totalPages > 1 && (

@@ -271,6 +271,41 @@ export function registerImportacaoTools(server: McpServer): void {
   )
 
   server.tool(
+    'editar_custo',
+    'Edits an existing cost record (any origin — imported or manual). Use to correct values after import without reimporting the entire spreadsheet. Get the record id from get_custos_detalhados. Always call verificar_importacao_custos after to confirm the change.',
+    {
+      id: z.string().uuid()
+        .describe('UUID of the cost record to edit. Get it from get_custos_detalhados.'),
+      categoria: z.string().min(2).optional()
+        .describe('New category name. Leave empty to keep current.'),
+      valor: z.number().positive().optional()
+        .describe('New value in BRL. Leave empty to keep current.'),
+      observacao: z.string().optional()
+        .describe('Optional note explaining the correction.'),
+    },
+    async ({ id, categoria, valor, observacao }) => {
+      const body: Record<string, unknown> = {}
+      if (categoria !== undefined) body.categoria = categoria
+      if (valor !== undefined) body.valor = valor
+      if (observacao !== undefined) body.observacao = observacao
+      const url = `${getBaseUrl()}/api/custos/${id}`
+      const internalKey = process.env.ALUGUEASY_INTERNAL_API_KEY
+      if (!internalKey) throw new Error('Missing ALUGUEASY_INTERNAL_API_KEY')
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alugueasy-internal-key': internalKey,
+        },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json() as Record<string, unknown>
+      if (!res.ok) throw new Error(`editar_custo falhou [${res.status}]: ${JSON.stringify(data)}`)
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] }
+    }
+  )
+
+  server.tool(
     'executar_fechamento_mensal',
     'Executes the complete monthly closing workflow automatically: syncs Amenitiz, verifies costs (ADM+SUB), checks KPIs and margins, audits manual entries, sends statements to all property owners, and notifies analysts by email if any issues are found. This is the primary tool for autonomous monthly closing — call it on the 1st of each month.',
     {

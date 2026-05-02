@@ -224,7 +224,7 @@ Filter by empreendimento name (case-insensitive partial match) and/or tipo_gesta
 
       let q = supabase
         .from('custos')
-        .select('apartamento_id, categoria, valor, tipo_gestao, mes, ano')
+        .select('id, apartamento_id, categoria, valor, tipo_gestao, mes, ano, origem')
       if (mes > 0) q = q.eq('mes', mes)
       if (ano > 0) q = q.eq('ano', ano)
       if (tipo_gestao !== 'todos') q = q.eq('tipo_gestao', tipo_gestao)
@@ -240,11 +240,13 @@ Filter by empreendimento name (case-insensitive partial match) and/or tipo_gesta
         .map((c) => {
           const info = aptMap.get(c.apartamento_id)
           return {
+            id: (c as any).id as string,
             empreendimento: info?.empreendimento ?? 'Não identificado',
             apartamento: String(c.apartamento_id),
             categoria: c.categoria ?? 'Sem categoria',
             valor: c.valor ?? 0,
             tipo_gestao: c.tipo_gestao,
+            origem: (c as any).origem ?? 'importacao',
           }
         })
         .filter((r) =>

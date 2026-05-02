@@ -68,9 +68,9 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 
 ### Regra de origem em custos
 
-- Registros importados têm `origem='importacao'` — **NUNCA** editar via PATCH nem excluir via tela manual
-- Registros manuais têm `origem='manual'` — editáveis e excluíveis pelo analista via `/api/custos-manual/[id]`
-- A API `/api/custos-manual/[id]` verifica `origem` antes de qualquer mutação e retorna `400` se for `'importacao'`
+- Registros importados têm `origem='importacao'` — editáveis e excluíveis pelo analista via `/api/custos/[id]`
+- Registros manuais têm `origem='manual'` — editáveis e excluíveis pelo analista via `/api/custos/[id]`
+- A API `/api/custos/[id]` aceita **qualquer origem** (não restringe por origem)
 - Ao inserir via `lancar_custo_manual` (MCP), gravar sempre `origem='manual'`
 
 ### Restrições que NUNCA devem ser violadas
@@ -108,6 +108,8 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 | `POST /api/custos-manual` | API Route | **Apenas analista** — insere lançamento manual |
 | `PATCH /api/custos-manual/[id]` | API Route | **Apenas analista** — edita lançamento manual |
 | `DELETE /api/custos-manual/[id]` | API Route | **Apenas analista** — remove lançamento manual |
+| `PATCH /api/custos/[id]` | API Route | **Analista ou chave interna** — edita custo (qualquer origem) |
+| `DELETE /api/custos/[id]` | API Route | **Analista ou chave interna** — remove custo (qualquer origem) |
 | `POST /api/agente-fechamento` | API Route | Analista ou chave interna — executa fechamento mensal completo |
 | `GET /api/agente-fechamento` | API Route | Analista ou chave interna — status rápido do mês atual |
 
@@ -344,7 +346,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 23 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual, listar_custos_manuais, executar_fechamento_mensal |
+| **Tools** | 24 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, editar_custo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual, listar_custos_manuais, executar_fechamento_mensal |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -374,6 +376,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `enviar_extrato_email` | importacao | Envia extrato mensal HTML por email ao proprietário via Resend (requer RESEND_API_KEY configurado) |
 | `lancar_custo_manual` | importacao | Insere custos diretamente sem planilha, resolvendo apartamento por nome/empreendimento. Max 50 por chamada. |
 | `listar_custos_manuais` | monitoramento | Lista lançamentos manuais (origem=manual) do período para auditoria pré-fechamento. |
+| `editar_custo` | importacao | Edita categoria/valor/observacao de qualquer custo (qualquer origem) pelo UUID. |
 | `executar_fechamento_mensal` | importacao | Fluxo completo de fechamento em 1 chamada: sync + custos + KPIs + emails + alerta analista. |
 
 ### Cliente Supabase no MCP
