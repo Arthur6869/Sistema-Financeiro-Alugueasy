@@ -271,6 +271,20 @@ export function registerImportacaoTools(server: McpServer): void {
   )
 
   server.tool(
+    'executar_fechamento_mensal',
+    'Executes the complete monthly closing workflow automatically: syncs Amenitiz, verifies costs (ADM+SUB), checks KPIs and margins, audits manual entries, sends statements to all property owners, and notifies analysts by email if any issues are found. This is the primary tool for autonomous monthly closing — call it on the 1st of each month.',
+    {
+      mes: z.number().int().min(1).max(12)
+        .describe('Month to close (1-12). Defaults to previous month if omitted.'),
+      ano: z.number().int().min(2020).max(2030)
+        .describe('Year. Defaults to current year.'),
+    },
+    async ({ mes, ano }) => ({
+      content: [{ type: 'text' as const, text: JSON.stringify(await callApi('/api/agente-fechamento', 'POST', { mes, ano }), null, 2) }],
+    })
+  )
+
+  server.tool(
     'lancar_custo_manual',
     'Manually inserts one or more cost entries directly into the database without needing an Excel import. Use for one-off corrections, adjustments, or costs not in the standard spreadsheet. Always call verificar_importacao_custos after to confirm the insertion.',
     {

@@ -9,7 +9,7 @@ export function registerPrompts(server: McpServer): void {
   // ── prompt 1: relatório mensal completo ───────────────────────────────
   server.prompt(
     'relatorio_mensal',
-    'Full monthly financial report workflow. Syncs Amenitiz, collects KPIs, checks alerts, and summarizes. Use this at the end of each month.',
+    'Full monthly financial report and closing workflow. Now automated — runs all steps in one call via executar_fechamento_mensal.',
     { mes: mesSchema, ano: anoSchema },
     ({ mes, ano }) => ({
       messages: [
@@ -17,30 +17,34 @@ export function registerPrompts(server: McpServer): void {
           role: 'user' as const,
           content: {
             type: 'text' as const,
-            text: `Gere o relatório mensal completo para ${mes.padStart(2, '0')}/${ano}.
+            text: `Execute o fechamento completo de ${mes.padStart(2, '0')}/${ano}.
 
-Execute na seguinte ordem:
-1. Chame health_check — se falhar, pare e informe o problema.
-2. Chame check_sync_pendente {mes: ${mes}, ano: ${ano}} — se não sincronizado, execute sync_amenitiz antes de continuar.
-3. Chame resumo_executivo {mes: ${mes}, ano: ${ano}} — esta é a fonte principal de dados.
-4. Chame get_kpis_por_empreendimento {mes: ${mes}, ano: ${ano}} — para o breakdown.
-5. Chame get_custos_detalhados {mes: ${mes}, ano: ${ano}} — para o ranking de categorias.
-6. Chame get_relatorio_semestral — para tendência dos últimos 6 meses.
-7. Chame alert_margem_baixa {mes: ${mes}, ano: ${ano}, threshold_percent: 20}.
-8. Chame listar_proprietarios {} para ver quais proprietários têm apartamentos com dados neste período.
-9. Para cada proprietário com dados disponíveis (faturamento > 0), pergunte:
-   "Deseja enviar o extrato por email para [Nome]?
-   Use: enviar_extrato_email { proprietario_id: '...', mes: ${mes}, ano: ${ano} }"
+PASSO 1: Chame executar_fechamento_mensal { mes: ${mes}, ano: ${ano} }
 
-Com todos os dados em mãos, produza um relatório em português com:
-- Resumo executivo (3 linhas): faturamento, lucro, margem
-- Tabela de KPIs por empreendimento ordenada por lucro DESC
-- Top 3 categorias de custo com percentual do total
-- Tendência semestral: mês atual vs média dos 5 anteriores
-- Alertas ativos e ação recomendada para cada um
-- Status do sistema (sync, importações pendentes)
+Este comando executa automaticamente:
+  ✓ Sync Amenitiz para o período
+  ✓ Verificação de custos ADM (≥ 5 empreendimentos)
+  ✓ Verificação de custos SUB (≥ 5 empreendimentos)
+  ✓ Cálculo de KPIs (faturamento, custos, lucro, margem)
+  ✓ Auditoria de lançamentos manuais
+  ✓ Envio de extratos por email para todos os proprietários
+  ✓ Notificação ao analista se houver problemas
 
-Formato: markdown limpo, pronto para colar no Notion ou WhatsApp.`,
+PASSO 2: Com base no resultado retornado:
+- Se status_geral = 'ok': informe "✅ Fechamento de ${mes.padStart(2, '0')}/${ano} concluído sem alertas."
+- Se há alertas ⚠️: liste cada um com ação corretiva específica e o comando MCP para resolver
+- Se há erros ❌: descreva o problema e o comando exato para corrigir
+
+PASSO 3: Mostre um resumo executivo em português:
+  Período: ${mes.padStart(2, '0')}/${ano}
+  Faturamento: R$ X
+  Custos: R$ X
+  Lucro: R$ X (X%)
+  Extratos enviados: N proprietários
+  Status: ✅ OK / ⚠️ Com alertas / ❌ Com erros
+
+Se quiser o breakdown completo por empreendimento após o fechamento, chame:
+  get_kpis_por_empreendimento { mes: ${mes}, ano: ${ano} }`,
           },
         },
       ],

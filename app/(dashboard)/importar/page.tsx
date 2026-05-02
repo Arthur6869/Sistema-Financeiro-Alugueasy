@@ -27,6 +27,7 @@ import { MESES, ANOS } from '@/lib/constants'
 import { AmenitizSyncButton } from '@/components/shared/amenitiz-sync-button'
 import { SyncPlanilhasButton } from '@/components/shared/sync-planilhas-button'
 import { ObsidianSyncButton } from '@/components/shared/obsidian-sync-button'
+import { AgenteFechamentoButton } from '@/components/importar/agente-fechamento-button'
 
 const TIPOS = [
   {
@@ -235,6 +236,9 @@ export default function ImportarPage() {
       {/* Seções exclusivas do Analista */}
       {role === 'analista' && (
         <>
+          {/* Agente de Fechamento */}
+          <AgenteFechamentoButton />
+
           {/* Seção Verificação com Planilhas Locais */}
           <div className="mb-6">
             <SyncPlanilhasButton mesInicial={mes} anoInicial={ano} />

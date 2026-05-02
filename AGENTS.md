@@ -108,6 +108,8 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 | `POST /api/custos-manual` | API Route | **Apenas analista** — insere lançamento manual |
 | `PATCH /api/custos-manual/[id]` | API Route | **Apenas analista** — edita lançamento manual |
 | `DELETE /api/custos-manual/[id]` | API Route | **Apenas analista** — remove lançamento manual |
+| `POST /api/agente-fechamento` | API Route | Analista ou chave interna — executa fechamento mensal completo |
+| `GET /api/agente-fechamento` | API Route | Analista ou chave interna — status rápido do mês atual |
 
 > **Importante:** O grupo `(dashboard)` não existe como segmento de URL. A rota raiz é `/`, não `/dashboard`. Ao redirecionar, use sempre `/` para o dashboard.
 
@@ -294,6 +296,40 @@ proprietario_apartamentos:
 
 ---
 
+## 🤖 Agente Autônomo de Fechamento
+
+O agente executa automaticamente todo dia 1 do mês às 11h UTC (8h Brasília) via Vercel Cron (`vercel.json`).
+Também pode ser executado manualmente em `/importar` ou via MCP tool `executar_fechamento_mensal`.
+
+### Fluxo automático (em ordem)
+1. Sync Amenitiz para o mês anterior
+2. Verifica custos ADM — alerta se < 5 empreendimentos com dados
+3. Verifica custos SUB — alerta se < 5 empreendimentos com dados
+4. Calcula KPIs (faturamento, custos, lucro, margem) — alerta se margem < 10%
+5. Lista lançamentos manuais pendentes — avisa se houver algum
+6. Envia extrato por email para todos os proprietários ativos
+7. Notifica analistas por email (via Resend) se houver qualquer alerta
+
+### Autenticação da API
+- Usuário logado com `role = 'analista'` via cookie
+- Chamada interna com header `x-alugueasy-internal-key` (Vercel Cron + MCP)
+
+### Alertas que disparam notificação ao analista
+- `❌` Sync Amenitiz falhou
+- `⚠️` Apts sem room_id (faturamento perdido)
+- `⚠️` Custos ADM/SUB < 5 empreendimentos
+- `❌` Faturamento zerado após sync
+- `⚠️` Margem abaixo de 10%
+- `ℹ️` Lançamentos manuais presentes no período
+- `⚠️` Email não enviado para algum proprietário
+
+### Para ativar em produção
+1. Fazer deploy na Vercel — o cron é ativado automaticamente via `vercel.json`
+2. Configurar `RESEND_API_KEY` na Vercel para notificações por email
+3. Verificar `ALUGUEASY_INTERNAL_API_KEY` e `ALUGUEASY_BASE_URL` nas env vars da Vercel
+
+---
+
 ## 🤖 MCP Server
 
 O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude Desktop, Claude Code).
@@ -308,7 +344,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 22 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual, listar_custos_manuais |
+| **Tools** | 23 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual, listar_custos_manuais, executar_fechamento_mensal |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -338,6 +374,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `enviar_extrato_email` | importacao | Envia extrato mensal HTML por email ao proprietário via Resend (requer RESEND_API_KEY configurado) |
 | `lancar_custo_manual` | importacao | Insere custos diretamente sem planilha, resolvendo apartamento por nome/empreendimento. Max 50 por chamada. |
 | `listar_custos_manuais` | monitoramento | Lista lançamentos manuais (origem=manual) do período para auditoria pré-fechamento. |
+| `executar_fechamento_mensal` | importacao | Fluxo completo de fechamento em 1 chamada: sync + custos + KPIs + emails + alerta analista. |
 
 ### Cliente Supabase no MCP
 
