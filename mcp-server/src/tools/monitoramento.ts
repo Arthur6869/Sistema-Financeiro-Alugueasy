@@ -415,6 +415,63 @@ export function registerMonitoramentoTools(server: McpServer): void {
   )
 
   server.tool(
+    'listar_custos_manuais',
+    'Lists manually entered cost records (origem=manual) for a given period. Use to audit manual entries before closing the month or to verify corrections made outside the standard import flow.',
+    {
+      mes: z.number().int().min(1).max(12).describe('Month (1-12)'),
+      ano: z.number().int().min(2020).max(2030).describe('Year'),
+      empreendimento: z.string().optional()
+        .describe('Filter by property name (partial match). Leave empty for all.'),
+    },
+    async ({ mes, ano, empreendimento }) => {
+      const supabase = getSupabaseClient()
+
+      const { data, error } = await supabase
+        .from('custos')
+        .select('id, categoria, valor, tipo_gestao, observacao, created_at, apartamentos(numero, empreendimentos(nome))')
+        .eq('mes', mes)
+        .eq('ano', ano)
+        .eq('origem', 'manual')
+        .order('created_at', { ascending: false })
+
+      if (error) throw new Error(`Supabase error em listar_custos_manuais: ${error.message}`)
+
+      const filtrado = empreendimento
+        ? (data ?? []).filter(r =>
+            (r.apartamentos as any)?.empreendimentos?.nome
+              ?.toLowerCase().includes(empreendimento.toLowerCase())
+          )
+        : (data ?? [])
+
+      const total = filtrado.reduce((a, r) => a + (r.valor ?? 0), 0)
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            periodo: `${String(mes).padStart(2, '0')}/${ano}`,
+            total_registros: filtrado.length,
+            total_valor: Math.round(total * 100) / 100,
+            registros: filtrado.map(r => ({
+              id: r.id,
+              empreendimento: (r.apartamentos as any)?.empreendimentos?.nome ?? '—',
+              apartamento: (r.apartamentos as any)?.numero ?? '—',
+              categoria: r.categoria,
+              valor: r.valor,
+              tipo_gestao: r.tipo_gestao,
+              observacao: (r as any).observacao ?? null,
+              criado_em: r.created_at,
+            })),
+            mensagem: filtrado.length === 0
+              ? `Nenhum lançamento manual para ${String(mes).padStart(2, '0')}/${ano}`
+              : `${filtrado.length} lançamento(s) manual(is) — total R$ ${total.toFixed(2)}`,
+          }, null, 2),
+        }],
+      }
+    }
+  )
+
+  server.tool(
     'listar_proprietarios',
     'Lists all registered proprietário users with their linked apartments and access status. Use this to audit portal access, verify vinculos, or troubleshoot portal issues.',
     {},

@@ -285,10 +285,15 @@ Despesas operacionais mensais por apartamento.
 | `categoria` | `text` | NOT NULL | Nome da categoria (ex: "Amenitiz", "Limpeza") |
 | `valor` | `numeric` | DEFAULT `0` | Valor do custo em R$ |
 | `tipo_gestao` | `text` | CHECK: `'adm'|'sub'` | Tipo de gestão do imóvel |
+| `origem` | `text` | CHECK: `'manual'\|'importacao'` DEFAULT `'importacao'` | Fonte do lançamento |
+| `observacao` | `text` | nullable | Observação livre do analista |
+| `criado_por` | `uuid` | FK → `auth.users` nullable | Usuário que criou o registro (lançamentos manuais) |
 | `created_at` | `timestamptz` | DEFAULT `now()` | Data de criação |
 | `updated_at` | `timestamptz` | DEFAULT `now()` | Última atualização |
 
 > ⚠️ **Bug #8:** Sem constraint UNIQUE — reimportação da mesma planilha duplica os dados. A API faz DELETE antes do INSERT para mitigar, mas não é uma solução completa.
+
+> 📌 **Regra de origem:** registros com `origem='importacao'` são protegidos contra edição/exclusão via API manual. Somente registros com `origem='manual'` podem ser editados/excluídos pela tela de lançamento manual.
 
 ---
 
@@ -381,6 +386,7 @@ RLS está **habilitado em todas as 7 tabelas**.
 | `/empreendimentos` | `(dashboard)/empreendimentos/page.tsx` | Todos | Visão em tabs: lista de empreendimentos com métricas financeiras e detalhe por empreendimento com apartamentos. Criação e exclusão de empreendimentos e apartamentos. |
 | `/apartamentos` | `(dashboard)/apartamentos/page.tsx` | Todos | Redireciona para `/empreendimentos`. |
 | `/custos` | `(dashboard)/custos/page.tsx` | Todos | Tabela de despesas filtrável por mês/ano. Colunas: Imóvel, Categoria, Gestão (ADM/SUB), Valor. |
+| `/custos/manual` | `(dashboard)/custos/manual/page.tsx` | **Analista** | Lançamento manual individual com filtros de contexto, formulário com categorias, edição inline e histórico do período. |
 | `/diarias` | `(dashboard)/diarias/page.tsx` | Todos | Tabela de receitas filtrável por mês/ano. Colunas: Data, Imóvel, Gestão (ADM/SUB), Valor. |
 | `/relatorio` | `(dashboard)/relatorio/page.tsx` | Todos | Relatório analítico: últimos 6 meses automáticos, gráfico de linha (Faturamento/Custos/Lucro), tabela pivot (Categorias × Meses), KPIs ADM vs SUB. |
 | `/prestacao-contas` | `(dashboard)/prestacao-contas/page.tsx` | Todos | Visualização de prestação de contas por apartamento com geração de PDF |
@@ -620,6 +626,28 @@ Limpa todos os dados financeiros de um período (mês + ano).
 }
 ```
 
+### GET/POST `/api/custos-manual`
+
+**Arquivo:** `app/api/custos-manual/route.ts`
+
+**GET** — Lista lançamentos de custos do período com filtros. Requer autenticação.
+
+**Query params:** `mes`, `ano`, `tipo_gestao` (obrigatórios) + `empreendimento_id` (opcional)
+
+**POST** — Insere um lançamento manual. Requer `role = 'analista'`. Valida duplicata exata (mesmo `apartamento_id`, `mes`, `ano`, `categoria`, `tipo_gestao`, `valor`) e retorna `409` se encontrada. Grava com `origem='manual'` e `criado_por=user.id`.
+
+---
+
+### PATCH/DELETE `/api/custos-manual/[id]`
+
+**Arquivo:** `app/api/custos-manual/[id]/route.ts`
+
+**PATCH** — Edita `categoria`, `valor` e `observacao` de um lançamento. Requer `role = 'analista'`. Guard verifica `origem='manual'` antes de qualquer mutação — lançamentos importados são protegidos.
+
+**DELETE** — Remove o lançamento por `id`. Mesma guarda de `origem='manual'`.
+
+---
+
 ### POST `/api/obsidian/sync`
 
 **Arquivo:** `app/api/obsidian/sync/route.ts`
@@ -809,6 +837,7 @@ O middleware intercepta **todas** as requisições antes de chegarem às página
 | B11 | 🟠 Alto | Corrigido | Constraint `profiles_role_check` não incluía `'proprietario'` — bloqueava cadastro de proprietários. | `migration 014` |
 | B12 | 🟠 Alto | Corrigido | RLS policy `FOR ALL` sem `WITH CHECK` bloqueava INSERT do analista em `proprietario_apartamentos`. | `migration 015` |
 | B13 | 🟠 Alto | Corrigido | Policy SELECT `proprietario_ve_seus_vinculos` não foi criada na aplicação parcial da migration 014 — portal mostrava "Nenhum apartamento vinculado" mesmo com dados corretos. | `migration 016` |
+| B14 | 🟡 Baixo | Prevenido | Edição acidental de custos importados via tela manual — campo `origem` com CHECK constraint + guard na API impede qualquer mutação em registros de origem `'importacao'`. | `migration 013` + `api/custos-manual/[id]/route.ts` |
 
 ---
 

@@ -96,6 +96,12 @@ Verifique cada item na ordem e marque ✅ ou ❌:
    → ✅ se total_sem_room_id = 0
    → ❌ se há apartamentos sem mapeamento (liste quais e o impacto estimado)
 
+7. [ ] Lançamentos manuais — chame listar_custos_manuais {mes: ${mes}, ano: ${ano}}
+   → ✅ se total_registros = 0 (nenhum lançamento avulso)
+   → ℹ️ se há lançamentos: revisar se todos são intencionais
+   → Para cada lançamento: verificar categoria, valor e empreendimento
+   → Confirmar com o analista se os valores estão corretos antes de fechar
+
 Produza o checklist final com:
 - Status de cada item (✅/❌)
 - Para cada ❌: ação corretiva específica com o comando MCP a executar
