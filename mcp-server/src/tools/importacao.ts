@@ -133,6 +133,85 @@ async function clearPeriodo(mes: number, ano: number, confirmar: boolean) {
   }
 }
 
+async function lancarCustoManual(
+  lancamentos: Array<{
+    apartamento_numero: string
+    empreendimento: string
+    mes: number
+    ano: number
+    categoria: string
+    valor: number
+    tipo_gestao: 'adm' | 'sub'
+  }>
+) {
+  const supabase = getSupabaseClient()
+  const resolvidos: Array<{
+    apartamento_id: string
+    mes: number
+    ano: number
+    categoria: string
+    valor: number
+    tipo_gestao: string
+    origem: string
+  }> = []
+  const erros: string[] = []
+
+  for (const l of lancamentos) {
+    const { data: emp } = await supabase
+      .from('empreendimentos')
+      .select('id, nome')
+      .ilike('nome', `%${l.empreendimento}%`)
+      .limit(1)
+      .maybeSingle()
+
+    if (!emp) {
+      erros.push(`Empreendimento não encontrado: ${l.empreendimento}`)
+      continue
+    }
+
+    const { data: apt } = await supabase
+      .from('apartamentos')
+      .select('id, numero, tipo_gestao')
+      .eq('empreendimento_id', emp.id)
+      .eq('numero', l.apartamento_numero)
+      .limit(1)
+      .maybeSingle()
+
+    if (!apt) {
+      erros.push(`Apt ${l.apartamento_numero} não encontrado em ${emp.nome}`)
+      continue
+    }
+
+    resolvidos.push({
+      apartamento_id: apt.id,
+      mes: l.mes,
+      ano: l.ano,
+      categoria: l.categoria,
+      valor: l.valor,
+      tipo_gestao: l.tipo_gestao,
+      origem: 'manual',
+    })
+  }
+
+  if (erros.length > 0 && resolvidos.length === 0) {
+    throw new Error(`Nenhum lançamento resolvido. Erros: ${erros.join('; ')}`)
+  }
+
+  const { data, error } = await supabase
+    .from('custos')
+    .insert(resolvidos)
+    .select()
+
+  if (error) throw new Error(`Supabase error em lancar_custo_manual: ${error.message}`)
+
+  return {
+    inseridos: data?.length ?? 0,
+    erros: erros.length > 0 ? erros : undefined,
+    mensagem: `✅ ${data?.length ?? 0} lançamento(s) inserido(s)${erros.length > 0 ? ` | ⚠️ ${erros.length} erro(s)` : ''}`,
+    lancamentos: data,
+  }
+}
+
 export function registerImportacaoTools(server: McpServer): void {
   const mesSchema = z.number().int().min(1).max(12).describe('Mês (1-12)')
   const anoSchema = z.number().int().min(2020).max(2030).describe('Ano (ex: 2026)')
@@ -188,6 +267,31 @@ export function registerImportacaoTools(server: McpServer): void {
     },
     async ({ mes, ano, confirmar }) => ({
       content: [{ type: 'text', text: JSON.stringify(await clearPeriodo(mes, ano, confirmar), null, 2) }],
+    })
+  )
+
+  server.tool(
+    'lancar_custo_manual',
+    'Manually inserts one or more cost entries directly into the database without needing an Excel import. Use for one-off corrections, adjustments, or costs not in the standard spreadsheet. Always call verificar_importacao_custos after to confirm the insertion.',
+    {
+      lancamentos: z.array(z.object({
+        apartamento_numero: z.string()
+          .describe('Apartment number as stored in DB (ex: "18", "204", "1615A-1615")'),
+        empreendimento: z.string()
+          .describe('Property name (partial match, ex: "ATHOS", "ESSENCE")'),
+        mes: z.number().int().min(1).max(12),
+        ano: z.number().int().min(2020).max(2030),
+        categoria: z.string().min(3)
+          .describe('Cost category (ex: "Amenitiz", "Condomínio", "Manutenção")'),
+        valor: z.number().positive()
+          .describe('Cost value in BRL (positive number)'),
+        tipo_gestao: z.enum(['adm', 'sub'])
+          .describe('Management type: adm = administration, sub = sublease'),
+      })).min(1).max(50)
+        .describe('List of cost entries to insert. Max 50 per call.'),
+    },
+    async ({ lancamentos }) => ({
+      content: [{ type: 'text' as const, text: JSON.stringify(await lancarCustoManual(lancamentos), null, 2) }],
     })
   )
 

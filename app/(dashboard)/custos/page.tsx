@@ -15,6 +15,7 @@ import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 const PAGE_SIZE = 50
 
@@ -83,6 +84,13 @@ export default async function CustosPage({
           <p className="text-gray-500 text-sm mt-1">
             Despesas de {periodoLabel} — {totalRegistros} lançamento(s)
           </p>
+          <div className="mt-3">
+            <Link href={`/custos/manual?mes=${mes}&ano=${ano}`}>
+              <Button size="sm" className="bg-[#193660] hover:bg-[#193660]/90">
+                Lançamento Manual
+              </Button>
+            </Link>
+          </div>
         </div>
         <Suspense fallback={null}>
           <MonthYearFilter mes={mes} ano={ano} />
@@ -118,7 +126,9 @@ export default async function CustosPage({
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium text-gray-900">{custo.apartamentos?.numero}</span>
-                        <span className="text-xs text-gray-400">{(custo.apartamentos?.empreendimentos as any)?.nome}</span>
+                        <span className="text-xs text-gray-400">
+                          {(custo.apartamentos?.empreendimentos as { nome?: string } | null)?.nome}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="text-gray-600 font-medium">{custo.categoria}</TableCell>

@@ -89,11 +89,16 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 | `/empreendimentos` | Protegido | Autenticados |
 | `/apartamentos` | Protegido | Autenticados |
 | `/custos` | Protegido | Autenticados |
+| `/custos/manual` | Protegido | **Apenas analista** |
 | `/diarias` | Protegido | Autenticados |
 | `/relatorio` | Protegido | Autenticados |
 | `/importar` | Protegido | **Apenas admin** |
 | `/usuarios` | Protegido | **Apenas admin** |
 | `POST /api/import` | API Route | Deve verificar autenticação manualmente |
+| `GET /api/custos-manual` | API Route | Autenticado — lista custos manuais com filtros |
+| `POST /api/custos-manual` | API Route | **Apenas analista** — insere lançamento manual |
+| `PATCH /api/custos-manual/[id]` | API Route | **Apenas analista** — edita lançamento manual |
+| `DELETE /api/custos-manual/[id]` | API Route | **Apenas analista** — remove lançamento manual |
 
 > **Importante:** O grupo `(dashboard)` não existe como segmento de URL. A rota raiz é `/`, não `/dashboard`. Ao redirecionar, use sempre `/` para o dashboard.
 
@@ -294,7 +299,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 20 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios |
+| **Tools** | 21 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -322,6 +327,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `verificar_importacao_custos` | monitoramento | Valida se todos os empreendimentos têm custos gravados após importação |
 | `listar_proprietarios` | monitoramento | Lista usuários com role=proprietario e seus apartamentos vinculados (ativo/inativo) |
 | `enviar_extrato_email` | importacao | Envia extrato mensal HTML por email ao proprietário via Resend (requer RESEND_API_KEY configurado) |
+| `lancar_custo_manual` | importacao | Insere custos diretamente sem planilha, resolvendo apartamento por nome/empreendimento. Max 50 por chamada. |
 
 ### Cliente Supabase no MCP
 
