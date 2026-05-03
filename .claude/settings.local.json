@@ -21,7 +21,16 @@
       "Bash(kill %1)",
       "PowerShell(Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Write-Host \"Done\")",
       "Bash(vercel --version)",
-      "Bash(gh pr create --base main --head feature/Arthur --title 'feat: MCP Server v1.0.0 + room_id mappings + production deploy' --body ' *)"
+      "Bash(gh pr create --base main --head feature/Arthur --title 'feat: MCP Server v1.0.0 + room_id mappings + production deploy' --body ' *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(git merge *)",
+      "Bash(python3 -c \"import sys,json; lines=sys.stdin.read\\(\\).strip\\(\\).split\\('\\\\n'\\); [print\\(json.loads\\(l\\).get\\('content',''\\)[:500] if isinstance\\(json.loads\\(l\\).get\\('content',''\\),str\\) else ''\\) for l in lines[-5:] if l]\")",
+      "Bash(node --input-type=module)",
+      "Bash(npm run *)",
+      "Bash(echo \"PID=$!\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:3000/api/prestacao-contas-pdf?apartamento_id=8f7e00cc-b4a7-47d6-8119-3eab11721b05&mes=1&ano=2026\")",
+      "Bash(pkill -f \"next dev\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\arthu\\OneDrive\\Documentos\\Sistema-Financeiro-Alugueasy\\supabase"
