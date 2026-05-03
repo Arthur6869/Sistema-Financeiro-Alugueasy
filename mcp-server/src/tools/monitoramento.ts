@@ -525,4 +525,64 @@ export function registerMonitoramentoTools(server: McpServer): void {
       }
     }
   )
+
+  server.tool(
+    'auditar_room_ids',
+    'Audits all apartments for Amenitiz room_id conflicts (same UUID assigned to multiple apartments) and coverage gaps (apartments without room_id). Run this after any room_id migration to confirm integrity. Returns conflicts, gaps, and overall coverage percentage.',
+    {},
+    async () => {
+      const supabase = getSupabaseClient()
+
+      const { data: apts } = await supabase
+        .from('apartamentos')
+        .select('id, numero, amenitiz_room_id, empreendimentos(nome)')
+        .order('empreendimento_id')
+
+      const mapa: Record<string, { numero: string; emp: string }[]> = {}
+      for (const a of apts ?? []) {
+        const rid = (a as any).amenitiz_room_id
+        if (!rid) continue
+        if (!mapa[rid]) mapa[rid] = []
+        mapa[rid].push({
+          numero: a.numero,
+          emp: ((a as any).empreendimentos as any)?.nome ?? '?',
+        })
+      }
+
+      const conflitos = Object.entries(mapa)
+        .filter(([, list]) => list.length > 1)
+        .map(([uuid, list]) => ({ uuid: uuid.slice(0, 8) + '...', apartamentos: list }))
+
+      const semRoomId = (apts ?? [])
+        .filter(a => !(a as any).amenitiz_room_id)
+        .map(a => ({
+          numero: a.numero,
+          empreendimento: ((a as any).empreendimentos as any)?.nome ?? '?',
+        }))
+
+      const total = apts?.length ?? 0
+      const comRoomId = total - semRoomId.length
+      const cobertura = total > 0 ? Math.round((comRoomId / total) * 100) : 0
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            cobertura_percent: cobertura,
+            total_apartamentos: total,
+            com_room_id: comRoomId,
+            sem_room_id: semRoomId.length,
+            conflitos: conflitos.length,
+            status: conflitos.length > 0
+              ? `❌ ${conflitos.length} conflito(s) de UUID detectado(s) — sync pode estar incorreto`
+              : semRoomId.length > 0
+              ? `⚠️ ${semRoomId.length} apt(s) sem room_id — dependem só do parsing por nome`
+              : '✅ Todos os room_ids mapeados sem conflitos',
+            detalhes_conflitos: conflitos,
+            detalhes_sem_room_id: semRoomId,
+          }, null, 2),
+        }],
+      }
+    }
+  )
 }
