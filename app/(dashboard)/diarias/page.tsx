@@ -1,20 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import Link from 'next/link'
+import { DiariasEditavelTabela } from '@/components/diarias/diarias-editavel-tabela'
 
 const PAGE_SIZE = 50
 
@@ -36,7 +28,7 @@ export default async function DiariasPage({
 
   let query = supabase
     .from('diarias')
-    .select('*, apartamentos(numero, empreendimentos(nome))', { count: 'exact' })
+    .select('id, data, valor, tipo_gestao, apartamentos(numero, empreendimentos(nome))', { count: 'exact' })
     .order('data', { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1)
 
@@ -48,7 +40,10 @@ export default async function DiariasPage({
     query = query.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`) as typeof query
   }
 
-  const { data: diarias, count } = await query
+  const [{ data: diarias, count }, { data: profile }] = await Promise.all([
+    query,
+    supabase.from('profiles').select('role').eq('id', user.id).single(),
+  ])
 
   const totalRegistros = count ?? 0
   const totalPages = Math.ceil(totalRegistros / PAGE_SIZE)
@@ -71,7 +66,6 @@ export default async function DiariasPage({
     ano > 0 ? `Todos os meses de ${ano}` :
     'Todos os períodos'
 
-  // Montar URL base para paginação preservando filtros
   const baseUrl = new URLSearchParams()
   if (mes > 0) baseUrl.set('mes', String(mes))
   if (ano > 0) baseUrl.set('ano', String(ano))
@@ -112,47 +106,10 @@ export default async function DiariasPage({
           )}
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-100">
-                <TableHead className="text-gray-500 font-medium">Data</TableHead>
-                <TableHead className="text-gray-500 font-medium">Imóvel</TableHead>
-                <TableHead className="text-gray-500 font-medium">Gestão</TableHead>
-                <TableHead className="text-gray-500 font-medium text-right">Valor</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {diarias && diarias.length > 0 ? (
-                diarias.map((diaria) => (
-                  <TableRow key={diaria.id} className="border-gray-100 hover:bg-gray-50">
-                    <TableCell className="text-gray-600 font-medium">
-                      {new Date(diaria.data + 'T00:00:00').toLocaleDateString('pt-BR')}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium text-gray-900">{diaria.apartamentos?.numero}</span>
-                        <span className="text-xs text-gray-400">{(diaria.apartamentos?.empreendimentos as any)?.nome}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={diaria.tipo_gestao === 'adm' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}>
-                        {diaria.tipo_gestao.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-bold text-gray-900">
-                      R$ {diaria.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-gray-400 py-12">
-                    Nenhuma diária registrada para {periodoLabel}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <DiariasEditavelTabela
+            diarias={(diarias ?? []) as any}
+            role={profile?.role ?? ''}
+          />
 
           {/* Paginação */}
           {totalPages > 1 && (

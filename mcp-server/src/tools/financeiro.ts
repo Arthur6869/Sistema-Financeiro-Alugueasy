@@ -369,4 +369,59 @@ in percentage (null for the first month). Useful for trend analysis and dashboar
       return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] }
     }
   )
+
+  server.tool(
+    'get_diarias_detalhadas',
+    'Returns daily revenue records with their IDs for a given period. Use this before calling editar_diaria to find the record ID that needs correction.',
+    {
+      mes: z.number().int().min(0).max(12).describe('Month (1-12). 0 = all.'),
+      ano: z.number().int().min(2020).max(2030).describe('Year.'),
+      empreendimento: z.string().optional().describe('Filter by property name (partial match).'),
+    },
+    async ({ mes, ano, empreendimento }) => {
+      const supabase = getSupabaseClient()
+
+      let query = supabase
+        .from('diarias')
+        .select('id, data, valor, tipo_gestao, apartamentos(numero, empreendimentos(nome))')
+        .order('data', { ascending: false })
+        .limit(100)
+
+      if (mes > 0) {
+        const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+        const dataFim = `${ano}-${String(mes).padStart(2, '0')}-31`
+        query = query.gte('data', dataInicio).lte('data', dataFim) as typeof query
+      }
+
+      const { data, error } = await query
+      if (error) throw new Error(`Supabase error: ${error.message}`)
+
+      const filtrado = empreendimento
+        ? (data ?? []).filter(r =>
+            (r.apartamentos as any)?.empreendimentos?.nome
+              ?.toLowerCase().includes(empreendimento.toLowerCase())
+          )
+        : (data ?? [])
+
+      const total = filtrado.reduce((a, r) => a + (r.valor ?? 0), 0)
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            total_registros: filtrado.length,
+            total_valor: round2(total),
+            diarias: filtrado.map(r => ({
+              id: r.id,
+              data: r.data,
+              empreendimento: (r.apartamentos as any)?.empreendimentos?.nome,
+              apartamento: (r.apartamentos as any)?.numero,
+              tipo_gestao: r.tipo_gestao,
+              valor: r.valor,
+            })),
+          }, null, 2),
+        }],
+      }
+    }
+  )
 }

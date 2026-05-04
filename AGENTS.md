@@ -110,6 +110,8 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 | `DELETE /api/custos-manual/[id]` | API Route | **Apenas analista** — remove lançamento manual |
 | `PATCH /api/custos/[id]` | API Route | **Analista ou chave interna** — edita custo (qualquer origem) |
 | `DELETE /api/custos/[id]` | API Route | **Analista ou chave interna** — remove custo (qualquer origem) |
+| `PATCH /api/diarias/[id]` | API Route | **Analista ou chave interna** — edita valor de uma diária |
+| `DELETE /api/diarias/[id]` | API Route | **Analista ou chave interna** — remove uma diária |
 | `POST /api/agente-fechamento` | API Route | Analista ou chave interna — executa fechamento mensal completo |
 | `GET /api/agente-fechamento` | API Route | Analista ou chave interna — status rápido do mês atual |
 
@@ -346,7 +348,7 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 
 | Primitivo | Quantidade | Itens |
 |---|---|---|
-| **Tools** | 25 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, editar_custo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual, listar_custos_manuais, executar_fechamento_mensal, auditar_room_ids |
+| **Tools** | 27 | get_kpis, get_kpis_por_empreendimento, get_custos_detalhados, get_relatorio_semestral, list_empreendimentos, list_apartamentos, set_amenitiz_room_id, get_prestacao_contas, sync_amenitiz, get_historico_importacoes, check_ultimo_sync, clear_periodo, editar_custo, enviar_extrato_email, health_check, alert_margem_baixa, check_sync_pendente, resumo_executivo, check_apartamentos_sem_room_id, verificar_importacao_custos, listar_proprietarios, lancar_custo_manual, listar_custos_manuais, executar_fechamento_mensal, auditar_room_ids, editar_diaria, get_diarias_detalhadas |
 | **Resources** | 4 | alugueasy://schema, alugueasy://empreendimentos, alugueasy://config/taxas, alugueasy://diagnostico/sem-room-id |
 | **Prompts** | 3 | relatorio_mensal, fechamento_mes, diagnostico_sistema |
 
@@ -379,6 +381,8 @@ O servidor MCP expõe o sistema AlugEasy como tools para agentes de IA (Claude D
 | `editar_custo` | importacao | Edita categoria/valor/observacao de qualquer custo (qualquer origem) pelo UUID. |
 | `executar_fechamento_mensal` | importacao | Fluxo completo de fechamento em 1 chamada: sync + custos + KPIs + emails + alerta analista. |
 | `auditar_room_ids` | monitoramento | Detecta UUID duplicados e apts sem amenitiz_room_id. Usar após migrations de room_id. |
+| `editar_diaria` | importacao | Edita o valor de uma diária pelo UUID. Usar para corrigir valores importados errados. |
+| `get_diarias_detalhadas` | financeiro | Retorna diárias com IDs para um período. Usar antes de editar_diaria para localizar o registro. |
 
 ### Cliente Supabase no MCP
 

@@ -452,6 +452,29 @@ export default async function EmpreendimentosPage({
       if (c.tipo_gestao) aptFinMap[c.apartamento_id].gestao.add(c.tipo_gestao)
     })
 
+    // Apartamentos combinados (ex: "1701 - 1701A") sem room_id próprio no Amenitiz:
+    // agregar os dados dos componentes individuais.
+    const numeroParaId = Object.fromEntries((apartamentos ?? []).map((a) => [a.numero, a.id]))
+    ;(apartamentos ?? []).forEach((apt) => {
+      if (!apt.numero.includes(' - ')) return
+      const existing = aptFinMap[apt.id]
+      if (existing && (existing.fat > 0 || existing.custos > 0)) return
+      const parts = apt.numero.split(' - ').map((s: string) => s.trim())
+      const combined = emptyFin()
+      let found = false
+      parts.forEach((num: string) => {
+        const compId = numeroParaId[num]
+        if (!compId || compId === apt.id) return
+        const cf = aptFinMap[compId]
+        if (!cf) return
+        found = true
+        combined.fat += cf.fat; combined.fatAdm += cf.fatAdm; combined.fatSub += cf.fatSub
+        combined.custos += cf.custos; combined.custosAdm += cf.custosAdm; combined.custosSub += cf.custosSub
+        cf.gestao.forEach((g) => combined.gestao.add(g))
+      })
+      if (found) aptFinMap[apt.id] = combined
+    })
+
     const fin = finMap[empId] ?? emptyFin()
     const hasData = fin.fat > 0 || fin.custos > 0
 

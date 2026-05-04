@@ -8,7 +8,8 @@ export const MESES_ABREV = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ]
 
-export const ANOS = [2026]
+const _anoAtual = new Date().getFullYear()
+export const ANOS = Array.from({ length: 3 }, (_, i) => _anoAtual - 1 + i) // ano anterior, atual, próximo
 
 export const formatCurrency = (value: number, decimals = 2): string =>
   `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: decimals })}`

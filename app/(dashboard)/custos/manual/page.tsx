@@ -13,8 +13,10 @@ export default async function CustosManualPage({
 
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes ? Number(params.mes) : now.getMonth() + 1
-  const ano = params.ano ? Number(params.ano) : now.getFullYear()
+  const mesParsed = Number(params.mes)
+  const anoParsed = Number(params.ano)
+  const mes = mesParsed >= 1 && mesParsed <= 12 ? mesParsed : now.getMonth() + 1
+  const ano = anoParsed >= 2020 ? anoParsed : now.getFullYear()
 
   const [{ data: profile }, { data: empreendimentos }, { data: apartamentos }] = await Promise.all([
     supabase.from('profiles').select('role').eq('id', user.id).single(),

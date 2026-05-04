@@ -360,4 +360,38 @@ export function registerImportacaoTools(server: McpServer): void {
       }
     }
   )
+
+  server.tool(
+    'editar_diaria',
+    'Edits the value of a daily revenue record (diaria) in the database. Use to correct values imported from Amenitiz sync when the amount is wrong. Always call get_kpis after to confirm the change propagated to the dashboard.',
+    {
+      id: z.string().uuid()
+        .describe('UUID of the diaria record. Get it from get_diarias_detalhadas or by querying the diarias table.'),
+      valor: z.number().nonnegative()
+        .describe('New value in BRL. Must be >= 0.'),
+    },
+    async ({ id, valor }) => {
+      const baseUrl = process.env.ALUGUEASY_BASE_URL ?? 'http://localhost:3000'
+      const internalKey = process.env.ALUGUEASY_INTERNAL_API_KEY ?? ''
+      const res = await fetch(`${baseUrl}/api/diarias/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alugueasy-internal-key': internalKey,
+        },
+        body: JSON.stringify({ valor }),
+      })
+      const data = await res.json() as Record<string, unknown>
+      if (!res.ok) throw new Error(`Erro ao editar diária: ${JSON.stringify(data)}`)
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            ...data,
+            instrucao: 'Chame get_kpis { mes, ano } para confirmar o novo faturamento total.',
+          }, null, 2),
+        }],
+      }
+    }
+  )
 }
