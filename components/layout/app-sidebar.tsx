@@ -10,6 +10,7 @@ import {
   DollarSign,
   HandCoins,
   CalendarDays,
+  CalendarCheck,
   Upload,
   Users,
   LogOut,
@@ -41,6 +42,7 @@ const navItems = [
   { href: '/custos', label: 'Custos', icon: DollarSign },
   { href: '/custos/manual', label: 'Lançamento Manual', icon: HandCoins },
   { href: '/diarias', label: 'Diárias', icon: CalendarDays },
+  { href: '/reservas', label: 'Reservas', icon: CalendarCheck },
   { href: '/relatorio', label: 'Relatório', icon: BarChart3 },
   { href: '/prestacao-contas', label: 'Prestação de Contas', icon: FileText },
 ]

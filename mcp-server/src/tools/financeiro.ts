@@ -424,4 +424,106 @@ in percentage (null for the first month). Useful for trend analysis and dashboar
       }
     }
   )
+
+  server.tool(
+    'get_reservas_amenitiz',
+    'Returns Amenitiz reservation records with their IDs for a given period. Use before calling editar_reserva to find the record that needs correction. Shows booking_id, guest name, room, platform, dates and values.',
+    {
+      mes: z.number().int().min(1).max(12).describe('Month (1-12).'),
+      ano: z.number().int().min(2020).max(2030).describe('Year.'),
+      quarto: z.string().optional().describe('Filter by room number (partial match).'),
+      plataforma: z.string().optional().describe('Filter by platform (ex: "Booking", "Airbnb").'),
+    },
+    async ({ mes, ano, quarto, plataforma }) => {
+      const supabase = getSupabaseClient()
+
+      let query = supabase
+        .from('amenitiz_reservas')
+        .select('id, booking_id, checkin, checkout, valor_bruto, valor_liquido, plataforma_normalizada, individual_room_number, nome_hospede')
+        .eq('mes_competencia', mes)
+        .eq('ano_competencia', ano)
+        .order('checkin')
+
+      if (quarto) query = query.ilike('individual_room_number', `%${quarto}%`) as typeof query
+      if (plataforma) query = query.ilike('plataforma_normalizada', `%${plataforma}%`) as typeof query
+
+      const { data, error } = await query
+      if (error) throw new Error(`Supabase error: ${error.message}`)
+
+      const totalBruto = (data ?? []).reduce((a, r) => a + (r.valor_bruto ?? 0), 0)
+      const totalLiquido = (data ?? []).reduce((a, r) => a + (r.valor_liquido ?? 0), 0)
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            periodo: `${String(mes).padStart(2, '0')}/${ano}`,
+            total_reservas: data?.length ?? 0,
+            total_bruto: round2(totalBruto),
+            total_liquido: round2(totalLiquido),
+            reservas: (data ?? []).map(r => ({
+              id: r.id,
+              booking_id: r.booking_id,
+              hospede: r.nome_hospede,
+              quarto: r.individual_room_number,
+              plataforma: r.plataforma_normalizada,
+              checkin: r.checkin,
+              checkout: r.checkout,
+              valor_bruto: r.valor_bruto,
+              valor_liquido: r.valor_liquido,
+            })),
+          }, null, 2),
+        }],
+      }
+    }
+  )
+
+  server.tool(
+    'editar_reserva',
+    'Edits one or more fields of an Amenitiz reservation. Editing valor_liquido directly affects dashboard revenue, prestacao de contas, and the owner portal. Always call get_kpis after to confirm the change.',
+    {
+      id: z.string().uuid()
+        .describe('UUID of the amenitiz_reservas record. Get from get_reservas_amenitiz.'),
+      valor_bruto: z.number().nonnegative().optional()
+        .describe('New gross value in BRL.'),
+      valor_liquido: z.number().nonnegative().optional()
+        .describe('New net value in BRL. Must be <= valor_bruto. This is the value used in the dashboard.'),
+      plataforma_normalizada: z.string().optional()
+        .describe('Platform name (ex: "Booking.com", "Airbnb", "AlugEasy").'),
+      individual_room_number: z.string().optional()
+        .describe('Room number as it appears in the apartments table.'),
+      nome_hospede: z.string().optional()
+        .describe('Guest name for records.'),
+    },
+    async ({ id, valor_bruto, valor_liquido, plataforma_normalizada, individual_room_number, nome_hospede }) => {
+      const baseUrl = process.env.ALUGUEASY_BASE_URL ?? 'http://localhost:3000'
+      const body: Record<string, unknown> = {}
+      if (valor_bruto !== undefined) body.valor_bruto = valor_bruto
+      if (valor_liquido !== undefined) body.valor_liquido = valor_liquido
+      if (plataforma_normalizada) body.plataforma_normalizada = plataforma_normalizada
+      if (individual_room_number) body.individual_room_number = individual_room_number
+      if (nome_hospede) body.nome_hospede = nome_hospede
+
+      const res = await fetch(`${baseUrl}/api/reservas/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-alugueasy-internal-key': process.env.ALUGUEASY_INTERNAL_API_KEY ?? '',
+        },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json() as Record<string, unknown>
+      if (!res.ok) throw new Error(`Erro ao editar reserva: ${JSON.stringify(data)}`)
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            ...data,
+            instrucao: 'Chame get_kpis { mes, ano } para confirmar o novo faturamento total.',
+          }, null, 2),
+        }],
+      }
+    }
+  )
 }
