@@ -158,6 +158,14 @@ async function carregarMapas(supabase: Awaited<ReturnType<typeof createClient>>)
 // ─── GET — Relatório de comparação ───────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
+  if (process.env.VERCEL) {
+    return NextResponse.json({
+      report: [],
+      totalArquivos: 0,
+      aviso: 'sync-local não está disponível em produção — requer acesso ao sistema de arquivos local.',
+    }, { status: 501 })
+  }
+
   const supabase = await createClient()
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
   if (authErr || !user) {
@@ -277,6 +285,12 @@ export async function GET(request: NextRequest) {
 // ─── POST — Aplicar correção ─────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  if (process.env.VERCEL) {
+    return NextResponse.json({
+      error: 'sync-local não está disponível em produção — requer acesso ao sistema de arquivos local.',
+    }, { status: 501 })
+  }
+
   const supabase = await createClient()
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
   if (authErr || !user) {

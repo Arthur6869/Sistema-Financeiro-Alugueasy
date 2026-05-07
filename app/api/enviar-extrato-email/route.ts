@@ -148,6 +148,12 @@ export async function POST(request: NextRequest) {
   const mesLabel = MESES[mes - 1] ?? String(mes)
 
   // Gerar e enviar email
+  if (!process.env.RESEND_API_KEY) {
+    return NextResponse.json(
+      { error: 'RESEND_API_KEY não configurada. Adicione a variável de ambiente na Vercel.' },
+      { status: 503 }
+    )
+  }
   const resend = new Resend(process.env.RESEND_API_KEY)
 
   const { data: emailData, error: emailError } = await resend.emails.send({
