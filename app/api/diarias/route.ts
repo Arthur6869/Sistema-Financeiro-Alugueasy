@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
 
   if (aptErr || !apt) return NextResponse.json({ error: 'Apartamento não encontrado' }, { status: 404 })
 
-  const { data: inserted, error: insertErr } = await adminSupabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: inserted, error: insertErr } = await (adminSupabase as any)
     .from('diarias')
     .insert({ apartamento_id, data, tipo_gestao, valor })
     .select('id, data, valor, tipo_gestao, apartamentos(numero, empreendimentos(nome))')
