@@ -1,13 +1,14 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { formatCurrency } from '@/lib/constants'
 
 export interface CustoRow {
@@ -38,8 +39,10 @@ const ITENS_POR_PAGINA = 25
 
 export function CustosEditavelTabela({ custos: initial, role, categoriasSugeridas }: Props) {
   const canWrite = role === 'analista'
+  const router = useRouter()
 
   const [rows, setRows] = useState<CustoRow[]>(initial)
+  const [refreshing, setRefreshing] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editState, setEditState] = useState<EditState>({ categoria: '', valor: '' })
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -145,6 +148,12 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
     }
   }, [])
 
+  function handleRefresh() {
+    setRefreshing(true)
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 1000)
+  }
+
   const datalistId = 'categorias-sugeridas'
 
   return (
@@ -190,6 +199,15 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
             </button>
           ))}
         </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          title="Atualizar dados"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          Atualizar
+        </button>
       </div>
 
       {erro && (

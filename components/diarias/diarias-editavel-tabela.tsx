@@ -1,13 +1,14 @@
 'use client'
 
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { formatCurrency } from '@/lib/constants'
 
 export interface DiariaRow {
@@ -165,6 +166,7 @@ const DiariasLinha = React.memo(function DiariasLinha({
 
 export function DiariasEditavelTabela({ diarias: initial, role }: Props) {
   const canWrite = role === 'analista'
+  const router = useRouter()
 
   const [rows, setRows] = useState<DiariaRow[]>(initial)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -174,13 +176,43 @@ export function DiariasEditavelTabela({ diarias: initial, role }: Props) {
   const [erro, setErro] = useState<string | null>(null)
   const [editadosCount, setEditadosCount] = useState(0)
   const [pagina, setPagina] = useState(1)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const totalValor = useMemo(() => rows.reduce((a, r) => a + r.valor, 0), [rows])
-  const totalPaginas = Math.ceil(rows.length / ITENS_POR_PAGINA)
+  const [inputValue, setInputValue] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      startTransition(() => {
+        setSearchTerm(inputValue)
+        setPagina(1)
+      })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [inputValue])
+
+  const filtrados = useMemo(() => {
+    if (!searchTerm) return rows
+    const q = searchTerm.toLowerCase()
+    return rows.filter(r =>
+      (r.apartamentos?.empreendimentos?.nome ?? '').toLowerCase().includes(q) ||
+      (r.apartamentos?.numero ?? '').toLowerCase().includes(q)
+    )
+  }, [rows, searchTerm])
+
+  const totalValor = useMemo(() => filtrados.reduce((a, r) => a + r.valor, 0), [filtrados])
+  const totalPaginas = Math.ceil(filtrados.length / ITENS_POR_PAGINA)
   const paginados = useMemo(() => {
     const inicio = (pagina - 1) * ITENS_POR_PAGINA
-    return rows.slice(inicio, inicio + ITENS_POR_PAGINA)
-  }, [rows, pagina])
+    return filtrados.slice(inicio, inicio + ITENS_POR_PAGINA)
+  }, [filtrados, pagina])
+
+  function handleRefresh() {
+    setRefreshing(true)
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 1000)
+  }
 
   const beginEdit = useCallback((row: DiariaRow) => {
     setEditingId(row.id)
@@ -237,13 +269,36 @@ export function DiariasEditavelTabela({ diarias: initial, role }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-4 text-sm">
+      <div className="flex flex-wrap items-center gap-4 text-sm">
         <span className="text-gray-500">
-          Total desta página: <strong className="text-gray-800">{formatCurrency(totalValor)}</strong>
+          <strong className="text-gray-800">{filtrados.length}</strong> registro(s) — Total: <strong className="text-gray-800">{formatCurrency(totalValor)}</strong>
         </span>
         {editadosCount > 0 && (
           <span className="text-green-600 font-medium">✓ {editadosCount} editado(s) nesta sessão</span>
         )}
+      </div>
+
+      <div className="flex gap-2">
+        <div className="relative">
+          <Input
+            placeholder="Buscar empreendimento ou apt..."
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            className="max-w-xs text-sm"
+          />
+          {isPending && (
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">buscando...</span>
+          )}
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          title="Atualizar dados"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          Atualizar
+        </button>
       </div>
 
       {erro && (
@@ -292,7 +347,7 @@ export function DiariasEditavelTabela({ diarias: initial, role }: Props) {
       {totalPaginas > 1 && (
         <div className="flex items-center justify-between pt-3 border-t border-gray-100">
           <span className="text-xs text-gray-400">
-            {((pagina - 1) * ITENS_POR_PAGINA) + 1}–{Math.min(pagina * ITENS_POR_PAGINA, rows.length)} de {rows.length}
+            {((pagina - 1) * ITENS_POR_PAGINA) + 1}–{Math.min(pagina * ITENS_POR_PAGINA, filtrados.length)} de {filtrados.length}
           </span>
           <div className="flex items-center gap-2">
             <button
