@@ -6,7 +6,7 @@ import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import Link from 'next/link'
-import { DiariasEditavelTabela } from '@/components/diarias/diarias-editavel-tabela'
+import { DiariasPageClient } from '@/components/diarias/diarias-page-client'
 
 const PAGE_SIZE = 50
 
@@ -40,10 +40,19 @@ export default async function DiariasPage({
     query = query.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`) as typeof query
   }
 
-  const [{ data: diarias, count }, { data: profile }] = await Promise.all([
+  const [{ data: diarias, count }, { data: profile }, { data: apartamentosRaw }] = await Promise.all([
     query,
     supabase.from('profiles').select('role').eq('id', user.id).single(),
+    supabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)').order('numero'),
   ])
+
+  const apartamentos = (apartamentosRaw ?? []).map((a: any) => ({
+    id: a.id,
+    numero: a.numero,
+    empreendimento_id: a.empreendimento_id,
+    tipo_gestao: a.tipo_gestao,
+    empreendimento_nome: a.empreendimentos?.nome ?? '—',
+  }))
 
   const totalRegistros = count ?? 0
   const totalPages = Math.ceil(totalRegistros / PAGE_SIZE)
@@ -106,9 +115,12 @@ export default async function DiariasPage({
           )}
         </CardHeader>
         <CardContent>
-          <DiariasEditavelTabela
-            diarias={(diarias ?? []) as any}
+          <DiariasPageClient
+            initialDiarias={(diarias ?? []) as any}
+            apartamentos={apartamentos}
             role={profile?.role ?? ''}
+            mes={mes}
+            ano={ano}
           />
 
           {/* Paginação */}
