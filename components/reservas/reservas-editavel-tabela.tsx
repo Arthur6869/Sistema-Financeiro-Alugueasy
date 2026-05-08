@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Pencil, Check, X, Trash2, Loader2, CalendarDays } from 'lucide-react'
+import { Pencil, Check, X, Trash2, Loader2, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatCurrency, MESES } from '@/lib/constants'
 
 export interface ReservaRow {
@@ -44,6 +44,7 @@ interface Props {
 }
 
 const PLATAFORMAS = ['Booking.com', 'Airbnb', 'AlugEasy', 'Manual', 'Outros']
+const ITENS_POR_PAGINA = 25
 
 function badgePlatforma(plat: string) {
   const p = (plat ?? '').toLowerCase()
@@ -69,34 +70,53 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
   const [erro, setErro] = useState<string | null>(null)
   const [editadosCount, setEditadosCount] = useState(0)
 
-  const [busca, setBusca] = useState('')
+  // Debounce
+  const [inputValue, setInputValue] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [filtroPlatforma, setFiltroPlatforma] = useState<string>('Todas')
   const [ordenar, setOrdenar] = useState<'data' | 'valor' | 'quarto'>('data')
+  const [isPending, startTransition] = useTransition()
+  const [pagina, setPagina] = useState(1)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      startTransition(() => {
+        setSearchTerm(inputValue)
+        setPagina(1)
+      })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [inputValue])
+
+  useEffect(() => { setPagina(1) }, [filtroPlatforma, ordenar])
 
   const filtrados = useMemo(() => {
     let r = rows.filter(row => {
-      const matchBusca = busca === '' ||
-        (row.nome_hospede ?? '').toLowerCase().includes(busca.toLowerCase()) ||
-        (row.individual_room_number ?? '').toLowerCase().includes(busca.toLowerCase()) ||
-        (row.booking_id ?? '').toLowerCase().includes(busca.toLowerCase())
+      const matchBusca = searchTerm === '' ||
+        (row.nome_hospede ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (row.individual_room_number ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (row.booking_id ?? '').toLowerCase().includes(searchTerm.toLowerCase())
       const matchPlat = filtroPlatforma === 'Todas' ||
         (row.plataforma_normalizada ?? '').toLowerCase().includes(filtroPlatforma.toLowerCase())
       return matchBusca && matchPlat
     })
-
     r = [...r].sort((a, b) => {
       if (ordenar === 'data') return a.checkin.localeCompare(b.checkin)
       if (ordenar === 'valor') return b.valor_liquido - a.valor_liquido
       return (a.individual_room_number ?? '').localeCompare(b.individual_room_number ?? '')
     })
-
     return r
-  }, [rows, busca, filtroPlatforma, ordenar])
+  }, [rows, searchTerm, filtroPlatforma, ordenar])
 
   const totalBruto = useMemo(() => filtrados.reduce((a, r) => a + (r.valor_bruto ?? 0), 0), [filtrados])
   const totalLiquido = useMemo(() => filtrados.reduce((a, r) => a + (r.valor_liquido ?? 0), 0), [filtrados])
+  const totalPaginas = Math.ceil(filtrados.length / ITENS_POR_PAGINA)
+  const paginados = useMemo(() => {
+    const inicio = (pagina - 1) * ITENS_POR_PAGINA
+    return filtrados.slice(inicio, inicio + ITENS_POR_PAGINA)
+  }, [filtrados, pagina])
 
-  function beginEdit(row: ReservaRow) {
+  const beginEdit = useCallback((row: ReservaRow) => {
     setEditingId(row.id)
     setEditState({
       nome_hospede: row.nome_hospede ?? '',
@@ -108,13 +128,13 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
       valor_liquido: String(row.valor_liquido ?? 0),
     })
     setErro(null)
-  }
+  }, [])
 
-  function cancelEdit() {
+  const cancelEdit = useCallback(() => {
     setEditingId(null)
     setEditState(null)
     setErro(null)
-  }
+  }, [])
 
   function validateEdit(state: EditState): string | null {
     const bruto = parseFloat(state.valor_bruto.replace(',', '.'))
@@ -127,11 +147,9 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
     return null
   }
 
-  async function saveEdit(id: string) {
-    if (!editState) return
-    const validErr = validateEdit(editState)
+  const saveEdit = useCallback(async (id: string, state: EditState) => {
+    const validErr = validateEdit(state)
     if (validErr) { setErro(validErr); return }
-
     setSavingId(id)
     setErro(null)
     try {
@@ -139,27 +157,26 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nome_hospede: editState.nome_hospede,
-          individual_room_number: editState.individual_room_number,
-          plataforma_normalizada: editState.plataforma_normalizada,
-          checkin: editState.checkin,
-          checkout: editState.checkout,
-          valor_bruto: parseFloat(editState.valor_bruto.replace(',', '.')),
-          valor_liquido: parseFloat(editState.valor_liquido.replace(',', '.')),
+          nome_hospede: state.nome_hospede,
+          individual_room_number: state.individual_room_number,
+          plataforma_normalizada: state.plataforma_normalizada,
+          checkin: state.checkin,
+          checkout: state.checkout,
+          valor_bruto: parseFloat(state.valor_bruto.replace(',', '.')),
+          valor_liquido: parseFloat(state.valor_liquido.replace(',', '.')),
         }),
       })
       const body = await res.json()
       if (!res.ok) { setErro(body.error ?? 'Erro ao salvar'); return }
-
       setRows(prev => prev.map(r => r.id === id ? {
         ...r,
-        nome_hospede: editState.nome_hospede,
-        individual_room_number: editState.individual_room_number,
-        plataforma_normalizada: editState.plataforma_normalizada,
-        checkin: editState.checkin,
-        checkout: editState.checkout,
-        valor_bruto: parseFloat(editState.valor_bruto.replace(',', '.')),
-        valor_liquido: parseFloat(editState.valor_liquido.replace(',', '.')),
+        nome_hospede: state.nome_hospede,
+        individual_room_number: state.individual_room_number,
+        plataforma_normalizada: state.plataforma_normalizada,
+        checkin: state.checkin,
+        checkout: state.checkout,
+        valor_bruto: parseFloat(state.valor_bruto.replace(',', '.')),
+        valor_liquido: parseFloat(state.valor_liquido.replace(',', '.')),
       } : r))
       setEditadosCount(c => c + 1)
       setEditingId(null)
@@ -167,17 +184,17 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
     } finally {
       setSavingId(null)
     }
-  }
+  }, [])
 
-  function beginDelete(id: string) {
+  const beginDelete = useCallback((id: string) => {
     setDeleteStateMap(prev => ({ ...prev, [id]: 'confirming' }))
-  }
+  }, [])
 
-  function cancelDelete(id: string) {
+  const cancelDelete = useCallback((id: string) => {
     setDeleteStateMap(prev => ({ ...prev, [id]: 'idle' }))
-  }
+  }, [])
 
-  async function confirmDelete(id: string) {
+  const confirmDelete = useCallback(async (id: string) => {
     setDeleteStateMap(prev => ({ ...prev, [id]: 'deleting' }))
     const res = await fetch(`/api/reservas/${id}`, { method: 'DELETE' })
     if (res.ok) {
@@ -187,7 +204,7 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
       setErro(body.error ?? 'Erro ao excluir')
       setDeleteStateMap(prev => ({ ...prev, [id]: 'idle' }))
     }
-  }
+  }, [])
 
   const mesLabel = MESES[mes - 1] ?? String(mes)
 
@@ -223,12 +240,17 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
 
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 items-center">
-        <Input
-          placeholder="Buscar hóspede, quarto ou ID..."
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          className="max-w-xs text-sm"
-        />
+        <div className="relative">
+          <Input
+            placeholder="Buscar hóspede, quarto ou ID..."
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            className="max-w-xs text-sm"
+          />
+          {isPending && (
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">buscando...</span>
+          )}
+        </div>
         <div className="flex gap-1">
           {(['Todas', 'Booking.com', 'Airbnb', 'AlugEasy'] as const).map(f => (
             <button
@@ -263,9 +285,7 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
       </div>
 
       {erro && (
-        <div className="text-sm text-red-600 px-3 py-2 bg-red-50 rounded-lg border border-red-100">
-          {erro}
-        </div>
+        <div className="text-sm text-red-600 px-3 py-2 bg-red-50 rounded-lg border border-red-100">{erro}</div>
       )}
 
       <Table>
@@ -282,13 +302,12 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtrados.map((row, idx) => {
+          {paginados.map((row, idx) => {
             const isEditing = editingId === row.id
             const isSaving = savingId === row.id
             const deleteState = deleteStateMap[row.id] ?? 'idle'
             const zebraClass = idx % 2 === 1 ? 'bg-gray-50/60' : ''
 
-            // ── CONFIRMAÇÃO DE EXCLUSÃO ──────────────────────────────
             if (deleteState === 'confirming' || deleteState === 'deleting') {
               return (
                 <TableRow key={row.id} className="border-l-4 border-red-500 bg-red-50/30">
@@ -300,21 +319,11 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
                   </TableCell>
                   <TableCell colSpan={canWrite ? 3 : 2} className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline" size="sm"
-                        onClick={() => cancelDelete(row.id)}
-                        disabled={deleteState === 'deleting'}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => cancelDelete(row.id)} disabled={deleteState === 'deleting'}>
                         Cancelar
                       </Button>
-                      <Button
-                        variant="destructive" size="sm"
-                        onClick={() => confirmDelete(row.id)}
-                        disabled={deleteState === 'deleting'}
-                      >
-                        {deleteState === 'deleting'
-                          ? <Loader2 size={14} className="animate-spin" />
-                          : 'Sim, excluir'}
+                      <Button variant="destructive" size="sm" onClick={() => confirmDelete(row.id)} disabled={deleteState === 'deleting'}>
+                        {deleteState === 'deleting' ? <Loader2 size={14} className="animate-spin" /> : 'Sim, excluir'}
                       </Button>
                     </div>
                   </TableCell>
@@ -322,7 +331,6 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
               )
             }
 
-            // ── MODO EDIÇÃO (2 sub-linhas) ───────────────────────────
             if (isEditing && editState) {
               const validErr = validateEdit(editState)
               return (
@@ -397,14 +405,12 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
                           </p>
                         </div>
                       </div>
-                      {validErr && (
-                        <p className="text-xs text-red-600 mt-2">{validErr}</p>
-                      )}
+                      {validErr && <p className="text-xs text-red-600 mt-2">{validErr}</p>}
                     </TableCell>
                     <TableCell colSpan={canWrite ? 5 : 4} className="py-2 text-right align-bottom">
                       <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => saveEdit(row.id)}
+                          onClick={() => saveEdit(row.id, editState)}
                           disabled={isSaving || !!validErr}
                           className="p-1.5 rounded text-green-600 hover:bg-green-50 disabled:opacity-50 transition-colors"
                           title="Salvar"
@@ -426,15 +432,12 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
               )
             }
 
-            // ── LINHA NORMAL ─────────────────────────────────────────
             return (
               <TableRow key={row.id} className={`border-gray-100 hover:bg-gray-50 transition-colors ${zebraClass}`}>
                 <TableCell className="text-sm text-gray-700 max-w-[160px] truncate" title={row.nome_hospede}>
                   {row.nome_hospede || '—'}
                 </TableCell>
-                <TableCell className="font-medium text-gray-900 text-sm">
-                  {row.individual_room_number || '—'}
-                </TableCell>
+                <TableCell className="font-medium text-gray-900 text-sm">{row.individual_room_number || '—'}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className={`text-xs ${badgePlatforma(row.plataforma_normalizada)}`}>
                     {row.plataforma_normalizada || '—'}
@@ -469,6 +472,31 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
           })}
         </TableBody>
       </Table>
+
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <span className="text-xs text-gray-400">
+            {((pagina - 1) * ITENS_POR_PAGINA) + 1}–{Math.min(pagina * ITENS_POR_PAGINA, filtrados.length)} de {filtrados.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPagina(p => Math.max(1, p - 1))}
+              disabled={pagina === 1}
+              className="flex items-center gap-1 px-3 py-1 text-xs rounded border disabled:opacity-40 hover:bg-gray-50 transition-colors"
+            >
+              <ChevronLeft size={13} /> Anterior
+            </button>
+            <span className="text-xs text-gray-500 px-1">{pagina}/{totalPaginas}</span>
+            <button
+              onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+              disabled={pagina === totalPaginas}
+              className="flex items-center gap-1 px-3 py-1 text-xs rounded border disabled:opacity-40 hover:bg-gray-50 transition-colors"
+            >
+              Próxima <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

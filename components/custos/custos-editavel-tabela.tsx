@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Pencil, Check, X, Trash2, Loader2 } from 'lucide-react'
+import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatCurrency } from '@/lib/constants'
 
 export interface CustoRow {
@@ -34,6 +34,8 @@ interface Props {
 type EditState = { categoria: string; valor: string }
 type DeleteState = 'idle' | 'confirming' | 'deleting'
 
+const ITENS_POR_PAGINA = 25
+
 export function CustosEditavelTabela({ custos: initial, role, categoriasSugeridas }: Props) {
   const canWrite = role === 'analista'
 
@@ -45,14 +47,31 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
   const [erro, setErro] = useState<string | null>(null)
   const [editadosCount, setEditadosCount] = useState(0)
 
-  const [busca, setBusca] = useState('')
+  // Debounce: inputValue atualiza imediatamente, searchTerm aplica após 300ms
+  const [inputValue, setInputValue] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'adm' | 'sub' | 'importacao' | 'manual'>('todos')
+  const [isPending, startTransition] = useTransition()
+  const [pagina, setPagina] = useState(1)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      startTransition(() => {
+        setSearchTerm(inputValue)
+        setPagina(1)
+      })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [inputValue])
+
+  // Reset página quando filtro de tipo muda
+  useEffect(() => { setPagina(1) }, [filtroTipo])
 
   const filtrados = useMemo(() => {
     return rows.filter(r => {
-      const matchBusca = busca === '' ||
-        r.categoria.toLowerCase().includes(busca.toLowerCase()) ||
-        (r.apartamentos?.empreendimentos?.nome ?? '').toLowerCase().includes(busca.toLowerCase())
+      const matchBusca = searchTerm === '' ||
+        r.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.apartamentos?.empreendimentos?.nome ?? '').toLowerCase().includes(searchTerm.toLowerCase())
       const matchTipo =
         filtroTipo === 'todos' ? true :
         filtroTipo === 'adm' ? r.tipo_gestao === 'adm' :
@@ -61,25 +80,30 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
         r.origem === 'manual'
       return matchBusca && matchTipo
     })
-  }, [rows, busca, filtroTipo])
+  }, [rows, searchTerm, filtroTipo])
 
   const totalValor = useMemo(() => filtrados.reduce((a, r) => a + r.valor, 0), [filtrados])
+  const totalPaginas = Math.ceil(filtrados.length / ITENS_POR_PAGINA)
+  const paginados = useMemo(() => {
+    const inicio = (pagina - 1) * ITENS_POR_PAGINA
+    return filtrados.slice(inicio, inicio + ITENS_POR_PAGINA)
+  }, [filtrados, pagina])
 
-  function beginEdit(row: CustoRow) {
+  const beginEdit = useCallback((row: CustoRow) => {
     setEditingId(row.id)
     setEditState({ categoria: row.categoria, valor: String(row.valor) })
     setErro(null)
-  }
+  }, [])
 
-  function cancelEdit() {
+  const cancelEdit = useCallback(() => {
     setEditingId(null)
     setEditState({ categoria: '', valor: '' })
     setErro(null)
-  }
+  }, [])
 
-  async function saveEdit(id: string) {
-    const valor = parseFloat(editState.valor.replace(',', '.'))
-    if (!editState.categoria.trim() || isNaN(valor) || valor <= 0) {
+  const saveEdit = useCallback(async (id: string, state: EditState) => {
+    const valor = parseFloat(state.valor.replace(',', '.'))
+    if (!state.categoria.trim() || isNaN(valor) || valor <= 0) {
       setErro('Categoria e valor válido são obrigatórios')
       return
     }
@@ -89,30 +113,27 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
       const res = await fetch(`/api/custos/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoria: editState.categoria.trim(), valor }),
+        body: JSON.stringify({ categoria: state.categoria.trim(), valor }),
       })
       const body = await res.json()
       if (!res.ok) { setErro(body.error ?? 'Erro ao salvar'); return }
-      setRows(prev => prev.map(r => r.id === id
-        ? { ...r, categoria: editState.categoria.trim(), valor }
-        : r
-      ))
+      setRows(prev => prev.map(r => r.id === id ? { ...r, categoria: state.categoria.trim(), valor } : r))
       setEditadosCount(c => c + 1)
       setEditingId(null)
     } finally {
       setSavingId(null)
     }
-  }
+  }, [])
 
-  function beginDelete(id: string) {
+  const beginDelete = useCallback((id: string) => {
     setDeleteStateMap(prev => ({ ...prev, [id]: 'confirming' }))
-  }
+  }, [])
 
-  function cancelDelete(id: string) {
+  const cancelDelete = useCallback((id: string) => {
     setDeleteStateMap(prev => ({ ...prev, [id]: 'idle' }))
-  }
+  }, [])
 
-  async function confirmDelete(id: string) {
+  const confirmDelete = useCallback(async (id: string) => {
     setDeleteStateMap(prev => ({ ...prev, [id]: 'deleting' }))
     const res = await fetch(`/api/custos/${id}`, { method: 'DELETE' })
     if (res.ok) {
@@ -122,7 +143,7 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
       setErro(body.error ?? 'Erro ao excluir')
       setDeleteStateMap(prev => ({ ...prev, [id]: 'idle' }))
     }
-  }
+  }, [])
 
   const datalistId = 'categorias-sugeridas'
 
@@ -137,20 +158,23 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
           Total: <strong className="text-gray-800">{formatCurrency(totalValor)}</strong>
         </span>
         {editadosCount > 0 && (
-          <span className="text-green-600 font-medium">
-            ✓ {editadosCount} editado(s) nesta sessão
-          </span>
+          <span className="text-green-600 font-medium">✓ {editadosCount} editado(s) nesta sessão</span>
         )}
       </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2">
-        <Input
-          placeholder="Buscar categoria ou empreendimento..."
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          className="max-w-xs text-sm"
-        />
+        <div className="relative">
+          <Input
+            placeholder="Buscar categoria ou empreendimento..."
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            className="max-w-xs text-sm"
+          />
+          {isPending && (
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">buscando...</span>
+          )}
+        </div>
         <div className="flex gap-1">
           {(['todos', 'adm', 'sub', 'importacao', 'manual'] as const).map(f => (
             <button
@@ -169,9 +193,7 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
       </div>
 
       {erro && (
-        <div className="text-sm text-red-600 px-3 py-2 bg-red-50 rounded-lg border border-red-100">
-          {erro}
-        </div>
+        <div className="text-sm text-red-600 px-3 py-2 bg-red-50 rounded-lg border border-red-100">{erro}</div>
       )}
 
       <datalist id={datalistId}>
@@ -190,13 +212,13 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtrados.length === 0 ? (
+          {paginados.length === 0 ? (
             <TableRow>
               <TableCell colSpan={canWrite ? 6 : 5} className="text-center text-gray-400 py-12">
                 Nenhum custo encontrado
               </TableCell>
             </TableRow>
-          ) : filtrados.map(row => {
+          ) : paginados.map(row => {
             const isEditing = editingId === row.id
             const isSaving = savingId === row.id
             const deleteState = deleteStateMap[row.id] ?? 'idle'
@@ -209,21 +231,11 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
                   </TableCell>
                   <TableCell className="text-right" colSpan={2}>
                     <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline" size="sm"
-                        onClick={() => cancelDelete(row.id)}
-                        disabled={deleteState === 'deleting'}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => cancelDelete(row.id)} disabled={deleteState === 'deleting'}>
                         Não
                       </Button>
-                      <Button
-                        variant="destructive" size="sm"
-                        onClick={() => confirmDelete(row.id)}
-                        disabled={deleteState === 'deleting'}
-                      >
-                        {deleteState === 'deleting'
-                          ? <Loader2 size={14} className="animate-spin" />
-                          : 'Sim, excluir'}
+                      <Button variant="destructive" size="sm" onClick={() => confirmDelete(row.id)} disabled={deleteState === 'deleting'}>
+                        {deleteState === 'deleting' ? <Loader2 size={14} className="animate-spin" /> : 'Sim, excluir'}
                       </Button>
                     </div>
                   </TableCell>
@@ -235,13 +247,10 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
               <TableRow key={row.id} className="border-gray-100 hover:bg-gray-50">
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-medium text-gray-900 text-sm">
-                      {row.apartamentos?.empreendimentos?.nome ?? '—'}
-                    </span>
+                    <span className="font-medium text-gray-900 text-sm">{row.apartamentos?.empreendimentos?.nome ?? '—'}</span>
                     <span className="text-xs text-gray-400">apt {row.apartamentos?.numero ?? '—'}</span>
                   </div>
                 </TableCell>
-
                 <TableCell className="min-w-[160px]">
                   {isEditing ? (
                     <Input
@@ -255,7 +264,6 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
                     <span className="text-gray-700 text-sm">{row.categoria}</span>
                   )}
                 </TableCell>
-
                 <TableCell>
                   <Badge variant="outline" className={
                     row.tipo_gestao === 'adm'
@@ -265,7 +273,6 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
                     {row.tipo_gestao.toUpperCase()}
                   </Badge>
                 </TableCell>
-
                 <TableCell>
                   <Badge variant="outline" className={
                     row.origem === 'manual'
@@ -275,35 +282,27 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
                     {row.origem === 'manual' ? 'Manual' : 'Importado'}
                   </Badge>
                 </TableCell>
-
                 <TableCell className="text-right font-bold text-gray-900 min-w-[100px]">
                   {isEditing ? (
                     <Input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
+                      type="number" min="0.01" step="0.01"
                       value={editState.valor}
                       onChange={e => setEditState(s => ({ ...s, valor: e.target.value }))}
                       className="text-sm h-8 text-right w-28 ml-auto"
                     />
-                  ) : (
-                    formatCurrency(row.valor)
-                  )}
+                  ) : formatCurrency(row.valor)}
                 </TableCell>
-
                 {canWrite && (
                   <TableCell className="text-right">
                     {isEditing ? (
                       <div className="flex justify-end gap-1">
                         <button
-                          onClick={() => saveEdit(row.id)}
+                          onClick={() => saveEdit(row.id, editState)}
                           disabled={isSaving}
                           className="p-1.5 rounded text-green-600 hover:bg-green-50 disabled:opacity-50 transition-colors"
                           title="Salvar"
                         >
-                          {isSaving
-                            ? <Loader2 size={15} className="animate-spin" />
-                            : <Check size={15} />}
+                          {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                         </button>
                         <button
                           onClick={cancelEdit}
@@ -339,6 +338,31 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
           })}
         </TableBody>
       </Table>
+
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <span className="text-xs text-gray-400">
+            {((pagina - 1) * ITENS_POR_PAGINA) + 1}–{Math.min(pagina * ITENS_POR_PAGINA, filtrados.length)} de {filtrados.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPagina(p => Math.max(1, p - 1))}
+              disabled={pagina === 1}
+              className="flex items-center gap-1 px-3 py-1 text-xs rounded border disabled:opacity-40 hover:bg-gray-50 transition-colors"
+            >
+              <ChevronLeft size={13} /> Anterior
+            </button>
+            <span className="text-xs text-gray-500 px-1">{pagina}/{totalPaginas}</span>
+            <button
+              onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+              disabled={pagina === totalPaginas}
+              className="flex items-center gap-1 px-3 py-1 text-xs rounded border disabled:opacity-40 hover:bg-gray-50 transition-colors"
+            >
+              Próxima <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
