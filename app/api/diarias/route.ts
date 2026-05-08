@@ -39,6 +39,23 @@ export async function POST(request: NextRequest) {
 
   if (aptErr || !apt) return NextResponse.json({ error: 'Apartamento não encontrado' }, { status: 404 })
 
+  // Verifica duplicata antes de inserir
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: existente } = await (adminSupabase as any)
+    .from('diarias')
+    .select('id')
+    .eq('apartamento_id', apartamento_id)
+    .eq('data', data)
+    .eq('tipo_gestao', tipo_gestao)
+    .maybeSingle()
+
+  if (existente) {
+    return NextResponse.json(
+      { error: `Já existe uma diária cadastrada para este apartamento em ${data} (${tipo_gestao.toUpperCase()}). Edite o registro existente ou escolha outra data.` },
+      { status: 409 }
+    )
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: inserted, error: insertErr } = await (adminSupabase as any)
     .from('diarias')
