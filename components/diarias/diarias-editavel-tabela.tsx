@@ -39,20 +39,7 @@ export function DiariasEditavelTabela({ diarias: initial, role }: Props) {
   const [erro, setErro] = useState<string | null>(null)
   const [editadosCount, setEditadosCount] = useState(0)
 
-  const [busca, setBusca] = useState('')
-  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'adm' | 'sub'>('todos')
-
-  const filtrados = useMemo(() => {
-    return rows.filter(r => {
-      const matchBusca = busca === '' ||
-        (r.apartamentos?.numero ?? '').toLowerCase().includes(busca.toLowerCase()) ||
-        (r.apartamentos?.empreendimentos?.nome ?? '').toLowerCase().includes(busca.toLowerCase())
-      const matchTipo =
-        filtroTipo === 'todos' ? true : r.tipo_gestao === filtroTipo
-      return matchBusca && matchTipo
-    })
-  }, [rows, busca, filtroTipo])
-
+  const filtrados = rows
   const totalValor = useMemo(() => filtrados.reduce((a, r) => a + r.valor, 0), [filtrados])
 
   function beginEdit(row: DiariaRow) {
@@ -116,41 +103,13 @@ export function DiariasEditavelTabela({ diarias: initial, role }: Props) {
       {/* Resumo */}
       <div className="flex flex-wrap gap-4 text-sm">
         <span className="text-gray-500">
-          <strong className="text-gray-800">{filtrados.length}</strong> registro(s)
-        </span>
-        <span className="text-gray-500">
-          Total: <strong className="text-gray-800">{formatCurrency(totalValor)}</strong>
+          Total desta página: <strong className="text-gray-800">{formatCurrency(totalValor)}</strong>
         </span>
         {editadosCount > 0 && (
           <span className="text-green-600 font-medium">
             ✓ {editadosCount} editado(s) nesta sessão
           </span>
         )}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2">
-        <Input
-          placeholder="Buscar imóvel..."
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          className="max-w-xs text-sm"
-        />
-        <div className="flex gap-1">
-          {(['todos', 'adm', 'sub'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFiltroTipo(f)}
-              className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                filtroTipo === f
-                  ? 'bg-[#193660] text-white border-[#193660]'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {f === 'todos' ? 'Todos' : f.toUpperCase()}
-            </button>
-          ))}
-        </div>
       </div>
 
       {erro && (

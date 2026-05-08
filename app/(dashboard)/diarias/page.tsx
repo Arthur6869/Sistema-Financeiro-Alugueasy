@@ -13,7 +13,7 @@ const PAGE_SIZE = 50
 export default async function DiariasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; ano?: string; page?: string }>
+  searchParams: Promise<{ mes?: string; ano?: string; page?: string; tipo?: string; busca?: string }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -25,10 +25,12 @@ export default async function DiariasPage({
   const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
   const page = params.page ? Math.max(1, parseInt(params.page)) : 1
   const offset = (page - 1) * PAGE_SIZE
+  const tipoFiltro = ['adm', 'sub'].includes(params.tipo ?? '') ? params.tipo! : ''
+  const busca = params.busca?.trim() ?? ''
 
   let query = supabase
     .from('diarias')
-    .select('id, data, valor, tipo_gestao, apartamentos(numero, empreendimentos(nome))', { count: 'exact' })
+    .select('id, data, valor, tipo_gestao, apartamentos!inner(numero, empreendimento_id, empreendimentos!inner(nome))', { count: 'exact' })
     .order('data', { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1)
 
@@ -38,6 +40,14 @@ export default async function DiariasPage({
     query = query.gte('data', dataInicio).lte('data', dataFim) as typeof query
   } else if (ano > 0) {
     query = query.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`) as typeof query
+  }
+
+  if (tipoFiltro) {
+    query = query.eq('tipo_gestao', tipoFiltro) as typeof query
+  }
+
+  if (busca) {
+    query = query.ilike('apartamentos.empreendimentos.nome', `%${busca}%`) as typeof query
   }
 
   const [{ data: diarias, count }, { data: profile }, { data: apartamentosRaw }] = await Promise.all([
@@ -57,8 +67,10 @@ export default async function DiariasPage({
   const totalRegistros = count ?? 0
   const totalPages = Math.ceil(totalRegistros / PAGE_SIZE)
 
-  // Total geral do período (sem paginação) para o sumário
-  let totalQuery = supabase.from('diarias').select('valor')
+  // Total geral do período filtrado (sem paginação)
+  let totalQuery = supabase
+    .from('diarias')
+    .select('valor, apartamentos!inner(empreendimentos!inner(nome))')
   if (mes > 0 && ano > 0) {
     const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
     const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
@@ -66,8 +78,11 @@ export default async function DiariasPage({
   } else if (ano > 0) {
     totalQuery = totalQuery.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`) as typeof totalQuery
   }
+  if (tipoFiltro) totalQuery = totalQuery.eq('tipo_gestao', tipoFiltro) as typeof totalQuery
+  if (busca) totalQuery = totalQuery.ilike('apartamentos.empreendimentos.nome', `%${busca}%`) as typeof totalQuery
+
   const { data: todasDiarias } = await totalQuery
-  const total = todasDiarias?.reduce((acc, d) => acc + (d.valor || 0), 0) ?? 0
+  const total = todasDiarias?.reduce((acc, d) => acc + ((d as any).valor || 0), 0) ?? 0
 
   const periodoLabel =
     mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
@@ -78,12 +93,11 @@ export default async function DiariasPage({
   const baseUrl = new URLSearchParams()
   if (mes > 0) baseUrl.set('mes', String(mes))
   if (ano > 0) baseUrl.set('ano', String(ano))
-  const paginaAnteriorUrl = page > 1
-    ? `/diarias?${baseUrl.toString()}&page=${page - 1}`
-    : null
-  const proximaPaginaUrl = page < totalPages
-    ? `/diarias?${baseUrl.toString()}&page=${page + 1}`
-    : null
+  if (tipoFiltro) baseUrl.set('tipo', tipoFiltro)
+  if (busca) baseUrl.set('busca', busca)
+
+  const paginaAnteriorUrl = page > 1 ? `/diarias?${baseUrl.toString()}&page=${page - 1}` : null
+  const proximaPaginaUrl = page < totalPages ? `/diarias?${baseUrl.toString()}&page=${page + 1}` : null
 
   const inicioRegistro = totalRegistros > 0 ? offset + 1 : 0
   const fimRegistro = Math.min(offset + PAGE_SIZE, totalRegistros)
@@ -95,6 +109,12 @@ export default async function DiariasPage({
           <h1 className="text-2xl font-bold text-gray-900">Diárias</h1>
           <p className="text-gray-500 text-sm mt-1">
             Receitas de {periodoLabel} — {totalRegistros} registro(s)
+            {(tipoFiltro || busca) && (
+              <span className="ml-1 text-[#193660]">
+                {tipoFiltro ? `· ${tipoFiltro.toUpperCase()}` : ''}
+                {busca ? ` · "${busca}"` : ''}
+              </span>
+            )}
           </p>
         </div>
         <Suspense fallback={null}>
@@ -121,6 +141,8 @@ export default async function DiariasPage({
             role={profile?.role ?? ''}
             mes={mes}
             ano={ano}
+            initialBusca={busca}
+            initialTipo={tipoFiltro as 'adm' | 'sub' | ''}
           />
 
           {/* Paginação */}
