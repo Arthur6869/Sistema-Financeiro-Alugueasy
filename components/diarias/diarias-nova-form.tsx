@@ -50,7 +50,7 @@ export function DiariasNovaForm({ apartamentos, defaultMes, defaultAno, onInsert
     return apartamentos.filter(
       (a) =>
         a.empreendimento_id === empreendimentoId &&
-        (a.tipo_gestao == null || a.tipo_gestao === tipoGestao)
+        a.tipo_gestao === tipoGestao
     )
   }, [apartamentos, empreendimentoId, tipoGestao])
 
