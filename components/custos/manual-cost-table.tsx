@@ -140,7 +140,7 @@ export function ManualCostTable({ items, canWrite, onDelete, onEdit }: ManualCos
                   </div>
                 ) : (
                   <ManualCostActions
-                    disabled={!canWrite || item.origem !== 'manual'}
+                    disabled={!canWrite}
                     onEdit={() => beginEdit(item)}
                     onDelete={async () => {
                       const ok = window.confirm('Deseja realmente excluir este lançamento?')

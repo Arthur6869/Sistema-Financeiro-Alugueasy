@@ -51,10 +51,6 @@ export async function PATCH(
   if (currentErr || !custoAtual) {
     return NextResponse.json({ error: 'Lançamento não encontrado' }, { status: 404 })
   }
-  if (custoAtual.origem !== 'manual') {
-    return NextResponse.json({ error: 'Somente lançamentos manuais podem ser editados por esta tela' }, { status: 400 })
-  }
-
   const { data: duplicado } = await supabase
     .from('custos')
     .select('id')
@@ -108,10 +104,6 @@ export async function DELETE(
   if (currentErr || !custoAtual) {
     return NextResponse.json({ error: 'Lançamento não encontrado' }, { status: 404 })
   }
-  if (custoAtual.origem !== 'manual') {
-    return NextResponse.json({ error: 'Somente lançamentos manuais podem ser excluídos por esta tela' }, { status: 400 })
-  }
-
   const { error: delErr } = await supabase
     .from('custos')
     .delete()
