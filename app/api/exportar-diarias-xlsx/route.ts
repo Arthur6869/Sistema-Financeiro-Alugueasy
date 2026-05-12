@@ -24,24 +24,32 @@ export async function GET(request: NextRequest) {
 
   const adminSupabase = createAdminClient()
 
+  // calcular data_fim corretamente (último dia do mês)
+  const dataInicio = `${ano}-${String(mes).padStart(2,'0')}-01`
+  const ultimoDia = new Date(ano, mes, 0).getDate()
+  const dataFim = `${ano}-${String(mes).padStart(2,'0')}-${String(ultimoDia).padStart(2,'0')}`
+
+  type AptRow = { id: string; numero: string; empreendimento_id: string; tipo_gestao: string }
+  type EmpRow = { id: string; nome: string }
+  type ReservaRow = { individual_room_number: string; valor_liquido: number; plataforma_normalizada: string; checkin: string }
+  type DiariaRow = { apartamento_id: string; valor: number; data: string }
+  type CustoRow = { apartamento_id: string; valor: number }
+
   const [
     { data: empreendimentos },
-    { data: apartamentos },
-    { data: diarias },
-    { data: reservas },
+    { data: todosApartamentos },
+    { data: reservasAmenitiz },
     { data: custos },
   ] = await Promise.all([
     adminSupabase.from('empreendimentos').select('id, nome').order('nome'),
-    adminSupabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao').eq('tipo_gestao', tipo).order('numero'),
-    adminSupabase.from('diarias')
-      .select('apartamento_id, valor, data, tipo_gestao')
-      .gte('data', `${ano}-${String(mes).padStart(2,'0')}-01`)
-      .lte('data', `${ano}-${String(mes).padStart(2,'0')}-31`)
-      .eq('tipo_gestao', tipo),
+    // buscar TODOS os apartamentos (sem filtro de tipo) para poder cruzar com amenitiz_reservas por número
+    adminSupabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao').order('numero'),
+    // fonte principal: reservas individuais Amenitiz com valores por reserva
     adminSupabase.from('amenitiz_reservas')
-      .select('individual_room_number, valor_liquido, plataforma_normalizada, checkin, checkout')
+      .select('individual_room_number, valor_liquido, plataforma_normalizada, checkin')
       .eq('mes_competencia', mes)
-      .eq('ano_competencia', ano),
+      .eq('ano_competencia', ano)
+      .order('checkin'),
     adminSupabase.from('custos')
       .select('apartamento_id, valor')
       .eq('mes', mes)
@@ -49,38 +57,51 @@ export async function GET(request: NextRequest) {
       .eq('tipo_gestao', tipo),
   ])
 
-  type AptRow = { id: string; numero: string; empreendimento_id: string; tipo_gestao: string }
-  type EmpRow = { id: string; nome: string }
-  type DiariaRow = { apartamento_id: string; valor: number; data: string; tipo_gestao: string }
-  type ReservaRow = { individual_room_number: string; valor_liquido: number; plataforma_normalizada: string }
-  type CustoRow = { apartamento_id: string; valor: number }
-
   const empsTyped = (empreendimentos ?? []) as EmpRow[]
-  const aptsTyped = (apartamentos ?? []) as AptRow[]
-  const diariasTyped = (diarias ?? []) as DiariaRow[]
-  const reservasTyped = (reservas ?? []) as ReservaRow[]
+  const todosAptsTyped = (todosApartamentos ?? []) as AptRow[]
+  const reservasTyped = (reservasAmenitiz ?? []) as ReservaRow[]
   const custosTyped = (custos ?? []) as CustoRow[]
 
-  const custosPorApt: Record<string, number> = {}
-  for (const c of custosTyped) {
-    custosPorApt[c.apartamento_id] = (custosPorApt[c.apartamento_id] ?? 0) + (c.valor ?? 0)
-  }
+  // filtrar apartamentos do tipo solicitado para as sheets
+  const aptsDoTipo = todosAptsTyped.filter(a => a.tipo_gestao === tipo)
 
-  const reservasPorApt: Record<string, number[]> = {}
-  for (const d of diariasTyped) {
-    if (!reservasPorApt[d.apartamento_id]) reservasPorApt[d.apartamento_id] = []
-    reservasPorApt[d.apartamento_id].push(d.valor ?? 0)
-  }
+  // mapa: numero_apt → lista de valores líquidos (uma entrada por reserva)
+  const valoresPorNumero: Record<string, number[]> = {}
+  const bookingPorNumero: Record<string, number> = {}
+  const airbnbPorNumero: Record<string, number> = {}
+  const alugueasyPorNumero: Record<string, number> = {}
 
-  const plataformaPorApt: Record<string, { booking: number, airbnb: number, alugueasy: number }> = {}
   for (const r of reservasTyped) {
     const num = String(r.individual_room_number ?? '').trim()
-    if (!plataformaPorApt[num]) plataformaPorApt[num] = { booking: 0, airbnb: 0, alugueasy: 0 }
+    if (!valoresPorNumero[num]) valoresPorNumero[num] = []
+    valoresPorNumero[num].push(r.valor_liquido ?? 0)
+
     const plat = String(r.plataforma_normalizada ?? '').toLowerCase()
     const val = r.valor_liquido ?? 0
-    if (plat.includes('booking')) plataformaPorApt[num].booking += val
-    else if (plat.includes('airbnb')) plataformaPorApt[num].airbnb += val
-    else plataformaPorApt[num].alugueasy += val
+    if (plat.includes('booking')) bookingPorNumero[num] = (bookingPorNumero[num] ?? 0) + val
+    else if (plat.includes('airbnb')) airbnbPorNumero[num] = (airbnbPorNumero[num] ?? 0) + val
+    else alugueasyPorNumero[num] = (alugueasyPorNumero[num] ?? 0) + val
+  }
+
+  // fallback: apts sem reservas Amenitiz → buscar da tabela diarias
+  const numComReservas = new Set(Object.keys(valoresPorNumero))
+  const aptsSemReservas = aptsDoTipo.filter(a => !numComReservas.has(String(a.numero).trim()))
+
+  if (aptsSemReservas.length > 0) {
+    const { data: diariasFallback } = await adminSupabase
+      .from('diarias')
+      .select('apartamento_id, valor, data')
+      .in('apartamento_id', aptsSemReservas.map(a => a.id))
+      .gte('data', dataInicio)
+      .lte('data', dataFim)
+
+    for (const d of (diariasFallback ?? []) as DiariaRow[]) {
+      const apt = aptsSemReservas.find(a => a.id === d.apartamento_id)
+      if (!apt) continue
+      const num = String(apt.numero).trim()
+      if (!valoresPorNumero[num]) valoresPorNumero[num] = []
+      valoresPorNumero[num].push(d.valor ?? 0)
+    }
   }
 
   const wb = new ExcelJS.Workbook()
@@ -96,7 +117,7 @@ export async function GET(request: NextRequest) {
   const resultado: Record<string, { fat: number, luc: number }> = {}
 
   for (const emp of empsTyped) {
-    const aptsEmp = aptsTyped
+    const aptsEmp = aptsDoTipo
       .filter(a => a.empreendimento_id === emp.id)
       .sort((a, b) => String(a.numero).localeCompare(String(b.numero), undefined, { numeric: true }))
 
@@ -127,7 +148,8 @@ export async function GET(request: NextRequest) {
 
     const MAX_LINHAS = 27
     const valoresPorApt: number[][] = aptsEmp.map(apt => {
-      const vals = reservasPorApt[apt.id] ?? []
+      const numStr = String(apt.numero).trim()
+      const vals = valoresPorNumero[numStr] ?? []
       const res = [...vals]
       while (res.length < MAX_LINHAS) res.push(0)
       return res.slice(0, MAX_LINHAS)
@@ -135,7 +157,7 @@ export async function GET(request: NextRequest) {
 
     for (let linha = 0; linha < MAX_LINHAS; linha++) {
       const row = sheet.getRow(linha + 3)
-      aptsEmp.forEach((_, i) => {
+      aptsEmp.forEach((apt, i) => {
         const col = i * 2 + 1
         const val = valoresPorApt[i][linha]
         const cell = row.getCell(col)
@@ -144,17 +166,49 @@ export async function GET(request: NextRequest) {
         if (val === 0) cell.font = { color: { argb: 'FFCCCCCC' } }
       })
 
+      // labels + valores de plataforma nas últimas 3 linhas de dados
       if (linha === MAX_LINHAS - 6) {
         row.getCell(numCols).value = 'booking'
         row.getCell(numCols).font = { color: { argb: 'FF0070C0' }, italic: true }
+        // valores booking por apt
+        aptsEmp.forEach((apt, i) => {
+          const col = i * 2 + 1
+          const val = bookingPorNumero[String(apt.numero).trim()] ?? 0
+          if (val > 0) {
+            const cell = row.getCell(col)
+            cell.value = val
+            cell.numFmt = '#,##0.00'
+            cell.font = { color: { argb: 'FF0070C0' } }
+          }
+        })
       }
       if (linha === MAX_LINHAS - 5) {
         row.getCell(numCols).value = 'airbnb'
         row.getCell(numCols).font = { color: { argb: 'FFFF6B35' }, italic: true }
+        aptsEmp.forEach((apt, i) => {
+          const col = i * 2 + 1
+          const val = airbnbPorNumero[String(apt.numero).trim()] ?? 0
+          if (val > 0) {
+            const cell = row.getCell(col)
+            cell.value = val
+            cell.numFmt = '#,##0.00'
+            cell.font = { color: { argb: 'FFFF6B35' } }
+          }
+        })
       }
       if (linha === MAX_LINHAS - 4) {
         row.getCell(numCols).value = 'alugueasy'
         row.getCell(numCols).font = { color: { argb: 'FF00B050' }, italic: true }
+        aptsEmp.forEach((apt, i) => {
+          const col = i * 2 + 1
+          const val = alugueasyPorNumero[String(apt.numero).trim()] ?? 0
+          if (val > 0) {
+            const cell = row.getCell(col)
+            cell.value = val
+            cell.numFmt = '#,##0.00'
+            cell.font = { color: { argb: 'FF00B050' } }
+          }
+        })
       }
     }
 
