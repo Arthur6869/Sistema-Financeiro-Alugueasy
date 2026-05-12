@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CalendarDays } from 'lucide-react'
+import { CalendarDays, Download } from 'lucide-react'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import { DiariasPageClient } from '@/components/diarias/diarias-page-client'
+import { ExportarXlsxButton } from '@/components/diarias/exportar-xlsx-button'
 
 export default async function DiariasPage({
   searchParams,
@@ -73,9 +74,16 @@ export default async function DiariasPage({
             )}
           </p>
         </div>
-        <Suspense fallback={null}>
-          <MonthYearFilter mes={mes} ano={ano} />
-        </Suspense>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <Download className="w-3.5 h-3.5" />
+            Planilha:
+          </div>
+          <ExportarXlsxButton mes={mes} ano={ano} />
+          <Suspense fallback={null}>
+            <MonthYearFilter mes={mes} ano={ano} />
+          </Suspense>
+        </div>
       </div>
 
       <Card className="border border-gray-100 shadow-sm">

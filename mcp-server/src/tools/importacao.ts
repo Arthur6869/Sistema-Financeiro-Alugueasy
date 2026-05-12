@@ -394,4 +394,29 @@ export function registerImportacaoTools(server: McpServer): void {
       }
     }
   )
+
+  server.tool(
+    'exportar_planilha_diarias',
+    'Generates the monthly diarias conference spreadsheet in the exact format used by AlugEasy (one sheet per empreendimento, subtotals, TOTAL row, AlugEasy fee, RESULTADO sheet). Returns the download URL. Use to verify data against the original spreadsheets.',
+    {
+      mes: z.number().int().min(1).max(12),
+      ano: z.number().int().min(2020).max(2030),
+      tipo: z.enum(['adm', 'sub']).describe('Management type to export'),
+    },
+    async ({ mes, ano, tipo }) => {
+      const baseUrl = process.env.ALUGUEASY_BASE_URL ?? 'http://localhost:3000'
+      const url = `${baseUrl}/api/exportar-diarias-xlsx?mes=${mes}&ano=${ano}&tipo=${tipo}`
+      const MESES_ABREV = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ']
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            url_download: url,
+            instrucao: `Acesse a URL para baixar a planilha de conferência ${tipo.toUpperCase()} de ${String(mes).padStart(2,'0')}/${ano}`,
+            nome_arquivo: `CONFERENCIA_DIARIAS_${tipo.toUpperCase()}_${MESES_ABREV[mes - 1]}_${ano}.xlsx`,
+          }, null, 2)
+        }]
+      }
+    }
+  )
 }
