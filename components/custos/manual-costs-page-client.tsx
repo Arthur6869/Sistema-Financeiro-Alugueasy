@@ -116,6 +116,10 @@ export function ManualCostsPageClient({
       setErrorMessage('Preencha empreendimento, apartamento, categoria e valor válido.')
       return
     }
+    if (mes < 1 || mes > 12 || ano < 2020) {
+      setErrorMessage('Selecione um mês e ano válidos nos filtros acima.')
+      return
+    }
 
     setIsSaving(true)
     try {

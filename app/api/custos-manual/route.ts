@@ -103,9 +103,11 @@ export async function POST(request: NextRequest) {
   const valor = parseNumero(body.valor)
   const observacao = body.observacao ? String(body.observacao).trim() : null
 
-  if (!apartamentoId || !categoria || !mes || !ano || !['adm', 'sub'].includes(tipoGestao) || isNaN(valor) || valor <= 0) {
-    return NextResponse.json({ error: 'Dados inválidos para lançamento de custo' }, { status: 400 })
-  }
+  if (!apartamentoId) return NextResponse.json({ error: 'Apartamento não informado' }, { status: 400 })
+  if (!categoria) return NextResponse.json({ error: 'Categoria não informada' }, { status: 400 })
+  if (!mes || !ano) return NextResponse.json({ error: 'Competência inválida (mês/ano)' }, { status: 400 })
+  if (!['adm', 'sub'].includes(tipoGestao)) return NextResponse.json({ error: `Tipo de gestão inválido: "${tipoGestao}"` }, { status: 400 })
+  if (isNaN(valor) || valor <= 0) return NextResponse.json({ error: 'Valor inválido' }, { status: 400 })
   if (mes < 1 || mes > 12 || ano < 2020) {
     return NextResponse.json({ error: 'Competência inválida' }, { status: 400 })
   }
