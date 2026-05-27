@@ -1172,6 +1172,8 @@ UNIQUE: `(proprietario_id, apartamento_id)`
 | `/api/usuarios` | POST | Agora aceita `role: 'proprietario'` + `apartamento_ids[]` |
 | `/api/usuarios` | GET | Retorna email de um proprietário (`user_id`) para edição no modal |
 | `/api/usuarios` | PATCH | Analista atualiza email e/ou senha de proprietário via `auth.admin.updateUserById` |
+| `/api/presenca` | POST | Heartbeat do usuário logado (atualiza `user_presence.last_seen_at`) |
+| `/api/presenca` | GET | Analista lista presenças e status online/offline (janela de 90s) |
 
 ### Cálculo de repasse (igual à prestação de contas)
 

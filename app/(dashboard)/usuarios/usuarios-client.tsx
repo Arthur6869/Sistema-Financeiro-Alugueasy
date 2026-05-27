@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -43,9 +43,12 @@ interface Props {
   vinculos: Vinculo[]
 }
 
+type PresenceMap = Record<string, boolean>
+
 export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vinculos: vinculosIniciais }: Props) {
   const [profiles, setProfiles] = useState<Profile[]>(profilesIniciais)
   const [vinculos, setVinculos] = useState<Vinculo[]>(vinculosIniciais)
+  const [presence, setPresence] = useState<PresenceMap>({})
 
   function adicionarUsuario(novo: Profile) {
     setProfiles(prev => [...prev, novo])
@@ -57,6 +60,54 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
 
   const sistemicos = profiles.filter(p => p.role !== 'proprietario')
   const proprietarios = profiles.filter(p => p.role === 'proprietario')
+
+  const allIds = useMemo(() => profiles.map(p => p.id), [profiles])
+
+  useEffect(() => {
+    let alive = true
+    let interval: number | null = null
+
+    async function carregarPresenca() {
+      try {
+        const res = await fetch('/api/presenca', { method: 'GET' })
+        const data = await res.json()
+        if (!res.ok) return
+        if (!alive) return
+
+        const map: PresenceMap = {}
+        for (const p of (data.presencas ?? []) as Array<{ user_id: string; online: boolean }>) {
+          map[p.user_id] = !!p.online
+        }
+        setPresence(map)
+      } catch {
+        // silencioso
+      }
+    }
+
+    // Somente analista acessa esta página, então GET funciona.
+    carregarPresenca()
+    interval = window.setInterval(carregarPresenca, 15_000)
+
+    return () => {
+      alive = false
+      if (interval) window.clearInterval(interval)
+    }
+  }, [allIds.length])
+
+  function StatusDot({ userId }: { userId: string }) {
+    const online = !!presence[userId]
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className={`inline-block w-2.5 h-2.5 rounded-full ${online ? 'bg-green-500' : 'bg-gray-300'}`}
+          title={online ? 'Online' : 'Offline'}
+        />
+        <span className={`text-xs ${online ? 'text-green-700' : 'text-gray-500'}`}>
+          {online ? 'Online' : 'Offline'}
+        </span>
+      </div>
+    )
+  }
 
   function getVinculosProprietario(proprietarioId: string) {
     return vinculos.filter(v => v.proprietario_id === proprietarioId)
@@ -85,6 +136,7 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
             <TableHeader>
               <TableRow className="border-gray-100">
                 <TableHead className="text-gray-500 font-medium">Nome</TableHead>
+                <TableHead className="text-gray-500 font-medium">Status</TableHead>
                 <TableHead className="text-gray-500 font-medium">Papel</TableHead>
                 <TableHead className="text-gray-500 font-medium">Cadastrado em</TableHead>
               </TableRow>
@@ -102,6 +154,9 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
                       </div>
                       <span className="font-medium text-gray-800">{profile.full_name}</span>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusDot userId={profile.id} />
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -126,7 +181,7 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
               ))}
               {sistemicos.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-gray-400 text-sm py-6">
+                  <TableCell colSpan={4} className="text-center text-gray-400 text-sm py-6">
                     Nenhum usuário interno cadastrado.
                   </TableCell>
                 </TableRow>
@@ -156,6 +211,7 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
             <TableHeader>
               <TableRow className="border-gray-100">
                 <TableHead className="text-gray-500 font-medium">Nome</TableHead>
+                <TableHead className="text-gray-500 font-medium">Status</TableHead>
                 <TableHead className="text-gray-500 font-medium">Apartamentos</TableHead>
                 <TableHead className="text-gray-500 font-medium">Cadastrado em</TableHead>
                 <TableHead className="text-gray-500 font-medium w-56">Ações</TableHead>
@@ -178,6 +234,9 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
                         </div>
                         <span className="font-medium text-gray-800">{profile.full_name}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <StatusDot userId={profile.id} />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -218,7 +277,7 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
               })}
               {proprietarios.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-gray-400 text-sm py-6">
+                  <TableCell colSpan={5} className="text-center text-gray-400 text-sm py-6">
                     Nenhum proprietário cadastrado. Use o botão acima para adicionar.
                   </TableCell>
                 </TableRow>

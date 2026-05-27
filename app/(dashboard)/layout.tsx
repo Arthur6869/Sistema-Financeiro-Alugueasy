@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { PresencaHeartbeat } from '@/components/presenca/presenca-heartbeat'
 
 export default async function DashboardLayout({
   children,
@@ -27,6 +28,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-gray-50">
+      <PresencaHeartbeat />
       <AppSidebar role={role} fullName={fullName} email={email} />
       <main className="flex-1 bg-white overflow-auto">
         {children}

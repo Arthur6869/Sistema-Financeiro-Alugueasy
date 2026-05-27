@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { LogoutButton } from '@/components/proprietario/logout-button'
 import { BottomNav } from '@/components/proprietario/bottom-nav'
+import { PresencaHeartbeat } from '@/components/presenca/presenca-heartbeat'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -40,6 +41,7 @@ export default async function ProprietarioLayout({
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      <PresencaHeartbeat />
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between">
