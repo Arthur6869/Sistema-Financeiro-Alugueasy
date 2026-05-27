@@ -36,7 +36,7 @@ export default async function DashboardPage({
   // Query para diárias (xlsx-sourced)
   let diariasQuery = supabase
     .from('diarias')
-    .select('valor, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
+    .select('apartamento_id, valor, tipo_gestao, apartamentos(numero, empreendimento_id, tipo_gestao, empreendimentos(nome))')
 
   if (dataInicio) diariasQuery = diariasQuery.gte('data', dataInicio) as typeof diariasQuery
   if (dataFim)    diariasQuery = diariasQuery.lte('data', dataFim) as typeof diariasQuery
@@ -73,7 +73,7 @@ export default async function DashboardPage({
     custosQuery,
     supabase
       .from('apartamentos')
-      .select('id, numero, empreendimento_id, empreendimentos(nome)')
+      .select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)')
   ])
 
   // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz
@@ -89,13 +89,61 @@ export default async function DashboardPage({
   const margemPct = faturamentoTotal > 0 ? Math.round((lucroTotal / faturamentoTotal) * 100) : 0
   const custosPct = faturamentoTotal > 0 ? Math.min(100, Math.round((custosTotal / faturamentoTotal) * 100)) : 0
 
-  // Mapear número do apartamento para empreendimento (usado no fallback Amenitiz)
+  // Mapear apartamento_id → empreendimento (usado no fallback Amenitiz)
+  // Chave por UUID evita colisão quando dois empreendimentos têm o mesmo número
+  const aptIdToEmp: Record<string, string> = {}
+  apartamentosData?.forEach((a: any) => {
+    const emp = a.empreendimentos?.nome || ''
+    if (emp) aptIdToEmp[a.id] = emp
+  })
+
+  // Mapa legado por número (apenas fallback Amenitiz — pode colidir em duplicatas)
   const aptMap: Record<string, string> = {}
   apartamentosData?.forEach((a: any) => {
-    const num = String(a.numero).trim()
+    const num = `${a.empreendimento_id}::${String(a.numero).trim()}`
     const emp = a.empreendimentos?.nome || ''
     if (emp) aptMap[num] = emp
   })
+
+  // Agregar por apartamento (chave = apartamento_id UUID — sem colisão)
+  const aptCardMap: Record<string, {
+    numero: string; empNome: string; tipo: string; fat: number; custos: number
+  }> = {}
+
+  if (usandoDiariasXlsx) {
+    diariasData!.forEach((d: any) => {
+      const id = d.apartamento_id
+      if (!id) return
+      if (!aptCardMap[id]) {
+        aptCardMap[id] = {
+          numero: d.apartamentos?.numero || '?',
+          empNome: d.apartamentos?.empreendimentos?.nome || '—',
+          tipo: d.apartamentos?.tipo_gestao || d.tipo_gestao || '',
+          fat: 0, custos: 0,
+        }
+      }
+      aptCardMap[id].fat += d.valor || 0
+    })
+  }
+
+  custosData?.forEach((c: any) => {
+    const id = c.apartamento_id
+    if (!id) return
+    if (!aptCardMap[id]) {
+      const apt = apartamentosData?.find((a: any) => a.id === id) as any
+      aptCardMap[id] = {
+        numero: apt?.numero || '?',
+        empNome: (apt?.empreendimentos as any)?.nome || '—',
+        tipo: apt?.tipo_gestao || c.tipo_gestao || '',
+        fat: 0, custos: 0,
+      }
+    }
+    aptCardMap[id].custos += c.valor || 0
+  })
+
+  const apartamentoCards = Object.entries(aptCardMap)
+    .map(([, v]) => ({ ...v, luc: v.fat - v.custos }))
+    .sort((a, b) => a.empNome.localeCompare(b.empNome) || a.numero.localeCompare(b.numero))
 
   const empreendimentoMap: Record<string, { fat: number; custos: number }> = {}
 
@@ -110,8 +158,12 @@ export default async function DashboardPage({
     })
   } else {
     reservasData?.forEach((r: any) => {
+      // Fallback Amenitiz: identifica empreendimento pelo número do apt
+      // Usa aptMap com chave empreendimento_id::numero (sem colisão por UUID)
       const aptNum = String(r.individual_room_number).trim()
-      const empNome = aptMap[aptNum]
+      // Procura o primeiro apt cujo número bate (sem empreendimento_id disponível no Amenitiz)
+      const apt = apartamentosData?.find((a: any) => String(a.numero).trim() === aptNum) as any
+      const empNome = apt ? ((apt.empreendimentos as any)?.nome || '') : ''
       if (empNome) {
         if (!empreendimentoMap[empNome]) empreendimentoMap[empNome] = { fat: 0, custos: 0 }
         empreendimentoMap[empNome].fat += r.valor_liquido || 0
@@ -156,6 +208,7 @@ export default async function DashboardPage({
       qtdEmpreendimentos={qtdEmpreendimentos}
       chartData={chartData}
       empreendimentoCards={empreendimentoCards}
+      apartamentoCards={apartamentoCards}
     />
   )
 }

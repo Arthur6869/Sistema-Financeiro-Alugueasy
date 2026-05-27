@@ -1170,6 +1170,8 @@ UNIQUE: `(proprietario_id, apartamento_id)`
 | `/api/proprietario-apartamentos` | DELETE | Soft delete de vínculo (ativo=false) |
 | `/api/proprietario-apartamentos` | PATCH | Sincroniza lista completa de apts ativos |
 | `/api/usuarios` | POST | Agora aceita `role: 'proprietario'` + `apartamento_ids[]` |
+| `/api/usuarios` | GET | Retorna email de um proprietário (`user_id`) para edição no modal |
+| `/api/usuarios` | PATCH | Analista atualiza email e/ou senha de proprietário via `auth.admin.updateUserById` |
 
 ### Cálculo de repasse (igual à prestação de contas)
 

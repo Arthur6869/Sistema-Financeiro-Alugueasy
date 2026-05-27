@@ -5,6 +5,18 @@ import { parsePlanilhaResultado, parsePlanilhaTotais } from '@/lib/xlsx-parser'
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    const { data: { user }, error: authErr } = await supabase.auth.getUser()
+    if (authErr || !user) {
+      return NextResponse.json({ error: 'Usuário não autenticado. Faça login novamente.' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles').select('role').eq('id', user.id).single()
+    if (profile?.role !== 'analista') {
+      return NextResponse.json({ error: 'Apenas analistas podem importar planilhas' }, { status: 403 })
+    }
+
     const formData = await request.formData()
     const file = formData.get('file') as File
     const tipo = formData.get('tipo') as string
@@ -27,18 +39,6 @@ export async function POST(request: NextRequest) {
 
     const buffer = await file.arrayBuffer()
     const workbook = XLSX.read(buffer, { type: 'buffer', raw: false })
-
-    const supabase = await createClient()
-    const { data: { user }, error: authErr } = await supabase.auth.getUser()
-    if (authErr || !user) {
-      return NextResponse.json({ error: 'Usuário não autenticado. Faça login novamente.' }, { status: 401 })
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (profile?.role !== 'analista') {
-      return NextResponse.json({ error: 'Apenas analistas podem importar planilhas' }, { status: 403 })
-    }
 
     const mes = mesParam ? parseInt(mesParam) : new Date().getMonth() + 1
     const ano = anoParam ? parseInt(anoParam) : new Date().getFullYear()

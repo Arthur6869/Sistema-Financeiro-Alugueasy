@@ -26,6 +26,15 @@ interface EmpreendimentoCard {
   luc: number
 }
 
+interface ApartamentoCard {
+  numero: string
+  empNome: string
+  tipo: string
+  fat: number
+  custos: number
+  luc: number
+}
+
 interface ChartData {
   empreendimento: string
   faturamento: number
@@ -46,6 +55,7 @@ interface DashboardContentProps {
   qtdEmpreendimentos: number
   chartData: ChartData[]
   empreendimentoCards: EmpreendimentoCard[]
+  apartamentoCards: ApartamentoCard[]
 }
 
 export function DashboardContent({
@@ -62,6 +72,7 @@ export function DashboardContent({
   qtdEmpreendimentos,
   chartData,
   empreendimentoCards,
+  apartamentoCards,
 }: DashboardContentProps) {
   const [globalCensorEnabled, setGlobalCensorEnabled] = useState(false)
 
@@ -323,6 +334,73 @@ export function DashboardContent({
                     <span className={`font-semibold ${emp.luc >= 0 ? 'text-green-600' : 'text-red-600'} group`}>
                       <CensoredValue
                         value={`${emp.luc >= 0 ? '+' : ''}R$ ${emp.luc.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`}
+                        censored={globalCensorEnabled}
+                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
+                      />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {apartamentoCards.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-base font-semibold text-gray-800 mb-4">
+            Resultado por Apartamento
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {apartamentoCards.map((apt) => (
+              <div
+                key={`${apt.empNome}-${apt.numero}`}
+                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-4"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 leading-tight">
+                      {apt.numero}
+                    </p>
+                    <p className="text-xs text-gray-400 leading-tight">{apt.empNome}</p>
+                  </div>
+                  <Badge
+                    className={`text-[10px] shrink-0 mt-0.5 ${
+                      apt.tipo === 'adm'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                    }`}
+                    variant="outline"
+                  >
+                    {apt.tipo.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="space-y-1 mt-3">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Fat.</span>
+                    <span className="font-medium text-gray-800 group">
+                      <CensoredValue
+                        value={`R$ ${apt.fat.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        censored={globalCensorEnabled}
+                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
+                      />
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">Custo</span>
+                    <span className="font-medium text-gray-700 group">
+                      <CensoredValue
+                        value={`R$ ${apt.custos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        censored={globalCensorEnabled}
+                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
+                      />
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs pt-1 border-t border-gray-50">
+                    <span className="text-gray-400">Lucro</span>
+                    <span className={`font-semibold group ${apt.luc >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <CensoredValue
+                        value={`${apt.luc >= 0 ? '+' : ''}R$ ${apt.luc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                         censored={globalCensorEnabled}
                         className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                       />
