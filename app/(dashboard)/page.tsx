@@ -63,6 +63,7 @@ export default async function DashboardPage({
     { data: reservasData },
     { data: custosData },
     { data: apartamentosData },
+    { data: custosOpVar },
   ] = await Promise.all([
     supabase
       .from('empreendimentos')
@@ -73,7 +74,13 @@ export default async function DashboardPage({
     custosQuery,
     supabase
       .from('apartamentos')
-      .select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)')
+      .select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)'),
+    supabase
+      .from('custos_operacionais_variaveis')
+      .select('diarias')
+      .eq('mes', mes)
+      .eq('ano', ano)
+      .maybeSingle(),
   ])
 
   // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz
@@ -83,7 +90,12 @@ export default async function DashboardPage({
     ? diariasData!.reduce((acc: number, d: any) => acc + (d.valor || 0), 0)
     : (reservasData?.reduce((acc, r) => acc + (r.valor_liquido || 0), 0) ?? 0)
 
-  const custosTotal = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+  const CUSTOS_OP_FIXO = 43509.92
+  const CUSTO_DIARIA_OP = 250.00
+  const diariasOpVar = (mes > 0 && ano > 0) ? (custosOpVar?.diarias ?? 0) : 0
+  const custosOperacionais = CUSTOS_OP_FIXO + diariasOpVar * CUSTO_DIARIA_OP
+
+  const custosTotal = (custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0) + custosOperacionais
   const lucroTotal = faturamentoTotal - custosTotal
   const qtdEmpreendimentos = empreendimentos?.length ?? 0
   const margemPct = faturamentoTotal > 0 ? Math.round((lucroTotal / faturamentoTotal) * 100) : 0
