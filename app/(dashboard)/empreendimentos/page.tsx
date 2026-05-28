@@ -2,8 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Building2, BedDouble, ArrowLeft, TrendingUp, TrendingDown, LayoutGrid, List, Pencil } from 'lucide-react'
+import { Building2, BedDouble, ArrowLeft, TrendingUp, TrendingDown, LayoutGrid, List, Pencil, FileBarChart } from 'lucide-react'
 import Link from 'next/link'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { CriarEmpreendimentoModal } from '@/components/modals/criar-empreendimento-modal'
@@ -640,6 +641,12 @@ export default async function EmpreendimentosPage({
           <p className="text-gray-500 text-sm mt-1">{empreendimentos?.length ?? 0} empreendimento(s) — {MESES[mes - 1]} {ano}</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link href={`/relatorio-desempenho?mes=${mes}&ano=${ano}`}>
+            <Button variant="outline" className="flex items-center gap-2">
+              <FileBarChart className="h-4 w-4" />
+              Relatório de Desempenho
+            </Button>
+          </Link>
           <CriarEmpreendimentoModal />
           <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
             <Link href={`/empreendimentos?${baseParams}&view=grid`}

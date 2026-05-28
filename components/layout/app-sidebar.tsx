@@ -19,6 +19,7 @@ import {
   BarChart3,
   BedDouble,
   FileText,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -40,10 +41,12 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/empreendimentos', label: 'Empreendimentos', icon: Building2 },
   { href: '/custos', label: 'Custos', icon: DollarSign },
+  { href: '/custos-operacionais', label: 'Custos Operacionais', icon: ClipboardList },
   { href: '/custos/manual', label: 'Lançamento Manual', icon: HandCoins },
   { href: '/diarias', label: 'Diárias', icon: CalendarDays },
   { href: '/reservas', label: 'Reservas', icon: CalendarCheck },
   { href: '/relatorio', label: 'Relatório', icon: BarChart3 },
+  { href: '/relatorio-desempenho', label: 'Desempenho', icon: BarChart3 },
   { href: '/prestacao-contas', label: 'Prestação de Contas', icon: FileText },
 ]
 
