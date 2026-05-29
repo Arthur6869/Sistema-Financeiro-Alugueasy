@@ -64,6 +64,7 @@ export default async function DashboardPage({
     { data: custosData },
     { data: apartamentosData },
     { data: custosOpVar },
+    { data: mesesComCustosData },
   ] = await Promise.all([
     supabase
       .from('empreendimentos')
@@ -86,6 +87,14 @@ export default async function DashboardPage({
           .from('custos_operacionais_variaveis')
           .select('mes, diarias')
           .eq('ano', ano),
+
+    // Conta meses distintos com custos no ano (para calcular fixo quando todos os meses)
+    mes === 0 && ano > 0
+      ? supabase
+          .from('custos')
+          .select('mes')
+          .eq('ano', ano)
+      : Promise.resolve({ data: null }),
   ])
 
   // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz
@@ -97,13 +106,17 @@ export default async function DashboardPage({
 
   const CUSTOS_OP_FIXO = 43509.92
   const CUSTO_DIARIA_OP = 250.00
-  // custosOpVar agora é sempre um array; cada registro = 1 mês com dados
   const custosOpVarRows = (custosOpVar as Array<{ mes: number; diarias: number }> | null) ?? []
-  const qtdMesesOp = custosOpVarRows.length
   const totalDiariasOp = custosOpVarRows.reduce((s, r) => s + (r.diarias ?? 0), 0)
-  const custosOperacionais = qtdMesesOp > 0
-    ? qtdMesesOp * CUSTOS_OP_FIXO + totalDiariasOp * CUSTO_DIARIA_OP
-    : CUSTOS_OP_FIXO // fallback: pelo menos 1 mês fixo quando não há registros
+
+  // Quando "todos os meses": conta meses distintos com custos como proxy de meses ativos
+  const qtdMesesAtivos = mes > 0
+    ? 1
+    : mesesComCustosData
+      ? new Set((mesesComCustosData as Array<{ mes: number }>).map((r) => r.mes)).size
+      : 1
+
+  const custosOperacionais = qtdMesesAtivos * CUSTOS_OP_FIXO + totalDiariasOp * CUSTO_DIARIA_OP
 
   const custosReservas = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
   const custosTotal = custosReservas + custosOperacionais
