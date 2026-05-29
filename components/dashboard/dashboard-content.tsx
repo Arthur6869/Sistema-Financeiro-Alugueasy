@@ -47,6 +47,8 @@ interface DashboardContentProps {
   anoMesLabel: string
   usandoDiariasXlsx: boolean
   faturamentoTotal: number
+  custosReservas: number
+  custosOperacionais: number
   custosTotal: number
   lucroTotal: number
   custosPct: number
@@ -64,6 +66,8 @@ export function DashboardContent({
   anoMesLabel,
   usandoDiariasXlsx,
   faturamentoTotal,
+  custosReservas,
+  custosOperacionais,
   custosTotal,
   lucroTotal,
   custosPct,
@@ -110,7 +114,8 @@ export function DashboardContent({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-5">
+        {/* Card 1 — Faturamento */}
         <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
           <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ backgroundColor: '#193660' }} />
           <div className="p-6 pl-7">
@@ -153,12 +158,54 @@ export function DashboardContent({
           </div>
         </div>
 
+        {/* Card 2 — Custos das Reservas */}
+        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-orange-400" />
+          <div className="p-6 pl-7">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                Custos Reservas
+              </span>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-50">
+                <Receipt size={17} className="text-orange-500" />
+              </div>
+            </div>
+            <p className="text-3xl font-extrabold text-gray-900 leading-none mb-1">
+              {hasData ? (
+                <span className="group">
+                  <CensoredValue
+                    value={fmt(custosReservas)}
+                    censored={globalCensorEnabled}
+                    className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
+                  />
+                </span>
+              ) : <span className="text-gray-300">R$ —</span>}
+            </p>
+            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
+            <div>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>% do faturamento</span>
+                <span>
+                  {hasData ? `${faturamentoTotal > 0 ? Math.round((custosReservas / faturamentoTotal) * 100) : 0}%` : '—'}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-100">
+                <div
+                  className="h-1.5 rounded-full bg-orange-400"
+                  style={{ width: hasData && faturamentoTotal > 0 ? `${Math.min(100, Math.round((custosReservas / faturamentoTotal) * 100))}%` : '0%' }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3 — Custos Operacionais */}
         <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
           <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-red-400" />
           <div className="p-6 pl-7">
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Custos Totais
+                Custos Operacionais
               </span>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-red-50">
                 <Receipt size={17} className="text-red-500" />
@@ -168,7 +215,7 @@ export function DashboardContent({
               {hasData ? (
                 <span className="group">
                   <CensoredValue
-                    value={fmt(custosTotal)}
+                    value={fmt(custosOperacionais)}
                     censored={globalCensorEnabled}
                     className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                   />
@@ -182,7 +229,7 @@ export function DashboardContent({
                 <span className="group">
                   {hasData ? (
                     <CensoredValue
-                      value={`${custosPct}%`}
+                      value={`${faturamentoTotal > 0 ? Math.round((custosOperacionais / faturamentoTotal) * 100) : 0}%`}
                       censored={globalCensorEnabled}
                       className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                     />
@@ -192,13 +239,14 @@ export function DashboardContent({
               <div className="h-1.5 rounded-full bg-gray-100">
                 <div
                   className="h-1.5 rounded-full bg-red-400"
-                  style={{ width: hasData ? `${custosPct}%` : '0%' }}
+                  style={{ width: hasData && faturamentoTotal > 0 ? `${Math.min(100, Math.round((custosOperacionais / faturamentoTotal) * 100))}%` : '0%' }}
                 />
               </div>
             </div>
           </div>
         </div>
 
+        {/* Card 4 — Lucro Líquido */}
         <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
           <div
             className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"

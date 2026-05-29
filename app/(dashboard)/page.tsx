@@ -95,7 +95,8 @@ export default async function DashboardPage({
   const diariasOpVar = (mes > 0 && ano > 0) ? (custosOpVar?.diarias ?? 0) : 0
   const custosOperacionais = CUSTOS_OP_FIXO + diariasOpVar * CUSTO_DIARIA_OP
 
-  const custosTotal = (custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0) + custosOperacionais
+  const custosReservas = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+  const custosTotal = custosReservas + custosOperacionais
   const lucroTotal = faturamentoTotal - custosTotal
   const qtdEmpreendimentos = empreendimentos?.length ?? 0
   const margemPct = faturamentoTotal > 0 ? Math.round((lucroTotal / faturamentoTotal) * 100) : 0
@@ -212,6 +213,8 @@ export default async function DashboardPage({
       anoMesLabel={anoMesLabel}
       usandoDiariasXlsx={usandoDiariasXlsx}
       faturamentoTotal={faturamentoTotal}
+      custosReservas={custosReservas}
+      custosOperacionais={custosOperacionais}
       custosTotal={custosTotal}
       lucroTotal={lucroTotal}
       custosPct={custosPct}
