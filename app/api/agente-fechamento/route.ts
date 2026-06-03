@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import { runAmenitizSync } from '@/lib/sync-amenitiz-core'
+import { enviarExtratoProprietario } from '@/lib/enviar-extrato-core'
 
 async function autenticar(request: NextRequest): Promise<boolean> {
   const internalKey = request.headers.get('x-alugueasy-internal-key')
@@ -46,34 +48,22 @@ export async function POST(request: NextRequest) {
   }
   const etapas: Etapas = {}
 
-  const baseUrl = process.env.ALUGUEASY_BASE_URL ?? 'http://localhost:3000'
-  const internalHeaders = {
-    'Content-Type': 'application/json',
-    'x-alugueasy-internal-key': process.env.ALUGUEASY_INTERNAL_API_KEY ?? '',
-  }
-
   // ── ETAPA 1: Sync Amenitiz ──────────────────────────────────────────────
   try {
-    const syncRes = await fetch(`${baseUrl}/api/amenitiz-sync`, {
-      method: 'POST',
-      headers: internalHeaders,
-      body: JSON.stringify({ mes: mesFinal, ano: anoFinal }),
-    })
-    const syncData = await syncRes.json() as Record<string, unknown>
+    const syncResult = await runAmenitizSync(supabase, mesFinal, anoFinal)
     etapas.sync_amenitiz = {
-      status: syncRes.ok ? 'ok' : 'erro',
-      reservas: syncData.total_reservas ?? 0,
-      faturamento_liquido: syncData.faturamento_liquido ?? 0,
-      apts_nao_encontrados: syncData.apts_nao_encontrados ?? [],
+      status: syncResult.success ? 'ok' : 'erro',
+      reservas: syncResult.total_reservas,
+      faturamento_liquido: syncResult.faturamento_liquido,
+      apts_nao_encontrados: syncResult.apts_nao_encontrados,
     }
-    if (!syncRes.ok)
-      alertas.push(`❌ Sync Amenitiz falhou: ${(syncData.error as string) ?? 'erro desconhecido'}`)
-    const naoEncontrados = (syncData.apts_nao_encontrados as string[] | undefined) ?? []
-    if (naoEncontrados.length > 0)
-      alertas.push(`⚠️ ${naoEncontrados.length} apt(s) sem room_id — faturamento perdido: ${naoEncontrados.join(', ')}`)
+    if (!syncResult.success)
+      alertas.push(`❌ Sync Amenitiz falhou: ${syncResult.error ?? 'erro desconhecido'}`)
+    if (syncResult.apts_nao_encontrados.length > 0)
+      alertas.push(`⚠️ ${syncResult.apts_nao_encontrados.length} apt(s) sem mapeamento — faturamento perdido: ${syncResult.apts_nao_encontrados.join(', ')}`)
   } catch (e) {
     etapas.sync_amenitiz = { status: 'erro', erro: (e as Error).message }
-    alertas.push(`❌ Sync Amenitiz — erro de conexão: ${(e as Error).message}`)
+    alertas.push(`❌ Sync Amenitiz — erro: ${(e as Error).message}`)
   }
 
   // ── ETAPA 2: Custos ADM ─────────────────────────────────────────────────
@@ -144,12 +134,8 @@ export async function POST(request: NextRequest) {
 
   for (const prop of (proprietarios ?? []) as Array<{ id: string; full_name: string }>) {
     try {
-      const emailRes = await fetch(`${baseUrl}/api/enviar-extrato-email`, {
-        method: 'POST',
-        headers: internalHeaders,
-        body: JSON.stringify({ proprietario_id: prop.id, mes: mesFinal, ano: anoFinal }),
-      })
-      if (emailRes.ok) emailsEnviados.push(prop.full_name)
+      const emailResult = await enviarExtratoProprietario(prop.id, mesFinal, anoFinal)
+      if (emailResult.success) emailsEnviados.push(prop.full_name)
       else emailsErro.push(prop.full_name)
     } catch {
       emailsErro.push(prop.full_name)
