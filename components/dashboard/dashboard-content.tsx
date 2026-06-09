@@ -19,6 +19,7 @@ import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { LimparDadosButton } from '@/components/shared/limpar-dados-button'
 import { Suspense } from 'react'
 import { CensoredValue } from '@/components/dashboard/censored-value'
+import { formatCurrency } from '@/lib/constants'
 
 interface EmpreendimentoCard {
   nome: string
@@ -80,9 +81,6 @@ export function DashboardContent({
 }: DashboardContentProps) {
   const [globalCensorEnabled, setGlobalCensorEnabled] = useState(false)
 
-  const fmt = (v: number) =>
-    `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-
   const valueCensorClass = (enabled: boolean) => (enabled ? 'text-transparent bg-gray-900/80' : '')
 
   return (
@@ -138,7 +136,7 @@ export function DashboardContent({
               {hasData ? (
                 <span className="group">
                   <CensoredValue
-                    value={fmt(faturamentoTotal)}
+                    value={formatCurrency(faturamentoTotal)}
                     censored={globalCensorEnabled}
                     className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                   />
@@ -174,7 +172,7 @@ export function DashboardContent({
               {hasData ? (
                 <span className="group">
                   <CensoredValue
-                    value={fmt(custosReservas)}
+                    value={formatCurrency(custosReservas)}
                     censored={globalCensorEnabled}
                     className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                   />
@@ -215,7 +213,7 @@ export function DashboardContent({
               {hasData ? (
                 <span className="group">
                   <CensoredValue
-                    value={fmt(custosOperacionais)}
+                    value={formatCurrency(custosOperacionais)}
                     censored={globalCensorEnabled}
                     className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                   />
@@ -267,7 +265,7 @@ export function DashboardContent({
               {hasData ? (
                 <span className="group">
                   <CensoredValue
-                    value={`${lucroTotal >= 0 ? '+' : ''}${fmt(lucroTotal)}`}
+                    value={`${lucroTotal >= 0 ? '+' : ''}${formatCurrency(lucroTotal)}`}
                     censored={globalCensorEnabled}
                     className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                   />
@@ -292,7 +290,7 @@ export function DashboardContent({
                 <div
                   className="h-1.5 rounded-full"
                   style={{
-                    width: hasData ? `${Math.abs(margemPct)}%` : '0%',
+                    width: hasData ? `${Math.min(100, Math.max(0, Math.abs(margemPct)))}%` : '0%',
                     backgroundColor: lucroTotal >= 0 ? '#16a34a' : '#dc2626',
                   }}
                 />
@@ -326,7 +324,7 @@ export function DashboardContent({
 
       {chartData.length > 0 ? (
         <div className={globalCensorEnabled ? 'rounded-xl overflow-hidden blur-[3px] pointer-events-none select-none' : ''}>
-          <DashboardCharts data={chartData} />
+          <DashboardCharts data={chartData} anoMesLabel={anoMesLabel} />
         </div>
       ) : (
         <Link href="/importar">
@@ -371,7 +369,7 @@ export function DashboardContent({
                     <span className="text-gray-400">Faturamento</span>
                     <span className="font-medium text-gray-800 group">
                       <CensoredValue
-                        value={`R$ ${emp.fat.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`}
+                        value={formatCurrency(emp.fat, 0)}
                         censored={globalCensorEnabled}
                         className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                       />
@@ -381,7 +379,7 @@ export function DashboardContent({
                     <span className="text-gray-400">Lucro</span>
                     <span className={`font-semibold ${emp.luc >= 0 ? 'text-green-600' : 'text-red-600'} group`}>
                       <CensoredValue
-                        value={`${emp.luc >= 0 ? '+' : ''}R$ ${emp.luc.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`}
+                        value={`${emp.luc >= 0 ? '+' : ''}${formatCurrency(emp.luc, 0)}`}
                         censored={globalCensorEnabled}
                         className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                       />
@@ -428,7 +426,7 @@ export function DashboardContent({
                     <span className="text-gray-400">Fat.</span>
                     <span className="font-medium text-gray-800 group">
                       <CensoredValue
-                        value={`R$ ${apt.fat.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        value={formatCurrency(apt.fat)}
                         censored={globalCensorEnabled}
                         className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                       />
@@ -438,7 +436,7 @@ export function DashboardContent({
                     <span className="text-gray-400">Custo</span>
                     <span className="font-medium text-gray-700 group">
                       <CensoredValue
-                        value={`R$ ${apt.custos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        value={formatCurrency(apt.custos)}
                         censored={globalCensorEnabled}
                         className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                       />
@@ -448,7 +446,7 @@ export function DashboardContent({
                     <span className="text-gray-400">Lucro</span>
                     <span className={`font-semibold group ${apt.luc >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       <CensoredValue
-                        value={`${apt.luc >= 0 ? '+' : ''}R$ ${apt.luc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        value={`${apt.luc >= 0 ? '+' : ''}${formatCurrency(apt.luc)}`}
                         censored={globalCensorEnabled}
                         className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
                       />

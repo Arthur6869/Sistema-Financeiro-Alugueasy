@@ -21,10 +21,11 @@ interface ChartData {
 
 interface DashboardChartsProps {
   data: ChartData[]
+  anoMesLabel: string
 }
 
 
-export function DashboardCharts({ data }: DashboardChartsProps) {
+export function DashboardCharts({ data, anoMesLabel }: DashboardChartsProps) {
   return (
     <Card className="border border-gray-100 shadow-sm mb-6">
       <CardHeader>
@@ -32,7 +33,7 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
           Faturamento vs Lucro por Empreendimento
         </CardTitle>
         <CardDescription className="text-sm text-gray-400">
-          Janeiro 2026
+          {anoMesLabel}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -44,6 +45,7 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
               tick={{ fontSize: 11, fill: '#6b7280' }}
               axisLine={false}
               tickLine={false}
+              tickFormatter={(v: string) => v.length > 14 ? `${v.substring(0, 13)}…` : v}
             />
             <YAxis
               tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}

@@ -9,8 +9,12 @@ export default async function DashboardPage({
 }) {
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+
+  // Validate params — rejeita NaN e valores fora do intervalo válido
+  const parsedMes = params.mes !== undefined ? parseInt(params.mes, 10) : now.getMonth() + 1
+  const parsedAno = params.ano !== undefined ? parseInt(params.ano, 10) : now.getFullYear()
+  const mes = (!isNaN(parsedMes) && parsedMes >= 0 && parsedMes <= 12) ? parsedMes : now.getMonth() + 1
+  const ano = (!isNaN(parsedAno) && (parsedAno === 0 || (parsedAno >= 2000 && parsedAno <= 2100))) ? parsedAno : now.getFullYear()
 
   const anoMesLabel =
     mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
@@ -20,12 +24,7 @@ export default async function DashboardPage({
 
   const supabase = await createClient()
 
-  // ── Queries de faturamento: prioridade para diárias (xlsx-conferido) ──────
-  // Se a tabela `diarias` tiver dados para o período, ela é usada como fonte
-  // de faturamento (valores conferidos nas planilhas). Caso contrário, usa
-  // amenitiz_reservas (dados brutos da API).
-
-  // Calcular intervalo de datas para filtro de diárias
+  // Intervalo de datas para filtro de diárias
   const dataInicio = mes > 0 && ano > 0
     ? `${ano}-${String(mes).padStart(2, '0')}-01`
     : ano > 0 ? `${ano}-01-01` : null
@@ -33,73 +32,63 @@ export default async function DashboardPage({
     ? new Date(ano, mes, 0).toISOString().slice(0, 10)
     : ano > 0 ? `${ano}-12-31` : null
 
-  // Query para diárias (xlsx-sourced)
+  // Build queries
   let diariasQuery = supabase
     .from('diarias')
     .select('apartamento_id, valor, tipo_gestao, apartamentos(numero, empreendimento_id, tipo_gestao, empreendimentos(nome))')
-
   if (dataInicio) diariasQuery = diariasQuery.gte('data', dataInicio) as typeof diariasQuery
   if (dataFim)    diariasQuery = diariasQuery.lte('data', dataFim) as typeof diariasQuery
 
-  // Query para reservas do Amenitiz (fallback quando diárias não disponível)
-  let reservasQuery = supabase
-    .from('amenitiz_reservas')
-    .select('valor_liquido, individual_room_number')
-
-  if (mes > 0) reservasQuery = reservasQuery.eq('mes_competencia', mes) as typeof reservasQuery
-  if (ano > 0) reservasQuery = reservasQuery.eq('ano_competencia', ano) as typeof reservasQuery
-
-  // Query para custos
   let custosQuery = supabase
     .from('custos')
     .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
-
   if (mes > 0) custosQuery = custosQuery.eq('mes', mes) as typeof custosQuery
   if (ano > 0) custosQuery = custosQuery.eq('ano', ano) as typeof custosQuery
 
+  // Buscar queries principais em paralelo (reservas Amenitiz somente se necessário depois)
   const [
-    { data: empreendimentos },
-    { data: diariasData },
-    { data: reservasData },
-    { data: custosData },
+    { data: empreendimentos, error: empError },
+    { data: diariasData, error: diariasError },
+    { data: custosData, error: custosError },
     { data: apartamentosData },
     { data: custosOpVar },
     { data: mesesComCustosData },
   ] = await Promise.all([
-    supabase
-      .from('empreendimentos')
-      .select('id, nome')
-      .order('nome'),
+    supabase.from('empreendimentos').select('id, nome').order('nome'),
     diariasQuery,
-    reservasQuery,
     custosQuery,
-    supabase
-      .from('apartamentos')
-      .select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)'),
-    // Quando mes=0 (todos os meses), busca todos os registros do ano para somar
+    supabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)'),
+    // Busca custos operacionais variáveis — quando mes=0 traz todos do ano
     mes > 0 && ano > 0
-      ? supabase
-          .from('custos_operacionais_variaveis')
-          .select('mes, diarias')
-          .eq('mes', mes)
-          .eq('ano', ano)
-      : supabase
-          .from('custos_operacionais_variaveis')
-          .select('mes, diarias')
-          .eq('ano', ano),
-
-    // Conta meses distintos com custos no ano (para calcular fixo quando todos os meses)
+      ? supabase.from('custos_operacionais_variaveis').select('mes, diarias').eq('mes', mes).eq('ano', ano)
+      : supabase.from('custos_operacionais_variaveis').select('mes, diarias').eq('ano', ano),
+    // Conta meses distintos com custos (somente ao exibir todos os meses de um ano)
     mes === 0 && ano > 0
-      ? supabase
-          .from('custos')
-          .select('mes')
-          .eq('ano', ano)
-      : Promise.resolve({ data: null }),
+      ? supabase.from('custos').select('mes').eq('ano', ano)
+      : Promise.resolve({ data: null, error: null }),
   ])
+
+  if (empError)    console.error('[dashboard] empreendimentos:', empError.message)
+  if (diariasError) console.error('[dashboard] diarias:', diariasError.message)
+  if (custosError)  console.error('[dashboard] custos:', custosError.message)
 
   // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz
   const usandoDiariasXlsx = (diariasData?.length ?? 0) > 0
 
+  // Busca Amenitiz somente como fallback — evita query desnecessária quando diarias tem dados
+  let reservasData: Array<{ valor_liquido: number; individual_room_number: string | number }> | null = null
+  if (!usandoDiariasXlsx) {
+    let reservasQuery = supabase
+      .from('amenitiz_reservas')
+      .select('valor_liquido, individual_room_number')
+    if (mes > 0) reservasQuery = reservasQuery.eq('mes_competencia', mes) as typeof reservasQuery
+    if (ano > 0) reservasQuery = reservasQuery.eq('ano_competencia', ano) as typeof reservasQuery
+    const { data, error: reservasError } = await reservasQuery
+    if (reservasError) console.error('[dashboard] amenitiz_reservas:', reservasError.message)
+    reservasData = data
+  }
+
+  // Totais financeiros
   const faturamentoTotal = usandoDiariasXlsx
     ? diariasData!.reduce((acc: number, d: any) => acc + (d.valor || 0), 0)
     : (reservasData?.reduce((acc, r) => acc + (r.valor_liquido || 0), 0) ?? 0)
@@ -109,7 +98,6 @@ export default async function DashboardPage({
   const custosOpVarRows = (custosOpVar as Array<{ mes: number; diarias: number }> | null) ?? []
   const totalDiariasOp = custosOpVarRows.reduce((s, r) => s + (r.diarias ?? 0), 0)
 
-  // Quando "todos os meses": conta meses distintos com custos como proxy de meses ativos
   const qtdMesesAtivos = mes > 0
     ? 1
     : mesesComCustosData
@@ -117,7 +105,6 @@ export default async function DashboardPage({
       : 1
 
   const custosOperacionais = qtdMesesAtivos * CUSTOS_OP_FIXO + totalDiariasOp * CUSTO_DIARIA_OP
-
   const custosReservas = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
   const custosTotal = custosReservas + custosOperacionais
   const lucroTotal = faturamentoTotal - custosTotal
@@ -125,23 +112,18 @@ export default async function DashboardPage({
   const margemPct = faturamentoTotal > 0 ? Math.round((lucroTotal / faturamentoTotal) * 100) : 0
   const custosPct = faturamentoTotal > 0 ? Math.min(100, Math.round((custosTotal / faturamentoTotal) * 100)) : 0
 
-  // Mapear apartamento_id → empreendimento (usado no fallback Amenitiz)
-  // Chave por UUID evita colisão quando dois empreendimentos têm o mesmo número
-  const aptIdToEmp: Record<string, string> = {}
+  // Map de apartamentos por ID — O(1) em vez de O(n) por .find() nos loops
+  const aptLookupMap = new Map<string, any>()
+  apartamentosData?.forEach((a: any) => aptLookupMap.set(a.id, a))
+
+  // Map por número de apartamento — usado somente no fallback Amenitiz
+  const aptByNumberMap = new Map<string, any>()
   apartamentosData?.forEach((a: any) => {
-    const emp = a.empreendimentos?.nome || ''
-    if (emp) aptIdToEmp[a.id] = emp
+    const key = String(a.numero).trim()
+    if (!aptByNumberMap.has(key)) aptByNumberMap.set(key, a)
   })
 
-  // Mapa legado por número (apenas fallback Amenitiz — pode colidir em duplicatas)
-  const aptMap: Record<string, string> = {}
-  apartamentosData?.forEach((a: any) => {
-    const num = `${a.empreendimento_id}::${String(a.numero).trim()}`
-    const emp = a.empreendimentos?.nome || ''
-    if (emp) aptMap[num] = emp
-  })
-
-  // Agregar por apartamento (chave = apartamento_id UUID — sem colisão)
+  // Agregar por apartamento (chave = apartamento_id UUID)
   const aptCardMap: Record<string, {
     numero: string; empNome: string; tipo: string; fat: number; custos: number
   }> = {}
@@ -166,7 +148,7 @@ export default async function DashboardPage({
     const id = c.apartamento_id
     if (!id) return
     if (!aptCardMap[id]) {
-      const apt = apartamentosData?.find((a: any) => a.id === id) as any
+      const apt = aptLookupMap.get(id)
       aptCardMap[id] = {
         numero: apt?.numero || '?',
         empNome: (apt?.empreendimentos as any)?.nome || '—',
@@ -181,9 +163,9 @@ export default async function DashboardPage({
     .map(([, v]) => ({ ...v, luc: v.fat - v.custos }))
     .sort((a, b) => a.empNome.localeCompare(b.empNome) || a.numero.localeCompare(b.numero))
 
+  // Agregar por empreendimento
   const empreendimentoMap: Record<string, { fat: number; custos: number }> = {}
 
-  // Agregar faturamento por empreendimento — xlsx tem prioridade
   if (usandoDiariasXlsx) {
     diariasData!.forEach((d: any) => {
       const nome = d.apartamentos?.empreendimentos?.nome
@@ -193,12 +175,10 @@ export default async function DashboardPage({
       }
     })
   } else {
+    // Fallback Amenitiz: identifica empreendimento pelo número do apt via Map (O(1))
     reservasData?.forEach((r: any) => {
-      // Fallback Amenitiz: identifica empreendimento pelo número do apt
-      // Usa aptMap com chave empreendimento_id::numero (sem colisão por UUID)
       const aptNum = String(r.individual_room_number).trim()
-      // Procura o primeiro apt cujo número bate (sem empreendimento_id disponível no Amenitiz)
-      const apt = apartamentosData?.find((a: any) => String(a.numero).trim() === aptNum) as any
+      const apt = aptByNumberMap.get(aptNum)
       const empNome = apt ? ((apt.empreendimentos as any)?.nome || '') : ''
       if (empNome) {
         if (!empreendimentoMap[empNome]) empreendimentoMap[empNome] = { fat: 0, custos: 0 }
@@ -215,8 +195,9 @@ export default async function DashboardPage({
     }
   })
 
+  // Nome completo no chartData — o componente de gráfico aplica truncamento no eixo
   const chartData = Object.entries(empreendimentoMap).map(([nome, vals]) => ({
-    empreendimento: nome.length > 10 ? nome.substring(0, 10) : nome,
+    empreendimento: nome,
     faturamento: Math.round(vals.fat),
     lucro: Math.round(vals.fat - vals.custos),
   }))
@@ -227,7 +208,8 @@ export default async function DashboardPage({
     luc: vals.fat - vals.custos,
   }))
 
-  const hasData = faturamentoTotal > 0
+  // Exibe dados se há qualquer faturamento ou custo — não esconde períodos só com custos
+  const hasData = faturamentoTotal > 0 || custosReservas > 0
 
   return (
     <DashboardContent
