@@ -1,6 +1,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Rotas públicas que não exigem autenticação
+const PUBLIC_ROUTES = ['/home', '/login-proprietario']
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -28,6 +31,11 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
+
+  // Rotas públicas: landing page e login do proprietário — passam sem autenticação
+  if (PUBLIC_ROUTES.some(route => pathname === route || pathname.startsWith(route + '/'))) {
+    return supabaseResponse
+  }
 
   // Se autenticado e tentando acessar /login → manda para /
   if (pathname.startsWith('/login')) {

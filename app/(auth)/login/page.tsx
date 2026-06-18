@@ -2,47 +2,44 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
+import { Eye, EyeOff, Loader2, AlertCircle, BarChart2, Shield, Lock, ArrowLeft } from 'lucide-react'
+
+type Role = 'analista' | 'admin'
+
+function LogoIcon({ size = 40, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <path d="M20 4L4 18H9.5V35H16.5V27H23.5V35H30.5V18H36L20 4Z" fill={color} opacity=".9" />
+    </svg>
+  )
+}
 
 export default function LoginPage() {
   const router = useRouter()
+
   const [supabase, setSupabase] = useState<ReturnType<typeof createClient> | null>(null)
-  const [email, setEmail] = useState('')
+  const [role,     setRole]     = useState<Role>('analista')
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [showPw,   setShowPw]   = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
   const [systemError, setSystemError] = useState('')
 
-  // Validar variáveis de ambiente no mounting
   useEffect(() => {
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-      if (!url || !key) {
-        setSystemError('⚠️ Configuração incompleta: Variáveis de ambiente Supabase não encontradas')
-        console.error('Supabase URL:', url ? 'OK' : 'FALTA')
-        console.error('Supabase Key:', key ? 'OK' : 'FALTA')
+      if (!url || !key || url.includes('undefined') || key.includes('undefined')) {
+        setSystemError('⚠️ Configuração incompleta. Variáveis de ambiente Supabase não encontradas.')
         return
       }
-
-      if (url.includes('undefined') || key.includes('undefined')) {
-        setSystemError('⚠️ Variáveis de ambiente não carregadas corretamente')
-        return
-      }
-
-      const client = createClient()
-      setSupabase(client)
-      setSystemError('')
+      setSupabase(createClient())
     } catch (err: any) {
       setSystemError(`Erro ao inicializar: ${err.message}`)
-      console.error('Erro na inicialização do Supabase:', err)
     }
   }, [])
 
@@ -58,166 +55,225 @@ export default function LoginPage() {
     }
 
     if (!email || !password) {
-      setError('Preenchha email e senha')
+      setError('Preencha email e senha.')
       setLoading(false)
       return
     }
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
-      if (error) {
-        console.error('Erro de login:', error)
-        setError(error.message || 'Email ou senha incorretos. Verifique suas credenciais.')
+      if (authError) {
+        setError(authError.message || 'Email ou senha incorretos. Verifique suas credenciais.')
         setLoading(false)
         return
       }
 
-      // Aguardar um pouco antes de redirecionar para garantir que o cookie foi setado
       await new Promise(resolve => setTimeout(resolve, 500))
-
       router.push('/')
       router.refresh()
     } catch (err: any) {
-      console.error('Exceção no login:', err)
       setError(`Erro: ${err.message || 'Falha na autenticação. Verifique sua conexão.'}`)
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Painel esquerdo — azul AlugEasy */}
-      <div
-        className="hidden lg:flex w-1/2 flex-col items-center justify-center p-12"
-        style={{ backgroundColor: '#193660' }}
-      >
-        <div className="flex flex-col items-center gap-6 text-white">
-          <Image
-            src="/logo-alugueasy.png"
-            alt="AlugEasy"
-            width={220}
-            height={180}
-            priority
-            className="object-contain"
-          />
-          <div className="text-center mt-4">
-            <p className="text-white/70 text-lg font-light">
-              Gestão financeira de imóveis por temporada
-            </p>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        .ae-login-wrap { min-height: 100vh; display: flex; font-family: 'DM Sans', sans-serif; }
+
+        .ae-side {
+          width: 420px; flex-shrink: 0; background: #0f2647;
+          display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+          padding: 48px 40px; position: relative; overflow: hidden;
+        }
+        .ae-side::before { content:''; position:absolute; width:300px; height:300px; border-radius:50%; background:rgba(255,255,255,.03); top:-80px; right:-100px; }
+        .ae-side::after  { content:''; position:absolute; width:200px; height:200px; border-radius:50%; background:rgba(255,255,255,.03); bottom:60px; left:-70px; }
+        .ae-side-content { text-align: center; position: relative; z-index: 1; }
+        .ae-brand-name { color: #fff; font-size: 16px; font-weight: 700; letter-spacing: .1em; margin-top: 12px; }
+        .ae-tagline { color: rgba(255,255,255,.45); font-size: 13px; line-height: 1.6; margin-top: 8px; }
+        .ae-features { margin-top: 40px; display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 260px; }
+        .ae-feature { display: flex; align-items: center; gap: 10px; }
+        .ae-feature-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.3); flex-shrink: 0; }
+        .ae-feature span { font-size: 12px; color: rgba(255,255,255,.5); }
+        .ae-copy { color: rgba(255,255,255,.2); font-size: 11px; position: relative; z-index: 1; }
+
+        .ae-form-panel { flex: 1; display: flex; align-items: center; justify-content: center; background: #fff; padding: 40px 32px; }
+        .ae-form-inner { width: 100%; max-width: 400px; }
+
+        .ae-back-link { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#94a3b8; text-decoration:none; margin-bottom:20px; transition: color .15s; }
+        .ae-back-link:hover { color: #0f2647; }
+
+        .ae-portal-tag {
+          display: inline-flex; align-items: center; gap: 5px;
+          font-size: 10px; font-weight: 700; letter-spacing: .08em;
+          text-transform: uppercase; padding: 4px 10px; border-radius: 100px; margin-bottom: 18px;
+          background: rgba(25,54,96,.08); color: #193660;
+        }
+
+        .ae-role-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
+        .ae-role-chip {
+          padding: 12px 8px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fafafa;
+          cursor: pointer; text-align: center; transition: all .15s;
+          display: flex; flex-direction: column; align-items: center; gap: 5px;
+        }
+        .ae-role-chip:hover { border-color: #193660; background: rgba(25,54,96,.03); }
+        .ae-role-chip.active { border-color: #0f2647; background: rgba(15,38,71,.06); }
+        .ae-role-chip-icon { color: #94a3b8; }
+        .ae-role-chip.active .ae-role-chip-icon { color: #0f2647; }
+        .ae-role-chip-name { font-size: 13px; font-weight: 600; color: #0f1a2e; }
+        .ae-role-chip-desc { font-size: 10px; color: #5a6a82; }
+
+        .ae-field { margin-bottom: 16px; }
+        .ae-field label { font-size: 12px; font-weight: 500; color: #5a6a82; display: block; margin-bottom: 5px; }
+        .ae-input {
+          width: 100%; padding: 11px 14px; border: 1px solid #e2e8f0; border-radius: 10px;
+          font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; background: #fafafa;
+          transition: border-color .15s, box-shadow .15s, background .15s; color: #0f1a2e;
+        }
+        .ae-input:focus { border-color: #0f2647; box-shadow: 0 0 0 3px rgba(15,38,71,.1); background: #fff; }
+        .ae-input-wrap { position: relative; }
+        .ae-pw-toggle {
+          position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; cursor: pointer; color: #94a3b8; padding: 0; display: flex; align-items: center;
+        }
+        .ae-pw-toggle:hover { color: #5a6a82; }
+
+        .ae-submit {
+          width: 100%; padding: 13px; background: #0f2647; color: #fff; border: none; border-radius: 10px;
+          font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+          cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+          transition: opacity .15s, transform .15s; margin-top: 4px;
+        }
+        .ae-submit:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+        .ae-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+        .ae-alert { border-radius: 10px; padding: 12px 14px; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-bottom: 14px; }
+        .ae-alert-warn { background: #fefce8; border: 1px solid #fde68a; color: #92400e; }
+        .ae-alert-err  { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+        @media (max-width: 768px) {
+          .ae-side { display: none; }
+          .ae-form-panel { padding: 32px 20px; }
+        }
+      `}</style>
+
+      <div className="ae-login-wrap">
+
+        <div className="ae-side">
+          <div className="ae-side-content">
+            <LogoIcon size={48} color="#fff" />
+            <div className="ae-brand-name">ALUGUEASY</div>
+            <div className="ae-tagline">Sistema financeiro interno<br />Gestão de imóveis por temporada</div>
+            <div className="ae-features">
+              {[
+                'Dashboard com KPIs em tempo real',
+                'Importação de planilhas Excel',
+                'Sincronização com Amenitiz',
+                'Relatório analítico 6 meses',
+                'Controle por empreendimento',
+              ].map(f => (
+                <div key={f} className="ae-feature">
+                  <span className="ae-feature-dot" />
+                  <span>{f}</span>
+                </div>
+              ))}
+            </div>
           </div>
+          <div className="ae-copy">© {new Date().getFullYear()} AlugEasy</div>
         </div>
 
-        <div className="mt-auto text-white/40 text-sm">
-          © {new Date().getFullYear()} AlugEasy — Todos os direitos reservados
-        </div>
-      </div>
+        <div className="ae-form-panel">
+          <div className="ae-form-inner">
 
-      {/* Painel direito — branco */}
-      <div className="flex-1 flex items-center justify-center bg-white p-8">
-        <div className="w-full max-w-md">
-          {/* Logo mobile */}
-          <div className="lg:hidden flex justify-center mb-8">
-            <Image
-              src="/logo-alugueasy.png"
-              alt="AlugEasy"
-              width={150}
-              height={120}
-              className="object-contain"
-              style={{ filter: 'hue-rotate(0deg)' }}
-            />
-          </div>
+            <Link href="/home" className="ae-back-link">
+              <ArrowLeft size={13} />
+              Voltar para a página inicial
+            </Link>
 
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Bem-vindo de volta</h1>
-            <p className="text-gray-500 mt-1 text-sm">
-              Acesso restrito ao sistema financeiro AlugEasy
-            </p>
-          </div>
-
-          {/* Erro de Sistema */}
-          {systemError && (
-            <div className="mb-5 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm px-4 py-3 rounded-lg flex gap-2">
-              <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-              <div>{systemError}</div>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-gray-700 font-medium">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={loading || !supabase}
-                required
-                autoComplete="email"
-                className="h-11 border-gray-200 focus-visible:ring-[#193660]"
-              />
+            <div className="ae-portal-tag">
+              <Lock size={10} />
+              Equipe interna
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-gray-700 font-medium">
-                Senha
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading || !supabase}
-                  required
-                  autoComplete="current-password"
-                  className="h-11 pr-10 border-gray-200 focus-visible:ring-[#193660]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f1a2e', marginBottom: 4 }}>Bem-vindo de volta</h1>
+            <p style={{ fontSize: 13, color: '#5a6a82', marginBottom: 24 }}>Selecione seu perfil e acesse o sistema</p>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex gap-2">
-                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-                <div>{error}</div>
+            {systemError && (
+              <div className="ae-alert ae-alert-warn">
+                <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>{systemError}</span>
               </div>
             )}
 
-            <Button
-              type="submit"
-              disabled={loading || !supabase}
-              className="w-full h-11 text-white font-semibold text-base"
-              style={{ backgroundColor: '#193660' }}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Entrando...
-                </>
-              ) : (
-                'Entrar'
-              )}
-            </Button>
-          </form>
+            <div className="ae-role-row">
+              <button type="button" className={`ae-role-chip ${role === 'analista' ? 'active' : ''}`} onClick={() => setRole('analista')}>
+                <BarChart2 size={22} className="ae-role-chip-icon" />
+                <div className="ae-role-chip-name">Analista</div>
+                <div className="ae-role-chip-desc">Acesso completo</div>
+              </button>
+              <button type="button" className={`ae-role-chip ${role === 'admin' ? 'active' : ''}`} onClick={() => setRole('admin')}>
+                <Shield size={22} className="ae-role-chip-icon" />
+                <div className="ae-role-chip-name">Admin</div>
+                <div className="ae-role-chip-desc">Somente leitura</div>
+              </button>
+            </div>
 
-          <p className="text-center text-xs text-gray-400 mt-8">
-            🔒 Acesso autorizado apenas para usuários cadastrados
-          </p>
+            <form onSubmit={handleLogin}>
+              <div className="ae-field">
+                <label htmlFor="email">Email corporativo</label>
+                <input
+                  id="email" type="email" className="ae-input" placeholder="usuario@alugueasy.com.br"
+                  value={email} onChange={e => setEmail(e.target.value)}
+                  disabled={loading || !supabase} required autoComplete="email"
+                />
+              </div>
+
+              <div className="ae-field">
+                <label htmlFor="password">Senha</label>
+                <div className="ae-input-wrap">
+                  <input
+                    id="password" type={showPw ? 'text' : 'password'} className="ae-input" placeholder="••••••••"
+                    value={password} onChange={e => setPassword(e.target.value)}
+                    disabled={loading || !supabase} required autoComplete="current-password"
+                    style={{ paddingRight: 42 }}
+                  />
+                  <button type="button" className="ae-pw-toggle" onClick={() => setShowPw(v => !v)} disabled={loading} tabIndex={-1} aria-label={showPw ? 'Ocultar senha' : 'Mostrar senha'}>
+                    {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div className="ae-alert ae-alert-err">
+                  <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <button type="submit" className="ae-submit" disabled={loading || !supabase}>
+                {loading ? (<><Loader2 size={16} className="animate-spin" /> Entrando…</>) : 'Entrar no sistema'}
+              </button>
+            </form>
+
+            <div style={{ textAlign: 'center', marginTop: 20, paddingTop: 20, borderTop: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>É proprietário? </span>
+              <Link href="/login-proprietario" style={{ fontSize: 12, fontWeight: 600, color: '#15803d', textDecoration: 'none' }}>
+                Acesse seu portal →
+              </Link>
+            </div>
+
+            <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 16 }}>
+              🔒 Acesso restrito — apenas usuários cadastrados
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
