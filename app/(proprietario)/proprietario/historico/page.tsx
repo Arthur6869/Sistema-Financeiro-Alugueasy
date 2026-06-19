@@ -1,10 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatCurrency, MESES } from '@/lib/constants'
-import { Home, History } from 'lucide-react'
-import Link from 'next/link'
-import { HistoricoCardsMobile } from '@/components/proprietario/historico-cards-mobile'
+import { TrendingUp, Calendar } from 'lucide-react'
+import { MESES, MESES_ABREV } from '@/lib/constants'
+import { HistoricoChart } from '@/components/proprietario/historico-chart'
+import { HistoricoLinhaClicavel } from '@/components/proprietario/historico-linha-clicavel'
 
 type ApartamentoVinculo = {
   id: string
@@ -22,31 +21,7 @@ function calcularRepasse(
   return base * (taxaRepasse / 100)
 }
 
-type StatusBadge = 'em_andamento' | 'fechado' | 'sem_dados'
-
-function StatusPill({ status }: { status: StatusBadge }) {
-  if (status === 'em_andamento') {
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">
-        Em andamento
-      </span>
-    )
-  }
-  if (status === 'fechado') {
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">
-        Fechado
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
-      Sem dados
-    </span>
-  )
-}
-
-export default async function HistoricoPropPage() {
+export default async function ProprietarioHistoricoPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -69,16 +44,6 @@ export default async function HistoricoPropPage() {
   const apartamentos: ApartamentoVinculo[] = ((vinculos ?? []) as unknown as VinculoRow[])
     .map(v => v.apartamentos)
     .filter((a): a is ApartamentoVinculo => a !== null)
-
-  if (apartamentos.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Home size={48} className="text-gray-300 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">Nenhum apartamento vinculado</h2>
-        <p className="text-gray-500 text-sm">Entre em contato com a AlugEasy para vincular seus imóveis.</p>
-      </div>
-    )
-  }
 
   const aptIds = apartamentos.map(a => a.id)
   const now = new Date()
@@ -110,130 +75,116 @@ export default async function HistoricoPropPage() {
 
       const isAtual = m === mesAtual && a === anoAtual
       const semDados = faturamento === 0 && custos === 0
-      const status: StatusBadge = semDados ? 'sem_dados' : isAtual ? 'em_andamento' : 'fechado'
 
-      return { m, a, faturamento, custos, lucro, repasse, valorProprietario, semDados, status }
+      return { m, a, faturamento, custos: semDados ? null : custos, lucro, repasse, valorProprietario, semDados, isAtual }
     })
   )
 
-  const mesesComDados = dados.filter(d => !d.semDados)
-  const totais = {
-    faturamento: mesesComDados.reduce((s, d) => s + d.faturamento, 0),
-    custos: mesesComDados.reduce((s, d) => s + d.custos, 0),
-    lucro: mesesComDados.reduce((s, d) => s + d.lucro, 0),
-    repasse: mesesComDados.reduce((s, d) => s + d.repasse, 0),
-    valorProprietario: mesesComDados.reduce((s, d) => s + d.valorProprietario, 0),
-  }
+  const chartLabels = dados.map(d => `${MESES_ABREV[d.m - 1]}/${String(d.a).slice(2)}`)
+  const chartValores = dados.map(d => d.semDados ? null : d.valorProprietario)
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <History size={20} className="text-[#193660]" />
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Histórico</h1>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+        *, *::before, *::after { box-sizing: border-box; }
+
+        .pg-wrap { font-family: 'DM Sans', sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px 28px 64px; }
+
+        .pg-head { margin-bottom: 28px; }
+        .pg-greeting { font-family: 'Instrument Serif', Georgia, serif; font-size: 28px; font-weight: 400; color: #0f1a2e; margin-bottom: 4px; }
+        .pg-greeting-sub { font-size: 13px; color: #5a6a82; }
+
+        .panel { background: #fff; border: 1px solid #e7e9ee; border-radius: 18px; padding: 24px; margin-bottom: 20px; }
+        .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+        .panel-title { font-size: 15px; font-weight: 600; color: #0f1a2e; display: flex; align-items: center; gap: 8px; }
+        .panel-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+        .hist-table { width: 100%; border-collapse: collapse; }
+        .hist-table th { text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; padding: 0 8px 12px; border-bottom: 1px solid #e7e9ee; }
+        .hist-table th.num { text-align: right; }
+        .hist-table td { padding: 13px 8px; border-bottom: 1px solid #f1f2f5; font-size: 13.5px; }
+        .hist-table tr:last-child td { border-bottom: none; }
+        .hist-table tr.has-data { cursor: pointer; transition: background .12s; }
+        .hist-table tr.has-data:hover { background: #f8f6f1; }
+        .hist-month { font-weight: 600; color: #0f1a2e; }
+        .hist-table td.num { text-align: right; font-weight: 600; color: #0f1a2e; }
+        .hist-table td.num.dim { color: #94a3b8; font-weight: 500; }
+        .hist-table td.num.repasse { color: #14532d; font-weight: 700; }
+        .status-pill { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; padding: 4px 10px; border-radius: 100px; display: inline-block; }
+        .status-sem { background: #f1f2f5; color: #94a3b8; }
+        .status-ok { background: #f0fdf4; color: #14532d; }
+
+        .table-scroll { overflow-x: auto; }
+      `}</style>
+
+      <div className="pg-wrap">
+
+        <div className="pg-head">
+          <h1 className="pg-greeting">Histórico</h1>
+          <p className="pg-greeting-sub">Últimos 12 meses — toque no mês para ver o extrato completo</p>
         </div>
-        <p className="text-gray-500 text-sm">
-          Últimos 12 meses — toque no mês para ver o extrato
-        </p>
-      </div>
 
-      {/* Cards mobile (substituem a tabela) */}
-      <HistoricoCardsMobile dados={dados.map(d => ({
-        m: d.m,
-        a: d.a,
-        faturamento: d.faturamento,
-        lucro: d.lucro,
-        valorProprietario: d.valorProprietario,
-        semDados: d.semDados,
-        status: d.status,
-      }))} />
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <div className="panel-title"><TrendingUp size={16} color="#193660" /> Repasse mensal</div>
+              <div className="panel-sub">Evolução do valor recebido mês a mês</div>
+            </div>
+          </div>
+          <HistoricoChart labels={chartLabels} valores={chartValores} />
+        </div>
 
-      {/* Tabela desktop */}
-      <Card className="hidden md:block border border-gray-100 shadow-sm overflow-hidden">
-        <CardHeader className="py-3 bg-gray-50 border-b border-gray-100">
-          <CardTitle className="text-sm font-semibold text-gray-700">Resumo Mensal</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        <div className="panel">
+          <div className="panel-head">
+            <div className="panel-title"><Calendar size={16} color="#193660" /> Resumo mensal</div>
+          </div>
+
+          <div className="table-scroll">
+            <table className="hist-table">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/80">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Mês</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Faturamento</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Custos</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Lucro</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Repasse</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Seu Valor</th>
+                <tr>
+                  <th>Mês</th>
+                  <th>Status</th>
+                  <th className="num">Faturamento</th>
+                  <th className="num">Custos</th>
+                  <th className="num">Lucro</th>
+                  <th className="num">Repasse</th>
+                  <th className="num">Seu valor</th>
                 </tr>
               </thead>
               <tbody>
-                {dados.map(({ m, a, faturamento, custos, lucro, repasse, valorProprietario, semDados, status }) => {
-                  const isAtual = m === mesAtual && a === anoAtual
-                  return (
-                    <tr
-                      key={`${a}-${m}`}
-                      className={`border-b border-gray-50 transition-colors ${
-                        isAtual ? 'bg-blue-50/60' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/proprietario/extrato?mes=${m}&ano=${a}`}
-                          className="font-medium text-gray-800 hover:text-[#193660] hover:underline"
-                        >
-                          {MESES[m - 1]} {a}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={status} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {semDados ? <span className="text-gray-300 text-xs">—</span>
-                          : <span className="text-[#193660] font-medium">{formatCurrency(faturamento)}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {semDados ? <span className="text-gray-300 text-xs">—</span>
-                          : <span className="text-red-600">{formatCurrency(custos)}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {semDados ? <span className="text-gray-300 text-xs">—</span>
-                          : <span className={lucro >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{formatCurrency(lucro)}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {semDados ? <span className="text-gray-300 text-xs">—</span>
-                          : <span className="text-amber-600">{formatCurrency(repasse)}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {semDados ? <span className="text-gray-300 text-xs">—</span>
-                          : <span className={`font-semibold ${valorProprietario >= 0 ? 'text-[#193660]' : 'text-red-600'}`}>{formatCurrency(valorProprietario)}</span>}
-                      </td>
+                {dados.map(d => (
+                  d.semDados ? (
+                    <tr key={`${d.m}-${d.a}`}>
+                      <td className="hist-month" style={{ color: '#94a3b8' }}>{MESES[d.m - 1]} {d.a}</td>
+                      <td><span className="status-pill status-sem">{d.isAtual ? 'Em andamento' : 'Sem dados'}</span></td>
+                      <td className="num dim">—</td>
+                      <td className="num dim">—</td>
+                      <td className="num dim">—</td>
+                      <td className="num dim">—</td>
+                      <td className="num dim">—</td>
                     </tr>
+                  ) : (
+                    <HistoricoLinhaClicavel
+                      key={`${d.m}-${d.a}`}
+                      mes={d.m}
+                      ano={d.a}
+                      label={`${MESES[d.m - 1]} ${d.a}`}
+                      faturamento={d.faturamento}
+                      custos={d.custos}
+                      lucro={d.lucro}
+                      repasse={d.repasse}
+                      valorFinal={d.valorProprietario}
+                    />
                   )
-                })}
-
-                {/* Linha de totais */}
-                {mesesComDados.length > 0 && (
-                  <tr className="bg-gray-100 border-t-2 border-gray-200">
-                    <td className="px-4 py-3 font-bold text-gray-800" colSpan={2}>
-                      Total ({mesesComDados.length} {mesesComDados.length === 1 ? 'mês' : 'meses'})
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-[#193660]">{formatCurrency(totais.faturamento)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-red-600">{formatCurrency(totais.custos)}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${totais.lucro >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatCurrency(totais.lucro)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-amber-600">{formatCurrency(totais.repasse)}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${totais.valorProprietario >= 0 ? 'text-[#193660]' : 'text-red-600'}`}>
-                      {formatCurrency(totais.valorProprietario)}
-                    </td>
-                  </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+
+      </div>
+    </>
   )
 }

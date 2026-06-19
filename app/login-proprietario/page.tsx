@@ -77,7 +77,7 @@ export default function LoginProprietarioPage() {
       }
 
       await new Promise(resolve => setTimeout(resolve, 500))
-      router.push('/proprietario')
+      router.push('/proprietario/bem-vindo')
       router.refresh()
     } catch (err: any) {
       setError(`Erro: ${err.message || 'Falha na autenticação. Verifique sua conexão.'}`)
