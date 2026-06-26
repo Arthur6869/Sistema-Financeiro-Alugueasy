@@ -36,12 +36,14 @@ export default async function DashboardPage({
   let diariasQuery = supabase
     .from('diarias')
     .select('apartamento_id, valor, tipo_gestao, apartamentos(numero, empreendimento_id, tipo_gestao, empreendimentos(nome))')
+    .limit(50000)
   if (dataInicio) diariasQuery = diariasQuery.gte('data', dataInicio) as typeof diariasQuery
   if (dataFim)    diariasQuery = diariasQuery.lte('data', dataFim) as typeof diariasQuery
 
   let custosQuery = supabase
     .from('custos')
     .select('valor, apartamento_id, tipo_gestao, apartamentos(empreendimento_id, empreendimentos(nome))')
+    .limit(50000)
   if (mes > 0) custosQuery = custosQuery.eq('mes', mes) as typeof custosQuery
   if (ano > 0) custosQuery = custosQuery.eq('ano', ano) as typeof custosQuery
 
@@ -64,7 +66,7 @@ export default async function DashboardPage({
       : supabase.from('custos_operacionais_variaveis').select('mes, diarias').eq('ano', ano),
     // Conta meses distintos com custos (somente ao exibir todos os meses de um ano)
     mes === 0 && ano > 0
-      ? supabase.from('custos').select('mes').eq('ano', ano)
+      ? supabase.from('custos').select('mes').eq('ano', ano).limit(50000)
       : Promise.resolve({ data: null, error: null }),
   ])
 
