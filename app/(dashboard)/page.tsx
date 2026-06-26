@@ -55,7 +55,6 @@ export default async function DashboardPage({
     { data: apartamentosData },
     { data: custosOpVar },
     { data: mesesComCustosData },
-    { data: custosSumData },
   ] = await Promise.all([
     supabase.from('empreendimentos').select('id, nome').order('nome'),
     diariasQuery,
@@ -68,11 +67,6 @@ export default async function DashboardPage({
     // Conta meses distintos com custos (somente ao exibir todos os meses de um ano)
     mes === 0 && ano > 0
       ? supabase.from('custos').select('mes').eq('ano', ano).limit(50000)
-      : Promise.resolve({ data: null, error: null }),
-    // Agregação server-side do total de custos reservas — bypassa o db-max-rows do PostgREST
-    // O .reduce() client-side é truncado pelo limite de linhas do servidor; sum() retorna 1 linha
-    mes === 0 && ano > 0
-      ? (supabase.from('custos').select('valor.sum()').eq('ano', ano) as any)
       : Promise.resolve({ data: null, error: null }),
   ])
 
@@ -113,11 +107,22 @@ export default async function DashboardPage({
       : 1
 
   const custosOperacionais = qtdMesesAtivos * CUSTOS_OP_FIXO + totalDiariasOp * CUSTO_DIARIA_OP
-  // Usa agregação server-side no modo anual (mes=0) — evita truncamento pelo db-max-rows do Supabase
-  const custosReservasSumRow = (custosSumData as Array<{ sum: number }> | null)?.[0]
-  const custosReservas = (mes === 0 && custosReservasSumRow?.sum != null)
-    ? Number(custosReservasSumRow.sum)
-    : custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+
+  // Total de custos reservas — no modo anual soma mês a mês para evitar truncamento do db-max-rows
+  let custosReservas: number
+  if (mes === 0 && ano > 0) {
+    const porMes = await Promise.all(
+      [1,2,3,4,5,6,7,8,9,10,11,12].map((m) =>
+        supabase.from('custos').select('valor').eq('mes', m).eq('ano', ano)
+      )
+    )
+    custosReservas = porMes.reduce(
+      (total, { data }) => total + (data?.reduce((s, c: any) => s + (c.valor || 0), 0) ?? 0),
+      0
+    )
+  } else {
+    custosReservas = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+  }
   const custosTotal = custosReservas + custosOperacionais
   const lucroTotal = faturamentoTotal - custosTotal
   const qtdEmpreendimentos = empreendimentos?.length ?? 0
