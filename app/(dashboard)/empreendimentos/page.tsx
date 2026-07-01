@@ -200,24 +200,39 @@ export default async function EmpreendimentosPage({
   const mes = mesParam ? parseInt(mesParam) : now.getMonth() + 1
   const ano = anoParam ? parseInt(anoParam) : now.getFullYear()
   const isListView = view === 'list'
-  const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-  const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+  const dataInicio = mes > 0 ? `${ano}-${String(mes).padStart(2, '0')}-01` : `${ano}-01-01`
+  const dataFim = mes > 0 ? new Date(ano, mes, 0).toISOString().slice(0, 10) : `${ano}-12-31`
 
   const [
     { data: empreendimentos },
     { data: diariasData },
     { data: custosData },
-    { data: reservasData },
+    { data: reservasDataRaw },
     { data: apartamentosData },
   ] = await Promise.all([
     supabase.from('empreendimentos').select('id, nome, apartamentos(id)').order('nome'),
     supabase.from('diarias').select('valor, tipo_gestao, apartamento_id, apartamentos(empreendimento_id)').gte('data', dataInicio).lte('data', dataFim),
     supabase.from('custos').select('valor, tipo_gestao, apartamentos(empreendimento_id)').eq('mes', mes).eq('ano', ano),
-    // Fallback Amenitiz: reservas individuais para o período (usadas quando diarias não tem o apt)
-    supabase.from('amenitiz_reservas').select('valor_liquido, individual_room_number, status').eq('mes_competencia', mes).eq('ano_competencia', ano),
+    // Fallback Amenitiz: reservas por sobreposição de datas (proradas ao mês logo abaixo).
+    supabase.from('amenitiz_reservas').select('valor_liquido, individual_room_number, status, checkin, checkout').lte('checkin', dataFim).gte('checkout', dataInicio),
     // Mapa de número do apartamento → empreendimento_id + tipo_gestao (para o fallback Amenitiz)
     supabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao'),
   ])
+
+  // Proration: proporciona valor_liquido de reservas que cruzam o limite do mês.
+  const empFDayMs  = mes > 0 ? new Date(dataInicio + 'T00:00:00').getTime() : 0
+  const empNMonthMs = mes > 0 ? new Date(ano, mes, 1).getTime() : 0
+  const reservasData = mes > 0
+    ? (reservasDataRaw ?? []).flatMap((r: any) => {
+        if (!r.checkin || !r.checkout || r.valor_liquido == null) return [r]
+        const ci = new Date(r.checkin + 'T00:00:00').getTime()
+        const co = new Date(r.checkout + 'T00:00:00').getTime()
+        const tot = (co - ci) / 86400000
+        const mn  = (Math.min(co, empNMonthMs) - Math.max(ci, empFDayMs)) / 86400000
+        if (mn <= 0) return []
+        return [{ ...r, valor_liquido: tot > 0 && mn < tot ? (mn / tot) * r.valor_liquido : r.valor_liquido }]
+      })
+    : (reservasDataRaw ?? [])
 
   // Mapa: apartamento_id → empreendimento_id + tipo_gestao
   const aptInfoMap: Record<string, { empId: string; tipoGestao: string }> = {}
@@ -282,11 +297,23 @@ export default async function EmpreendimentosPage({
 
     const { data: apt } = await supabase.from('apartamentos').select('id, numero, tipo_gestao').eq('id', aptId).single()
 
-    const [{ data: aptDiarias }, { data: aptCustos }, { data: aptReservas }] = await Promise.all([
+    const [{ data: aptDiarias }, { data: aptCustos }, { data: aptReservasRaw }] = await Promise.all([
       supabase.from('diarias').select('data, valor, tipo_gestao').eq('apartamento_id', aptId).gte('data', dataInicio).lte('data', dataFim).order('data'),
       supabase.from('custos').select('categoria, valor, tipo_gestao').eq('apartamento_id', aptId).eq('mes', mes).eq('ano', ano).order('categoria'),
-      supabase.from('amenitiz_reservas').select('valor_liquido, status').eq('mes_competencia', mes).eq('ano_competencia', ano).eq('individual_room_number', apt?.numero ?? 0),
+      supabase.from('amenitiz_reservas').select('valor_liquido, status, checkin, checkout').lte('checkin', dataFim).gte('checkout', dataInicio).eq('individual_room_number', apt?.numero ?? 0),
     ])
+
+    const aptReservas = mes > 0
+      ? (aptReservasRaw ?? []).flatMap((r: any) => {
+          if (!r.checkin || !r.checkout || r.valor_liquido == null) return [r]
+          const ci = new Date(r.checkin + 'T00:00:00').getTime()
+          const co = new Date(r.checkout + 'T00:00:00').getTime()
+          const tot = (co - ci) / 86400000
+          const mn  = (Math.min(co, empNMonthMs) - Math.max(ci, empFDayMs)) / 86400000
+          if (mn <= 0) return []
+          return [{ ...r, valor_liquido: tot > 0 && mn < tot ? (mn / tot) * r.valor_liquido : r.valor_liquido }]
+        })
+      : (aptReservasRaw ?? [])
 
     const af = emptyFin()
     const aptTemDiarias = (aptDiarias?.length ?? 0) > 0
@@ -432,7 +459,7 @@ export default async function EmpreendimentosPage({
     if (!emp) redirect('/empreendimentos')
 
     const [{ data: apartamentos }, { data: aptDiarias }, { data: aptCustos }] = await Promise.all([
-      supabase.from('apartamentos').select('id, numero, created_at, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato').eq('empreendimento_id', empId).order('numero'),
+      supabase.from('apartamentos').select('id, numero, created_at, tipo_gestao, taxa_repasse, tipo_repasse, nome_proprietario, modelo_contrato').eq('empreendimento_id', empId).order('numero'),
       supabase.from('diarias').select('valor, apartamento_id, tipo_gestao').gte('data', dataInicio).lte('data', dataFim),
       supabase.from('custos').select('valor, apartamento_id, tipo_gestao').eq('mes', mes).eq('ano', ano),
     ])

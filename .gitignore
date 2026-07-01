@@ -51,6 +51,7 @@ dist/
 test-*.ts
 temp-*.ts
 debug-*.ts
+* - Copia.md
 
 # ── Planilhas / dados brutos ──
 dados jan/

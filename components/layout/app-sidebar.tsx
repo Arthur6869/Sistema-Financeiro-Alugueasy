@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -111,7 +110,12 @@ export function AppSidebar({ role, fullName, email }: SidebarProps) {
               <Building2 size={16} className="text-white" />
             </div>
           ) : (
-            <Image src="/logo-alugueasy.png" alt="AlugEasy" width={140} height={60} className="object-contain" priority />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src="/image.png"
+              alt="AlugEasy"
+              style={{ height: 40, width: 'auto', display: 'block', borderRadius: 8 }}
+            />
           )}
         </div>
 

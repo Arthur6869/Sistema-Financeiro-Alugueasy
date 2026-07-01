@@ -41,7 +41,12 @@ export function HistoricoChart({ labels, valores }: HistoricoChartProps) {
             tick={{ fontSize: 11, fill: '#94a3b8' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => `R$${v}`}
+            tickFormatter={(v) => {
+              const n = Number(v)
+              if (Math.abs(n) >= 1000) return `R$${(n / 1000).toFixed(0)}k`
+              return `R$${n}`
+            }}
+            width={48}
           />
           <Tooltip
             formatter={(value) => [

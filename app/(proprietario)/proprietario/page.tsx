@@ -1,10 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { TrendingUp, Receipt, Wallet, Clock, BarChart2, FileText, Download, History } from 'lucide-react'
+import { TrendingUp, Receipt, Wallet, Clock, BarChart2, FileText, Download, History, AlertCircle } from 'lucide-react'
 import { EvolucaoChart } from '@/components/proprietario/evolucao-chart'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
+import { RealtimeReservas } from '@/components/proprietario/realtime-reservas'
 import { MESES, MESES_ABREV } from '@/lib/constants'
+import { calcularKPIs, somarKPIs } from '@/lib/calcular-kpis'
+import { OccupancyPanel } from '@/components/proprietario/occupancy-panel'
+import { SyncButton } from '@/components/proprietario/sync-button'
 
 type SearchParams = Promise<{ mes?: string; ano?: string }>
 
@@ -14,17 +18,8 @@ type ApartamentoVinculo = {
   tipo_gestao: 'adm' | 'sub' | null
   taxa_repasse: number | null
   tipo_repasse: 'lucro' | 'faturamento' | null
+  modelo_contrato: 'administracao' | 'sublocacao' | null
   empreendimentos: { nome: string } | null
-}
-
-function calcularRepasse(
-  faturamento: number,
-  lucro: number,
-  taxaRepasse: number,
-  tipoRepasse: 'lucro' | 'faturamento'
-) {
-  const base = tipoRepasse === 'faturamento' ? faturamento : lucro
-  return base * (taxaRepasse / 100)
 }
 
 function formatBRL(valor: number) {
@@ -48,12 +43,14 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
   const now = new Date()
   const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
   const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
-  const nomeMes = MESES[mes - 1]
-  const primeiroNome = profile?.full_name?.split(' ')[0] ?? 'Proprietário'
+  const nomeMes = mes > 0 ? (MESES[mes - 1] ?? '') : ''
+  const labelPeriodo = nomeMes ? `${nomeMes} ${ano}` : String(ano)
+  const _firstName = profile?.full_name?.split(' ')[0] ?? 'Proprietário'
+  const primeiroNome = _firstName.charAt(0).toUpperCase() + _firstName.slice(1)
 
   const { data: vinculos } = await supabase
     .from('proprietario_apartamentos')
-    .select('apartamentos(id, numero, tipo_gestao, taxa_repasse, tipo_repasse, empreendimentos(nome))')
+    .select('apartamentos(id, numero, tipo_gestao, taxa_repasse, tipo_repasse, modelo_contrato, empreendimentos(nome))')
     .eq('proprietario_id', user.id)
     .eq('ativo', true)
 
@@ -64,47 +61,147 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
 
   const aptIds = apartamentos.map(a => a.id)
 
+  // Timestamp do último ingest (cron ou webhook) — exibido pelo componente Realtime.
+  // Leitura via SECURITY DEFINER: proprietário não acessa ingest_status diretamente.
+  const { data: ingestAtRaw } = await supabase.rpc('ultimo_ingest_timestamp')
+  const ingestAt: string | null = ingestAtRaw ?? null
+
   let kpis = { faturamento: 0, custos: 0, lucro: 0, repasse: 0, margem: 0 }
   let historicoData: { label: string; faturamento: number; lucro: number; repasse: number }[] = []
   let mesesComDados = 0
-  let taxaRepasseBase = 0
-  let tipoRepasseBase: 'lucro' | 'faturamento' = 'lucro'
+  let semCategoriasConfiguradas = false
+  let semDados = false
+  let mesSincronizado = false
+  type ReservaPanel = {
+    booking_id: string
+    individual_room_name: string | null
+    checkin: string | null
+    checkout: string | null
+    plataforma_normalizada: string | null
+    valor_liquido: number | null
+    status: string | null
+    nome_hospede: string | null
+    apartamento_id: string
+  }
+  let reservasParaPainel: ReservaPanel[] = []
 
-  if (aptIds.length > 0 && mes > 0) {
-    const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-    const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+  if (aptIds.length > 0) {
+    const dataInicio = mes > 0
+      ? `${ano}-${String(mes).padStart(2, '0')}-01`
+      : `${ano}-01-01`
+    const dataFim = mes > 0
+      ? new Date(ano, mes, 0).toISOString().slice(0, 10)
+      : `${ano}-12-31`
 
-    const [{ data: custosData }, { data: diariasData }] = await Promise.all([
-      supabase.from('custos').select('apartamento_id, valor').in('apartamento_id', aptIds).eq('mes', mes).eq('ano', ano),
-      supabase.from('diarias').select('apartamento_id, valor').in('apartamento_id', aptIds).gte('data', dataInicio).lte('data', dataFim),
+    // custos: quando mes=0, busca o ano inteiro
+    const custosQuery = mes > 0
+      ? supabase.from('custos_proprietario')
+          .select('apartamento_id, valor, tipo_gestao')
+          .in('apartamento_id', aptIds)
+          .eq('mes', mes).eq('ano', ano)
+      : supabase.from('custos_proprietario')
+          .select('apartamento_id, valor, tipo_gestao')
+          .in('apartamento_id', aptIds)
+          .eq('ano', ano)
+
+    const [
+      { data: diariasData },
+      { data: custosData },
+      { count: catCount },
+      { data: reservasBruto },
+    ] = await Promise.all([
+      supabase.from('diarias')
+        .select('apartamento_id, valor, tipo_gestao')
+        .in('apartamento_id', aptIds)
+        .gte('data', dataInicio).lte('data', dataFim),
+      custosQuery,
+      supabase.from('categorias_repassaveis')
+        .select('*', { count: 'exact', head: true }),
+      // Única query de reservas: sobreposição de datas cobre o período inteiro.
+      // Reservas que cruzam início/fim do mês têm valor prorated logo abaixo.
+      supabase.from('amenitiz_reservas')
+        .select('booking_id, individual_room_name, checkin, checkout, plataforma_normalizada, valor_liquido, status, nome_hospede, apartamento_id')
+        .in('apartamento_id', aptIds)
+        .lte('checkin', dataFim)
+        .gte('checkout', dataInicio)
+        .order('checkin', { ascending: true }),
     ])
 
-    const metricas = apartamentos.map(apt => {
-      const faturamento = (diariasData ?? []).filter(d => d.apartamento_id === apt.id).reduce((s, d) => s + (d.valor ?? 0), 0)
-      const custos = (custosData ?? []).filter(c => c.apartamento_id === apt.id).reduce((s, c) => s + (c.valor ?? 0), 0)
-      const lucro = faturamento - custos
-      const taxaRepasse = apt.taxa_repasse ?? 0
-      const tipoRepasse = apt.tipo_repasse ?? 'lucro'
-      const repasse = calcularRepasse(faturamento, lucro, taxaRepasse, tipoRepasse)
-      const valorProprietario = lucro - repasse
-      return { apt, faturamento, custos, lucro, repasse, valorProprietario, taxaRepasse, tipoRepasse }
-    })
-
-    if (metricas.length > 0) {
-      taxaRepasseBase = metricas[0].taxaRepasse
-      tipoRepasseBase = metricas[0].tipoRepasse
+    if (mes > 0) {
+      const { data: syncData } = await supabase.rpc('periodo_sincronizado', { p_mes: mes, p_ano: ano })
+      mesSincronizado = syncData === true
     }
 
-    const totalFaturamento = metricas.reduce((s, m) => s + m.faturamento, 0)
-    const totalCustos = metricas.reduce((s, m) => s + m.custos, 0)
-    const totalLucro = metricas.reduce((s, m) => s + m.lucro, 0)
-    const totalValorProprietario = metricas.reduce((s, m) => s + m.valorProprietario, 0)
-    const margem = totalFaturamento > 0 ? (totalLucro / totalFaturamento) * 100 : 0
+    // Proration: clipa datas ao período e calcula valor proporcional às noites no mês.
+    // Ex: reserva 11/05→11/06 em junho = 10 noites de 31 → exibe 01/06→11/06, valor ×(10/31).
+    const firstDayMs  = mes > 0 ? new Date(dataInicio + 'T00:00:00').getTime() : 0
+    const nextMonthMs = mes > 0 ? new Date(ano, mes, 1).getTime() : 0
 
-    kpis = { faturamento: totalFaturamento, custos: totalCustos, lucro: totalLucro, repasse: totalValorProprietario, margem }
+    const reservasProrated = (reservasBruto ?? []).flatMap(r => {
+      let checkin  = r.checkin
+      let checkout = r.checkout
+      let valor    = r.valor_liquido
 
+      if (mes > 0 && r.checkin && r.checkout && r.valor_liquido != null) {
+        const ci = new Date(r.checkin  + 'T00:00:00').getTime()
+        const co = new Date(r.checkout + 'T00:00:00').getTime()
+        const totalNights = (co - ci) / 86400000
+        const monthNights = (Math.min(co, nextMonthMs) - Math.max(ci, firstDayMs)) / 86400000
+
+        if (monthNights <= 0) return []
+        if (totalNights > 0 && monthNights < totalNights) {
+          valor    = (monthNights / totalNights) * r.valor_liquido
+          if (ci < firstDayMs)  checkin  = dataInicio
+          if (co > nextMonthMs) checkout = dataFim
+        }
+      }
+
+      return [{ ...r, checkin, checkout, valor_liquido: valor }]
+    })
+
+    semCategoriasConfiguradas = (catCount ?? 0) === 0
+    semDados = (diariasData?.length ?? 0) === 0
+      && (custosData?.length ?? 0) === 0
+      && reservasProrated.length === 0
+
+    // Painel: reservas ativas com datas/valor ajustados ao período
+    reservasParaPainel = reservasProrated
+      .filter(r => !['cancelled', 'canceled', 'no_show'].includes(String(r.status ?? '').toLowerCase()))
+      .map(r => ({
+        booking_id: r.booking_id ?? '',
+        individual_room_name: r.individual_room_name,
+        checkin: r.checkin,
+        checkout: r.checkout,
+        plataforma_normalizada: r.plataforma_normalizada,
+        valor_liquido: r.valor_liquido,
+        status: r.status,
+        nome_hospede: r.nome_hospede,
+        apartamento_id: r.apartamento_id ?? '',
+      }))
+
+    // KPIs: reservasProrated como fallback Amenitiz quando não há diárias importadas
+    const metricas = apartamentos.map(apt => calcularKPIs(
+      (diariasData  ?? []).filter(d => d.apartamento_id === apt.id),
+      (custosData   ?? []).filter(c => c.apartamento_id === apt.id),
+      reservasProrated.filter(r => r.apartamento_id === apt.id),
+      apt,
+    ))
+
+    const total = somarKPIs(metricas)
+    kpis = {
+      faturamento: total.receitaTotal,
+      custos:      total.custosTotal,
+      lucro:       total.lucroLiquido,
+      repasse:     total.valorLiquidoProprietario,
+      margem:      total.margemLiquida,
+    }
+
+    const taxaRepasseBase  = metricas[0]?.taxa  ?? 0
+    const tipoRepasseBase  = (apartamentos[0]?.tipo_repasse  ?? 'lucro') as 'lucro' | 'faturamento'
+
+    const mesParaHistorico = mes > 0 ? mes : (now.getMonth() + 1)
     const periodos = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(ano, mes - 1 - (5 - i), 1)
+      const d = new Date(ano, mesParaHistorico - 1 - (5 - i), 1)
       return { m: d.getMonth() + 1, a: d.getFullYear(), label: MESES_ABREV[d.getMonth()] }
     })
 
@@ -113,12 +210,15 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         const di = `${a}-${String(m).padStart(2, '0')}-01`
         const df = new Date(a, m, 0).toISOString().slice(0, 10)
         const [{ data: fat }, { data: cus }] = await Promise.all([
-          supabase.from('diarias').select('valor').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
-          supabase.from('custos').select('valor').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
+          supabase.from('diarias').select('valor, tipo_gestao').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
+          supabase.from('custos_proprietario').select('valor, tipo_gestao').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
         ])
-        const faturamento = (fat ?? []).reduce((s, r) => s + (r.valor ?? 0), 0)
-        const lucro = faturamento - (cus ?? []).reduce((s, r) => s + (r.valor ?? 0), 0)
-        const repasse = calcularRepasse(faturamento, lucro, taxaRepasseBase, tipoRepasseBase)
+        // Histórico: diárias + custos repassáveis (sem fallback Amenitiz para reduzir queries)
+        const faturamento = (fat ?? []).reduce((s, r) => s + Number(r.valor ?? 0), 0)
+        const custos      = (cus ?? []).reduce((s, r) => s + Number(r.valor ?? 0), 0)
+        const lucro       = faturamento - custos
+        const base        = tipoRepasseBase === 'faturamento' ? faturamento : lucro
+        const repasse     = lucro - base * taxaRepasseBase
         return { label, faturamento, lucro, repasse }
       })
     )
@@ -156,6 +256,22 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         .kpi-val { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 3px; color: #0f1a2e; }
         .kpi-foot { font-size: 11.5px; color: #94a3b8; }
 
+        /* Repasse: sempre verde (regra 12 do design doc) */
+        .kpi-card.k-repasse .kpi-val { color: #166534; }
+
+        /* Mobile hero: repasse vira destaque full-width no topo do grid */
+        @media (max-width: 640px) {
+          .kpi-card.k-repasse {
+            order: -1;
+            grid-column: 1 / -1;
+            padding: 22px 22px 18px;
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+          }
+          .kpi-card.k-repasse .kpi-val { font-size: 34px; letter-spacing: -.02em; }
+          .kpi-card.k-repasse .kpi-foot { font-size: 12.5px; }
+        }
+
         .panel { background: #fff; border: 1px solid #e7e9ee; border-radius: 18px; padding: 24px; margin-bottom: 20px; }
         .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
         .panel-title { font-size: 15px; font-weight: 600; color: #0f1a2e; display: flex; align-items: center; gap: 8px; }
@@ -186,14 +302,38 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
 
         <div className="pg-head">
           <div>
-            <h1 className="pg-greeting">Olá, {primeiroNome} 👋</h1>
-            <p className="pg-greeting-sub">Resumo dos seus imóveis em <strong>{nomeMes} {ano}</strong></p>
+            <h1 className="pg-greeting">Olá, {primeiroNome}</h1>
+            <p className="pg-greeting-sub">Resumo dos seus imóveis em <strong>{labelPeriodo}</strong></p>
           </div>
-          <div className="pg-period">
-            <MonthYearFilter mes={mes} ano={ano} />
+          <div className="pg-period" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {mes > 0 && <SyncButton mes={mes} ano={ano} />}
+              <MonthYearFilter mes={mes} ano={ano} />
+            </div>
+            {/* Assinatura Realtime: badge "atualizado há X min" + notificação de nova reserva */}
+            <RealtimeReservas apartamentoIds={aptIds} initialIngestAt={ingestAt} />
           </div>
         </div>
 
+        {/* Target do portal React: RealtimeReservas injeta aqui a seção "Chegaram agora" */}
+        <div id="novas-reservas-portal" />
+
+        {semDados ? (
+          <div className="panel" style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <div className="empty-icon" style={{ margin: '0 auto 14px' }}><Clock size={22} /></div>
+            {mesSincronizado ? (
+              <>
+                <div className="empty-title">Nenhuma diária em {labelPeriodo}</div>
+                <div className="empty-desc">A sincronização foi realizada, mas seus imóveis não registraram receita neste período.</div>
+              </>
+            ) : (
+              <>
+                <div className="empty-title">Dados de {labelPeriodo} ainda não importados</div>
+                <div className="empty-desc">A importação de planilhas ou sincronização Amenitiz para este mês ainda não foi realizada.</div>
+              </>
+            )}
+          </div>
+        ) : (
         <div className="kpi-grid">
           <div className="kpi-card k-navy">
             <div className="kpi-top">
@@ -201,16 +341,23 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               <span className="kpi-label">Faturamento</span>
             </div>
             <div className="kpi-val">R$ {formatBRL(kpis.faturamento)}</div>
-            <div className="kpi-foot">{nomeMes} {ano}</div>
+            <div className="kpi-foot">{labelPeriodo}</div>
           </div>
 
           <div className="kpi-card k-red">
             <div className="kpi-top">
               <div className="kpi-icon" style={{ background: '#fef2f2' }}><Receipt size={14} color="#dc2626" /></div>
-              <span className="kpi-label">Custos</span>
+              <span className="kpi-label">Custos repassáveis</span>
             </div>
             <div className="kpi-val">R$ {formatBRL(kpis.custos)}</div>
-            <div className="kpi-foot">{nomeMes} {ano}</div>
+            {semCategoriasConfiguradas ? (
+              <div className="kpi-foot" style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#b45309' }}>
+                <AlertCircle size={11} />
+                Sem categorias configuradas
+              </div>
+            ) : (
+              <div className="kpi-foot">{labelPeriodo}</div>
+            )}
           </div>
 
           <div className="kpi-card k-green">
@@ -219,19 +366,21 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               <span className="kpi-label">Lucro líquido</span>
             </div>
             <div className="kpi-val" style={{ color: '#166534' }}>R$ {formatBRL(kpis.lucro)}</div>
-            <div className="kpi-foot">Margem de {kpis.margem.toFixed(0)}% no mês</div>
+            <div className="kpi-foot">Margem de {kpis.margem.toFixed(0)}% no período</div>
           </div>
 
-          <div className="kpi-card k-amber">
+          <div className="kpi-card k-amber k-repasse">
             <div className="kpi-top">
-              <div className="kpi-icon" style={{ background: '#faeeda' }}><Wallet size={14} color="#854f0b" /></div>
-              <span className="kpi-label">Seu repasse</span>
+              <div className="kpi-icon" style={{ background: '#f0fdf4' }}><Wallet size={14} color="#166534" /></div>
+              <span className="kpi-label" title="Lucro do mês menos a taxa de gestão AlugEasy">Seu repasse</span>
             </div>
-            <div className="kpi-val" style={{ color: '#92400e' }}>R$ {formatBRL(kpis.repasse)}</div>
-            <div className="kpi-foot">Após taxa AlugEasy</div>
+            <div className="kpi-val">R$ {formatBRL(kpis.repasse)}</div>
+            <div className="kpi-foot">Valor líquido ao proprietário</div>
           </div>
         </div>
+        )}
 
+        {/* Evolução antes das reservas: usuário entende a tendência antes dos detalhes */}
         <div className="panel">
           <div className="panel-head">
             <div>
@@ -257,6 +406,22 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
           )}
         </div>
 
+        {/* Painel de ocupação por imóvel — grade de dias + cards de reservas */}
+        {aptIds.length > 0 && (
+          <OccupancyPanel
+            apartamentos={apartamentos.map(a => ({
+              id: a.id,
+              numero: a.numero,
+              empreendimento: a.empreendimentos?.nome ?? null,
+            }))}
+            reservas={reservasParaPainel}
+            mes={mes}
+            ano={ano}
+            nomeMes={nomeMes}
+            sincronizado={mesSincronizado}
+          />
+        )}
+
         <div className="panel" style={{ paddingBottom: 18 }}>
           <div className="panel-head">
             <div className="panel-title">Acesso rápido</div>
@@ -269,8 +434,8 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
             </Link>
             <Link href={`/proprietario/extrato?mes=${mes}&ano=${ano}`} className="shortcut-card">
               <div className="shortcut-icon" style={{ background: '#faeeda' }}><Download size={17} color="#854f0b" /></div>
-              <div className="shortcut-title">Baixar prestação em PDF</div>
-              <div className="shortcut-desc">Relatório completo do mês de {nomeMes}</div>
+              <div className="shortcut-title">Extrato e PDF</div>
+              <div className="shortcut-desc">Veja o demonstrativo e baixe a prestação de contas</div>
             </Link>
             <Link href="/proprietario/historico" className="shortcut-card">
               <div className="shortcut-icon" style={{ background: '#eaf3de' }}><History size={17} color="#27500a" /></div>

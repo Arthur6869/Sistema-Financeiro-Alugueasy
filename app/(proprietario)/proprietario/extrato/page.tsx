@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { Home, TrendingUp, Receipt, AlertTriangle, Download, Grid3x3 } from 'lucide-react'
+import { AlertTriangle, Download } from 'lucide-react'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { MESES } from '@/lib/constants'
 
@@ -57,7 +58,8 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
   const now = new Date()
   const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
   const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
-  const nomeMes = MESES[mes - 1]
+  const nomeMes = mes > 0 ? (MESES[mes - 1] ?? '') : ''
+  const labelPeriodo = nomeMes ? `${nomeMes} ${ano}` : String(ano)
 
   const { data: vinculos } = await supabase
     .from('proprietario_apartamentos')
@@ -72,17 +74,47 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
 
   const aptIds = apartamentos.map(a => a.id)
 
-  const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-  const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
+  const dataInicio = mes > 0
+    ? `${ano}-${String(mes).padStart(2, '0')}-01`
+    : `${ano}-01-01`
+  const dataFim = mes > 0
+    ? new Date(ano, mes, 0).toISOString().slice(0, 10)
+    : `${ano}-12-31`
 
-  const [{ data: custosData }, { data: diariasData }] = await Promise.all([
-    supabase
-      .from('custos')
-      .select('apartamento_id, categoria, valor')
-      .in('apartamento_id', aptIds)
-      .eq('mes', mes)
-      .eq('ano', ano)
-      .order('categoria'),
+  const admin = createAdminClient()
+
+  // Custos completos das planilhas (todos os lançamentos) — via admin para bypass de RLS,
+  // isolado pelos aptIds já filtrados pelo vínculo do proprietário autenticado.
+  const custosDetalheQuery = mes > 0
+    ? admin.from('custos')
+        .select('apartamento_id, categoria, valor')
+        .in('apartamento_id', aptIds)
+        .eq('mes', mes).eq('ano', ano)
+        .order('categoria')
+    : admin.from('custos')
+        .select('apartamento_id, categoria, valor')
+        .in('apartamento_id', aptIds)
+        .eq('ano', ano)
+        .order('categoria')
+
+  // Custos repassáveis — apenas para calcular lucro e repasse ao proprietário.
+  const custosRepasseQuery = mes > 0
+    ? supabase.from('custos_proprietario')
+        .select('apartamento_id, valor')
+        .in('apartamento_id', aptIds)
+        .eq('mes', mes).eq('ano', ano)
+    : supabase.from('custos_proprietario')
+        .select('apartamento_id, valor')
+        .in('apartamento_id', aptIds)
+        .eq('ano', ano)
+
+  const [
+    { data: custosDetalheData },
+    { data: custosRepasseData },
+    { data: diariasData },
+  ] = await Promise.all([
+    custosDetalheQuery,
+    custosRepasseQuery,
     supabase
       .from('diarias')
       .select('apartamento_id, valor')
@@ -91,27 +123,32 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
       .lte('data', dataFim),
   ])
 
-  const totalFaturamento = (diariasData ?? []).reduce((s, d) => s + (d.valor ?? 0), 0)
-  const totalCustos = (custosData ?? []).reduce((s, c) => s + (c.valor ?? 0), 0)
-  const totalLucro = totalFaturamento - totalCustos
+  const custosDetalhe = (custosDetalheData ?? []) as CustoItem[]
+  const custosRepasseItens = (custosRepasseData ?? []) as { apartamento_id: string; valor: number }[]
+  const diarias = (diariasData ?? []) as DiariasItem[]
 
   const metricas = apartamentos.map(apt => {
-    const faturamento = (diariasData ?? [])
-      .filter((d: DiariasItem) => d.apartamento_id === apt.id)
+    const faturamento = diarias
+      .filter(d => d.apartamento_id === apt.id)
       .reduce((s, d) => s + (d.valor ?? 0), 0)
 
-    const custosPorCategoria = (custosData ?? [])
-      .filter((c: CustoItem) => c.apartamento_id === apt.id)
-
+    // Todos os custos lançados nas planilhas (para exibição)
+    const custosPorCategoria = custosDetalhe.filter(c => c.apartamento_id === apt.id)
+    const totalCustosDisplay = custosPorCategoria.reduce((s, c) => s + (c.valor ?? 0), 0)
     const semCustos = custosPorCategoria.length === 0
-    const custos = semCustos ? null : custosPorCategoria.reduce((s, c) => s + (c.valor ?? 0), 0)
-    const lucro = faturamento - (custos ?? 0)
+
+    // Apenas custos repassáveis (para cálculo de lucro e repasse)
+    const custosRepasse = custosRepasseItens
+      .filter(c => c.apartamento_id === apt.id)
+      .reduce((s, c) => s + (c.valor ?? 0), 0)
+
+    const lucro = faturamento - custosRepasse
     const taxaRepasse = apt.taxa_repasse ?? 0
     const tipoRepasse = apt.tipo_repasse ?? 'lucro'
     const repasse = calcularRepasse(faturamento, lucro, taxaRepasse, tipoRepasse)
     const valorFinal = lucro - repasse
 
-    return { apt, faturamento, custos, lucro, repasse, valorFinal, taxaRepasse, tipoRepasse }
+    return { apt, faturamento, totalCustosDisplay, semCustos, lucro, repasse, valorFinal, taxaRepasse, tipoRepasse, custosPorCategoria }
   })
 
   return (
@@ -128,40 +165,34 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
         .pg-period select { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: #0f1a2e; background: #fff; border: 1px solid #e7e9ee; border-radius: 9px; padding: 9px 14px; cursor: pointer; outline: none; }
         .pg-period { display: flex; gap: 8px; align-items: center; }
 
-        .summary-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 24px; }
-        .kpi-card { background: #fff; border: 1px solid #e7e9ee; border-radius: 16px; padding: 18px 18px 16px; position: relative; overflow: hidden; }
-        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
-        .kpi-card.k-navy::before { background: #0f2647; }
-        .kpi-card.k-red::before { background: #dc2626; }
-        .kpi-card.k-green::before { background: #15803d; }
-        .kpi-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
-        .kpi-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .kpi-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; }
-        .kpi-val { font-size: 22px; font-weight: 700; letter-spacing: -.01em; color: #0f1a2e; }
-
-        .section-title { font-size: 15px; font-weight: 600; color: #0f1a2e; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-
-        .apt-card { border: 1px solid #e7e9ee; border-radius: 16px; overflow: hidden; margin-bottom: 16px; }
-        .apt-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #f8f6f1; border-bottom: 1px solid #e7e9ee; flex-wrap: wrap; gap: 8px; }
-        .apt-name { display: flex; align-items: center; gap: 10px; font-size: 14.5px; font-weight: 600; color: #0f1a2e; }
-        .apt-icon { width: 30px; height: 30px; border-radius: 8px; background: #fff; border: 1px solid #e7e9ee; display: flex; align-items: center; justify-content: center; color: #193660; }
-        .apt-badge { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; border-radius: 100px; }
+        .apt-card { border: 1px solid #e7e9ee; border-radius: 16px; overflow: hidden; margin-bottom: 16px; background: #fff; }
+        .apt-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #fff; border-bottom: 1px solid #e7e9ee; flex-wrap: wrap; gap: 8px; }
+        .apt-name { font-size: 15px; font-weight: 700; color: #0f1a2e; }
+        .apt-badge { font-size: 11px; font-weight: 600; letter-spacing: .03em; padding: 4px 12px; border-radius: 100px; }
         .badge-adm { background: #e6f1fb; color: #0c447c; }
         .badge-sub { background: #faeeda; color: #854f0b; }
-        .apt-body { padding: 6px 20px; }
-        .apt-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #f1f2f5; }
+
+        .apt-body { padding: 0 20px; }
+        .apt-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #f1f2f5; }
         .apt-row:last-child { border-bottom: none; }
-        .apt-row-label { font-size: 13px; color: #5a6a82; }
+        .apt-row-label { font-size: 13.5px; color: #374151; font-weight: 500; }
         .apt-row-val { font-size: 14px; font-weight: 600; color: #0f1a2e; }
         .apt-row-val.muted { color: #94a3b8; font-weight: 500; font-style: italic; font-size: 12.5px; }
-        .apt-row-val.neg { color: #d97706; }
-        .apt-foot { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #f0fdf4; border-top: 1px solid #d1f0db; }
-        .apt-foot-label { font-size: 13.5px; font-weight: 600; color: #14532d; }
-        .apt-foot-val { font-size: 19px; font-weight: 700; color: #14532d; }
-        .btn-pdf { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #193660; background: #fff; border: 1px solid #e7e9ee; border-radius: 9px; padding: 9px 16px; cursor: pointer; margin: 14px 20px 18px; transition: all .15s; text-decoration: none; }
-        .btn-pdf:hover { background: #0f2647; color: #fff; border-color: #0f2647; }
 
-        .warn-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; display: flex; gap: 10px; align-items: flex-start; margin: 0 20px 18px; }
+        /* Linhas de custo por categoria (sub-itens) */
+        .apt-row-sub { display: flex; align-items: center; justify-content: space-between; padding: 9px 0 9px 20px; border-bottom: 1px solid #f1f2f5; }
+        .apt-row-sub:last-child { border-bottom: none; }
+        .apt-row-sub-label { font-size: 12.5px; color: #6b7280; display: flex; align-items: center; gap: 6px; }
+        .apt-row-sub-val { font-size: 12.5px; font-weight: 500; color: #374151; }
+
+        .apt-foot { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #f8fafc; border-top: 1px solid #e7e9ee; gap: 12px; flex-wrap: wrap; }
+        .apt-foot-left { display: flex; flex-direction: column; gap: 2px; }
+        .apt-foot-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6b7280; }
+        .apt-foot-val { font-size: 22px; font-weight: 700; color: #14532d; letter-spacing: -.01em; }
+        .btn-pdf { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: #fff; background: #193660; border: none; border-radius: 10px; padding: 11px 18px; cursor: pointer; transition: all .15s; text-decoration: none; white-space: nowrap; }
+        .btn-pdf:hover { background: #0f2647; }
+
+        .warn-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; display: flex; gap: 10px; align-items: flex-start; margin: 0 0 2px; }
         .warn-text { font-size: 12.5px; color: #92400e; line-height: 1.5; }
 
         .empty-page { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 20px; text-align: center; border: 1px solid #e7e9ee; border-radius: 18px; background: #fff; }
@@ -173,7 +204,7 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
 
         <div className="pg-head">
           <div>
-            <h1 className="pg-greeting">Extrato — {nomeMes} {ano}</h1>
+            <h1 className="pg-greeting">Extrato — {labelPeriodo}</h1>
             <p className="pg-greeting-sub">Demonstrativo completo de faturamento, custos e repasse</p>
           </div>
           <div className="pg-period">
@@ -184,92 +215,103 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
         {metricas.length === 0 ? (
           <div className="empty-page">
             <p style={{ fontSize: 14, fontWeight: 600, color: '#0f1a2e', marginBottom: 4 }}>Nenhum dado disponível</p>
-            <p style={{ fontSize: 12.5, color: '#94a3b8' }}>Não há lançamentos para {nomeMes} {ano} ainda.</p>
+            <p style={{ fontSize: 12.5, color: '#94a3b8' }}>Não há lançamentos para {labelPeriodo} ainda.</p>
           </div>
         ) : (
           <>
-            <div className="summary-grid">
-              <div className="kpi-card k-navy">
-                <div className="kpi-top">
-                  <div className="kpi-icon" style={{ background: '#e6f1fb' }}><TrendingUp size={14} color="#0c447c" /></div>
-                  <span className="kpi-label">Fat.</span>
-                </div>
-                <div className="kpi-val">R$ {formatBRL(totalFaturamento)}</div>
-              </div>
-              <div className="kpi-card k-red">
-                <div className="kpi-top">
-                  <div className="kpi-icon" style={{ background: '#fef2f2' }}><Receipt size={14} color="#dc2626" /></div>
-                  <span className="kpi-label">Custos</span>
-                </div>
-                <div className="kpi-val">R$ {formatBRL(totalCustos)}</div>
-              </div>
-              <div className="kpi-card k-green">
-                <div className="kpi-top">
-                  <div className="kpi-icon" style={{ background: '#eaf3de' }}><TrendingUp size={14} color="#27500a" /></div>
-                  <span className="kpi-label">Lucro</span>
-                </div>
-                <div className="kpi-val" style={{ color: '#166534' }}>R$ {formatBRL(totalLucro)}</div>
-              </div>
-            </div>
-
-            <div className="section-title"><Grid3x3 size={16} color="#193660" /> Detalhamento por apartamento</div>
-
-            {metricas.map(({ apt, faturamento, custos, lucro, repasse, valorFinal, taxaRepasse, tipoRepasse }) => (
+            {metricas.map(({ apt, faturamento, totalCustosDisplay, semCustos, lucro, repasse, valorFinal, taxaRepasse, tipoRepasse, custosPorCategoria }) => (
               <div className="apt-card" key={apt.id}>
+                {/* Cabeçalho */}
                 <div className="apt-head">
-                  <div className="apt-name">
-                    <span className="apt-icon"><Home size={15} /></span>
-                    Apt {apt.numero}{apt.empreendimentos?.nome ? ` — ${apt.empreendimentos.nome}` : ''}
-                  </div>
+                  <span className="apt-name">
+                    Apto {apt.numero}{apt.empreendimentos?.nome ? ` — ${apt.empreendimentos.nome}` : ''}
+                  </span>
                   <span className={`apt-badge ${apt.tipo_gestao === 'adm' ? 'badge-adm' : 'badge-sub'}`}>
                     {apt.tipo_gestao === 'adm' ? 'Administração' : 'Sublocação'}
                   </span>
                 </div>
+
+                {/* Linhas financeiras */}
                 <div className="apt-body">
+
+                  {/* Faturamento */}
                   <div className="apt-row">
                     <span className="apt-row-label">Faturamento</span>
                     <span className="apt-row-val">R$ {formatBRL(faturamento)}</span>
                   </div>
+
+                  {/* Custos — total + breakdown por categoria (todos os lançamentos da planilha) */}
                   <div className="apt-row">
                     <span className="apt-row-label">Custos</span>
-                    {custos === null
+                    {semCustos
                       ? <span className="apt-row-val muted">Não disponível</span>
-                      : <span className="apt-row-val">R$ {formatBRL(custos)}</span>}
+                      : <span className="apt-row-val" style={{ color: '#dc2626' }}>− R$ {formatBRL(totalCustosDisplay)}</span>
+                    }
                   </div>
+
+                  {/* Sub-itens: cada linha de custo das planilhas importadas */}
+                  {custosPorCategoria.map((c, i) => (
+                    <div className="apt-row-sub" key={i}>
+                      <span className="apt-row-sub-label">
+                        <span style={{ color: '#d1d5db', fontSize: 14 }}>↳</span>
+                        {c.categoria}
+                      </span>
+                      <span className="apt-row-sub-val">R$ {formatBRL(c.valor)}</span>
+                    </div>
+                  ))}
+
+                  {/* Aviso de custos não disponíveis */}
+                  {semCustos && (
+                    <div className="warn-box">
+                      <AlertTriangle size={15} color="#b45309" style={{ flexShrink: 0, marginTop: 1 }} />
+                      <span className="warn-text">
+                        Os custos deste período ainda não foram lançados. O lucro e o repasse
+                        são <strong>estimados</strong> e podem ser ajustados quando os custos forem importados.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Lucro */}
                   <div className="apt-row">
                     <span className="apt-row-label">Lucro</span>
                     <span className="apt-row-val" style={{ color: '#166534' }}>R$ {formatBRL(lucro)}</span>
                   </div>
-                  <div className="apt-row">
+
+                  {/* Taxa AlugEasy */}
+                  <div className="apt-row" style={{ borderBottom: 'none' }}>
                     <span className="apt-row-label">
-                      Repasse ({taxaRepasse}% s/ {tipoRepasse})
+                      Taxa AlugEasy ({taxaRepasse}% sobre {tipoRepasse === 'lucro' ? 'lucro' : 'faturamento'})
                     </span>
-                    <span className="apt-row-val neg">− R$ {formatBRL(repasse)}</span>
+                    <span className="apt-row-val" style={{ color: '#6b7280', fontWeight: 500 }}>− R$ {formatBRL(repasse)}</span>
                   </div>
+
                 </div>
+
+                {/* Rodapé: SEU REPASSE + Baixar PDF */}
                 <div className="apt-foot">
-                  <span className="apt-foot-label">Seu repasse</span>
-                  <span className="apt-foot-val">R$ {formatBRL(valorFinal)}</span>
-                </div>
-                <a
-                  href={`/api/prestacao-contas-pdf?apartamento_id=${apt.id}&mes=${mes}&ano=${ano}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-pdf"
-                >
-                  <Download size={14} />
-                  Baixar PDF
-                </a>
-                {custos === null && (
-                  <div className="warn-box">
-                    <AlertTriangle size={16} color="#b45309" style={{ flexShrink: 0, marginTop: 1 }} />
-                    <span className="warn-text">
-                      Os custos deste mês ainda não foram lançados pela equipe AlugEasy. O lucro e o
-                      repasse exibidos consideram apenas o faturamento até o momento e podem ser
-                      ajustados quando os custos forem importados.
+                  <div className="apt-foot-left">
+                    <span className="apt-foot-label">
+                      Seu repasse
+                      {semCustos && (
+                        <span style={{ fontSize: 9.5, fontWeight: 700, background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 6px', marginLeft: 6 }}>
+                          Estimado
+                        </span>
+                      )}
                     </span>
+                    <span className="apt-foot-val">R$ {formatBRL(valorFinal)}</span>
                   </div>
-                )}
+                  {mes > 0 && (
+                    <a
+                      href={`/api/prestacao-contas-pdf?apartamento_id=${apt.id}&mes=${mes}&ano=${ano}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-pdf"
+                    >
+                      <Download size={14} />
+                      Baixar PDF
+                    </a>
+                  )}
+                </div>
               </div>
             ))}
           </>

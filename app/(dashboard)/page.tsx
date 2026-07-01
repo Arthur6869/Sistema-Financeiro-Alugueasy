@@ -78,16 +78,30 @@ export default async function DashboardPage({
   const usandoDiariasXlsx = (diariasData?.length ?? 0) > 0
 
   // Busca Amenitiz somente como fallback — evita query desnecessária quando diarias tem dados
-  let reservasData: Array<{ valor_liquido: number; individual_room_number: string | number }> | null = null
-  if (!usandoDiariasXlsx) {
-    let reservasQuery = supabase
+  let reservasData: Array<{ valor_liquido: number; individual_room_number: string | number; checkin: string | null; checkout: string | null; status: string | null }> | null = null
+  if (!usandoDiariasXlsx && dataInicio && dataFim) {
+    const { data, error: reservasError } = await supabase
       .from('amenitiz_reservas')
-      .select('valor_liquido, individual_room_number')
-    if (mes > 0) reservasQuery = reservasQuery.eq('mes_competencia', mes) as typeof reservasQuery
-    if (ano > 0) reservasQuery = reservasQuery.eq('ano_competencia', ano) as typeof reservasQuery
-    const { data, error: reservasError } = await reservasQuery
+      .select('valor_liquido, individual_room_number, checkin, checkout, status')
+      .lte('checkin', dataFim)
+      .gte('checkout', dataInicio)
     if (reservasError) console.error('[dashboard] amenitiz_reservas:', reservasError.message)
-    reservasData = data
+    // Proration: proporciona valor_liquido de reservas que cruzam o limite do mês.
+    if (data && mes > 0) {
+      const fDayMs  = new Date(dataInicio + 'T00:00:00').getTime()
+      const nMonthMs = new Date(ano, mes, 1).getTime()
+      reservasData = data.flatMap(r => {
+        if (!r.checkin || !r.checkout || r.valor_liquido == null) return [r]
+        const ci = new Date(r.checkin + 'T00:00:00').getTime()
+        const co = new Date(r.checkout + 'T00:00:00').getTime()
+        const tot = (co - ci) / 86400000
+        const mn  = (Math.min(co, nMonthMs) - Math.max(ci, fDayMs)) / 86400000
+        if (mn <= 0) return []
+        return [{ ...r, valor_liquido: tot > 0 && mn < tot ? (mn / tot) * r.valor_liquido : r.valor_liquido }]
+      })
+    } else {
+      reservasData = data
+    }
   }
 
   // Totais financeiros

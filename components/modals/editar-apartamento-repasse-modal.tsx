@@ -12,6 +12,7 @@ interface ApartamentoRepasse {
   numero: string
   taxa_repasse: number | null
   tipo_repasse: 'lucro' | 'faturamento' | null
+  tipo_gestao: 'adm' | 'sub' | null
   nome_proprietario: string | null
   modelo_contrato: 'administracao' | 'sublocacao' | null
 }
@@ -28,6 +29,7 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
   const [open, setOpen] = useState(false)
   const [taxaRepasse, setTaxaRepasse] = useState(apartamento.taxa_repasse ?? 0)
   const [tipoRepasse, setTipoRepasse] = useState<'lucro' | 'faturamento'>(apartamento.tipo_repasse ?? 'lucro')
+  const [tipoGestao, setTipoGestao] = useState<'adm' | 'sub'>(apartamento.tipo_gestao ?? 'adm')
   const [nomeProprietario, setNomeProprietario] = useState(apartamento.nome_proprietario ?? '')
   const [modeloContrato, setModeloContrato] = useState<'administracao' | 'sublocacao'>(apartamento.modelo_contrato ?? 'administracao')
   const [loading, setLoading] = useState(false)
@@ -37,6 +39,7 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
     if (!open) return
     setTaxaRepasse(apartamento.taxa_repasse ?? 0)
     setTipoRepasse(apartamento.tipo_repasse ?? 'lucro')
+    setTipoGestao(apartamento.tipo_gestao ?? 'adm')
     setNomeProprietario(apartamento.nome_proprietario ?? '')
     setModeloContrato(apartamento.modelo_contrato ?? 'administracao')
     setError('')
@@ -52,6 +55,7 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
       .update({
         taxa_repasse: taxaRepasse,
         tipo_repasse: tipoRepasse,
+        tipo_gestao: tipoGestao,
         nome_proprietario: nomeProprietario.trim() || null,
         modelo_contrato: modeloContrato,
       })
@@ -68,7 +72,7 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
     router.refresh()
   }
 
-  if (role !== 'admin') {
+  if (role !== 'analista') {
     return (
       <div className="text-xs text-gray-500">
         {apartamento.taxa_repasse != null
@@ -150,6 +154,19 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
                   placeholder="Nome completo do proprietário"
                   className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#193660]/30"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Gestão</label>
+                <select
+                  value={tipoGestao}
+                  onChange={(e) => setTipoGestao(e.target.value as 'adm' | 'sub')}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#193660]/30"
+                >
+                  <option value="adm">Administração (ADM)</option>
+                  <option value="sub">Sublocação (SUB)</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Define qual coluna de receita e custo este apartamento usa.</p>
               </div>
 
               <div>

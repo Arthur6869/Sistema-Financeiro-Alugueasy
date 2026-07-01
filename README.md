@@ -12,6 +12,7 @@ Sistema web interno de gestão financeira para imóveis por temporada. Substitui
 - 💰 **Custos** — histórico completo de despesas por unidade e categoria
 - 🌙 **Diárias** — receita por unidade com tipo de gestão (ADM/SUB)
 - 📈 **Relatório Analítico** — evolução dos últimos 6 meses com gráfico de linha e tabela pivot
+- 📄 **Prestação de Contas em PDF** — relatório premium com resumo executivo, custos, reservas e insights
 - 📤 **Importação de Planilhas** — upload direto de arquivos `.xlsx` (apenas Admin)
 - 👥 **Gestão de Usuários** — visão dos perfis cadastrados (apenas Admin)
 

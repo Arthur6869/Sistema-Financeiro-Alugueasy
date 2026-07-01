@@ -2,11 +2,13 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { GerarPdfButton } from '@/components/shared/gerar-pdf-button'
 import { ApartamentoFilter } from '@/components/shared/apartamento-filter'
 import { formatCurrency, MESES } from '@/lib/constants'
+import { calcularKPIs } from '@/lib/calcular-kpis'
 
 type ApartamentoItem = {
   id: string
@@ -75,7 +77,7 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
   const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
   const dataFim = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-  const [{ data: diarias }, { data: custos }, { data: reservas }] = await Promise.all([
+  const [{ data: diarias }, { data: custos }, { data: reservasRaw }, { data: custosRepassaveis }] = await Promise.all([
     supabase
       .from('diarias')
       .select('valor, tipo_gestao')
@@ -88,13 +90,44 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
       .eq('apartamento_id', apartamentoSelecionado.id)
       .eq('mes', mes)
       .eq('ano', ano),
+    // Busca por sobreposição de datas — reservas que cruzam o mês são proradas abaixo.
     supabase
       .from('amenitiz_reservas')
       .select('valor_liquido, status, checkin, checkout')
       .eq('individual_room_number', apartamentoSelecionado.numero)
-      .eq('mes_competencia', mes)
-      .eq('ano_competencia', ano),
+      .lte('checkin', dataFim)
+      .gte('checkout', dataInicio),
+    // Custos filtrados pelas categorias repassáveis — base do cálculo de repasse
+    // (mesma fonte que o portal do proprietário usa via custos_proprietario view)
+    supabase
+      .from('custos_proprietario')
+      .select('valor, tipo_gestao')
+      .eq('apartamento_id', apartamentoSelecionado.id)
+      .eq('mes', mes)
+      .eq('ano', ano),
   ])
+
+  // Proration: clipa datas ao mês e calcula valor proporcional às noites no período.
+  const firstDayMs  = new Date(dataInicio + 'T00:00:00').getTime()
+  const nextMonthMs = new Date(ano, mes, 1).getTime()
+  const reservas = (reservasRaw ?? []).flatMap(r => {
+    let checkin  = r.checkin
+    let checkout = r.checkout
+    let valor    = r.valor_liquido
+    if (r.checkin && r.checkout && r.valor_liquido != null) {
+      const ci = new Date(r.checkin  + 'T00:00:00').getTime()
+      const co = new Date(r.checkout + 'T00:00:00').getTime()
+      const totalNights = (co - ci) / 86400000
+      const monthNights = (Math.min(co, nextMonthMs) - Math.max(ci, firstDayMs)) / 86400000
+      if (monthNights <= 0) return []
+      if (totalNights > 0 && monthNights < totalNights) {
+        valor    = (monthNights / totalNights) * r.valor_liquido
+        if (ci < firstDayMs)  checkin  = dataInicio
+        if (co > nextMonthMs) checkout = dataFim
+      }
+    }
+    return [{ ...r, checkin, checkout, valor_liquido: valor }]
+  })
 
   const receitaAdmDiarias = diarias?.filter((item) => item.tipo_gestao === 'adm').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
   const receitaSubDiarias = diarias?.filter((item) => item.tipo_gestao === 'sub').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
@@ -115,12 +148,28 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
   const custosAdm = custos?.filter((item) => item.tipo_gestao === 'adm').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
   const custosSub = custos?.filter((item) => item.tipo_gestao === 'sub').reduce((sum, item) => sum + Number(item.valor ?? 0), 0) ?? 0
   const custosTotal = custosAdm + custosSub
-  const lucroLiquido = receitaTotal - custosTotal
-  const taxa = Number(apartamentoSelecionado.taxa_repasse ?? 0) / 100
-  const baseCalculo = apartamentoSelecionado.tipo_repasse === 'faturamento' ? receitaTotal : lucroLiquido
-  const valorRepasse = baseCalculo * taxa
-  const valorLiquidoProprietario = lucroLiquido - valorRepasse
+  const lucroLiquido = receitaTotal - custosTotal          // raw — exibido no ADM/SUB e Lucro Líquido
   const margemLiquida = receitaTotal > 0 ? (lucroLiquido / receitaTotal) * 100 : 0
+
+  // Repasse calculado com custos repassáveis — fonte única com o portal do proprietário.
+  // custosRepassaveis vem de custos_proprietario (join com categorias_repassaveis).
+  // Custos não-repassáveis (ex.: Ajuste ADM/SUB) ficam visíveis no breakdown mas
+  // não entram no cálculo de lucro/repasse do proprietário.
+  const kpi = calcularKPIs(
+    (diarias ?? []).map(d => ({ valor: d.valor, tipo_gestao: d.tipo_gestao })),
+    (custosRepassaveis ?? []).map(c => ({ valor: c.valor, tipo_gestao: c.tipo_gestao })),
+    (reservas ?? []).map(r => ({ valor_liquido: r.valor_liquido, status: r.status })),
+    {
+      tipo_gestao:     apartamentoSelecionado.tipo_gestao,
+      taxa_repasse:    apartamentoSelecionado.taxa_repasse,
+      tipo_repasse:    apartamentoSelecionado.tipo_repasse,
+      modelo_contrato: apartamentoSelecionado.modelo_contrato,
+    },
+  )
+  const baseCalculo              = kpi.baseCalculo
+  const valorRepasse             = kpi.valorRepasse
+  const valorLiquidoProprietario = kpi.valorLiquidoProprietario
+  const hasNonRepassavelCosts    = Math.abs(kpi.custosTotal - custosTotal) > 0.001
   const numeroReservas = reservasValidas.length
   const numeroDiarias = reservasValidas.reduce((sum, r) => {
     const inDate = new Date(`${r.checkin}T00:00:00`)
@@ -145,6 +194,9 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
           <h1 className="text-3xl font-bold text-gray-900">Prestação de Contas</h1>
           <p className="text-gray-500 mt-2">
             Competência: {MESES[mes - 1]} {ano} — {empreendimentoNome} — Apt {apartamentoSelecionado.numero}
+            <Badge variant="outline" className={apartamentoSelecionado.tipo_gestao === 'sub' ? 'ml-2 text-blue-600 border-blue-200 bg-blue-50 text-xs' : 'ml-2 text-slate-600 border-slate-200 bg-slate-50 text-xs'}>
+              {apartamentoSelecionado.tipo_gestao === 'sub' ? 'SUB' : 'ADM'}
+            </Badge>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -327,8 +379,11 @@ export default async function PrestacaoContasPage({ searchParams }: Props) {
                 <div className="text-sm font-semibold text-gray-900">Proprietário: {apartamentoSelecionado.nome_proprietario || 'Não configurado'}</div>
                 <div className="grid gap-2">
                   <div className="flex justify-between text-sm text-gray-600"><span>Receita Bruta:</span><span>{formatCurrency(receitaTotal)}</span></div>
-                  <div className="flex justify-between text-sm text-gray-600"><span>(−) Custos Totais:</span><span>− {formatCurrency(custosTotal)}</span></div>
-                  <div className="flex justify-between text-sm text-gray-600"><span>(=) Lucro Líquido:</span><span>{formatCurrency(lucroLiquido)}</span></div>
+                  {hasNonRepassavelCosts && (
+                    <div className="flex justify-between text-xs text-gray-400 italic"><span>Custos brutos (gestão interna):</span><span>− {formatCurrency(custosTotal)}</span></div>
+                  )}
+                  <div className="flex justify-between text-sm text-gray-600"><span>(−) Custos repassáveis:</span><span>− {formatCurrency(kpi.custosTotal)}</span></div>
+                  <div className="flex justify-between text-sm text-gray-600"><span>(=) Lucro base do repasse:</span><span>{formatCurrency(kpi.lucroLiquido)}</span></div>
                   <div className="flex justify-between text-sm text-gray-600"><span>(−) Taxa Alugueasy [{apartamentoSelecionado.taxa_repasse ?? 0}%] s/ {baseCalculoLabel.toLowerCase()}:</span><span>− {formatCurrency(valorRepasse)}</span></div>
                 </div>
                 <div className="mt-4 rounded-xl bg-[#193660] px-4 py-4 text-white">

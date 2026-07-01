@@ -973,6 +973,8 @@ Esta seção consolida o estado **real implementado no código** para servir com
 - Prestação de contas em `app/(dashboard)/prestacao-contas/page.tsx`
 - Geração de PDF via `GET /api/prestacao-contas-pdf` (`app/api/prestacao-contas-pdf/route.tsx`)
 - Template PDF em `components/pdf/prestacao-contas-pdf.tsx`
+- PDF v2.0 premium com 5 páginas: resumo executivo, análise financeira, composição de custos, reservas/operação e inteligência AlugEasy
+- A rota calcula taxa de ocupação mensal a partir das diárias vendidas e repassa `taxaOcupacao` ao template PDF
 
 #### Usuários e administração
 - Gestão de usuários em `app/(dashboard)/usuarios/page.tsx`

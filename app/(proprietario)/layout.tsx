@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { LogoutButton } from '@/components/proprietario/logout-button'
 import { BottomNav } from '@/components/proprietario/bottom-nav'
+import { DesktopNav } from '@/components/proprietario/desktop-nav'
 import { PresencaHeartbeat } from '@/components/presenca/presenca-heartbeat'
 import type { Metadata } from 'next'
 
@@ -38,60 +38,86 @@ export default async function ProprietarioLayout({
   if (profile?.role !== 'proprietario') redirect('/')
 
   const primeiroNome = profile?.full_name?.split(' ')[0] ?? ''
+  const iniciais = (profile?.full_name ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n: string) => n[0]?.toUpperCase() ?? '')
+    .join('') || '?'
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div style={{ minHeight: '100vh', background: '#f4f5f7', display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <PresencaHeartbeat />
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2 md:gap-3">
-            <img src="/logo-alugueasy.png" alt="AlugEasy" className="h-7 md:h-8" />
-            <span className="text-xs text-gray-400 font-medium hidden sm:block">
-              Portal do Proprietário
-            </span>
+
+      {/* ─── Header ─── */}
+      <header style={{
+        background: '#fff',
+        borderBottom: '1px solid #e7e9ee',
+        position: 'sticky', top: 0, zIndex: 40,
+        boxShadow: '0 1px 8px rgba(15,26,46,.05)',
+      }}>
+        <div style={{
+          height: 64, display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          maxWidth: 1400, margin: '0 auto', padding: '0 24px',
+          gap: 16,
+        }}>
+
+          {/* Marca */}
+          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/image.png"
+              alt="AlugEasy"
+              style={{ height: 44, width: 'auto', display: 'block', borderRadius: 8 }}
+            />
           </div>
 
-          {/* Nav desktop (oculta no mobile — substituída pelo BottomNav) */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-            <Link href="/proprietario" className="text-gray-600 hover:text-[#193660] transition-colors">
-              Início
-            </Link>
-            <Link href="/proprietario/extrato" className="text-gray-600 hover:text-[#193660] transition-colors">
-              Extrato
-            </Link>
-            <Link href="/proprietario/historico" className="text-gray-600 hover:text-[#193660] transition-colors">
-              Histórico
-            </Link>
-          </nav>
+          {/* Nav desktop — repassa mes/ano da URL atual para manter filtro entre abas */}
+          <DesktopNav />
 
           {/* Usuário + Sair */}
-          <div className="flex items-center gap-2 md:gap-4">
-            <span className="text-sm text-gray-600 hidden md:block">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            {/* Avatar com iniciais */}
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: '#193660', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700, letterSpacing: '.04em',
+              flexShrink: 0, userSelect: 'none',
+            }}>
+              {iniciais}
+            </div>
+            {/* Nome completo no desktop */}
+            <span className="hidden md:block" style={{ fontSize: 13, fontWeight: 500, color: '#0f1a2e' }}>
               {profile?.full_name}
             </span>
-            {/* Mobile: mostra só primeiro nome abreviado */}
-            <span className="text-xs text-gray-500 md:hidden">
+            {/* Primeiro nome no mobile */}
+            <span className="md:hidden" style={{ fontSize: 12.5, color: '#5a6a82' }}>
               {primeiroNome}
             </span>
+            {/* Divisor */}
+            <div className="hidden md:block" style={{ width: 1, height: 18, background: '#e7e9ee', flexShrink: 0 }} />
             <LogoutButton />
           </div>
+
         </div>
       </header>
 
-      {/* Conteúdo principal */}
-      {/* pb-24 no mobile para não ficar atrás do BottomNav (h-16 + safe area) */}
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-24 md:pb-8">
+      {/* Conteúdo — sem max-width: cada página controla a própria largura via .pg-wrap */}
+      <main className="flex-1 w-full pb-24 md:pb-0">
         {children}
       </main>
 
-      {/* Footer — oculto no mobile (BottomNav substitui) */}
-      <footer className="hidden md:block text-center text-xs text-gray-400 py-6 border-t border-gray-100 bg-white">
-        AlugEasy © {new Date().getFullYear()} — Portal do Proprietário
+      {/* Footer desktop */}
+      <footer className="hidden md:block" style={{
+        textAlign: 'center', fontSize: 11.5,
+        color: '#94a3b8', padding: '20px 24px',
+        borderTop: '1px solid #e7e9ee', background: '#fff',
+      }}>
+        AlugEasy &copy; 2026 &mdash; Portal do Proprietário
       </footer>
 
-      {/* Bottom navigation mobile */}
       <BottomNav />
     </div>
   )

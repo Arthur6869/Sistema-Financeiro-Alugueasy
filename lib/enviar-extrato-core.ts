@@ -18,7 +18,9 @@ export type EnviarExtratoResult = {
 export async function enviarExtratoProprietario(
   proprietarioId: string,
   mes: number,
-  ano: number
+  ano: number,
+  overrideEmail?: string,
+  overrideFrom?: string
 ): Promise<EnviarExtratoResult> {
   if (!process.env.RESEND_API_KEY) {
     return { success: false, error: 'RESEND_API_KEY não configurada' }
@@ -88,8 +90,8 @@ export async function enviarExtratoProprietario(
   const resend   = new Resend(process.env.RESEND_API_KEY)
 
   const { error: emailError } = await resend.emails.send({
-    from:    process.env.RESEND_FROM_EMAIL ?? 'noreply@alugueasy.com.br',
-    to:      propUser.email,
+    from:    overrideFrom ?? process.env.RESEND_FROM_EMAIL ?? 'noreply@alugueasy.com.br',
+    to:      overrideEmail ?? propUser.email,
     subject: `AlugEasy — Extrato de ${mesLabel} de ${ano}`,
     html:    gerarHtmlEmail({
       nomeProprietario: (propProfile as { full_name?: string } | null)?.full_name ?? 'Proprietário',

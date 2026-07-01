@@ -2,6 +2,9 @@ import { fetchTodasReservasMes, calcularValorLiquido } from '@/lib/amenitiz'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
+  // Formato "Nome Completo - Número" (separador ' - ' no nome do quarto no Amenitiz)
+  ['LINK NOROESTE',   'LINK'],
+  // Formato "Prefixo Número" (empreendimento + nº no mesmo segmento)
   ['BRISAS DO LAGO',  'BRISAS'],
   ['METROPOLITAN',    'METROPOLITAN'],
   ['MERCURE LIDER',   'MERCURE'],
@@ -13,6 +16,7 @@ const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
   ['RAMADA',          'RAMADA'],
   ['VISION',          'VISION'],
   ['EASY',            'EASY'],
+  ['AMAZE',           'AMAZE'],
   ['AB',              'ATHOS'],
   ['ATHOS BULCAO',    'ATHOS'],
   ['ATHOS BULCÃO',    'ATHOS'],
@@ -21,15 +25,33 @@ const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
 
 function parseNomeQuarto(roomName: string): { dbEmpNome: string; aptNumero: string } | null {
   if (!roomName) return null
-  const prefixoBruto = (roomName.split(' - ')[0] ?? roomName).trim().toUpperCase()
+  const parts = roomName.trim().split(' - ')
+  const seg0 = (parts[0] ?? '').trim().toUpperCase()
+
+  // Formato 1: "Easy 117" — empreendimento e número no mesmo segmento (sem ' - ')
   for (const [pfx, dbNome] of AMENITIZ_EMP_MAP) {
-    if (prefixoBruto.startsWith(pfx + ' ')) {
-      const aptRaw = prefixoBruto.slice(pfx.length).trim()
-      if (!aptRaw) return null
+    if (seg0.startsWith(pfx + ' ')) {
+      const aptRaw = seg0.slice(pfx.length).trim()
+      if (!aptRaw) continue
       const aptNorm = /^\d+$/.test(aptRaw) ? String(parseInt(aptRaw, 10)) : aptRaw
       return { dbEmpNome: dbNome, aptNumero: aptNorm }
     }
   }
+
+  // Formato 2: "Link Noroeste - 104" — nome do empreendimento é o primeiro segmento inteiro,
+  // número do apartamento é o segundo segmento (simples: dígitos ou letra+dígitos)
+  if (parts.length >= 2) {
+    const aptRaw = (parts[1] ?? '').trim()
+    if (/^[A-Z]?\d{1,6}[A-Z]?$/i.test(aptRaw)) {
+      for (const [pfx, dbNome] of AMENITIZ_EMP_MAP) {
+        if (seg0 === pfx) {
+          const aptNorm = /^\d+$/.test(aptRaw) ? String(parseInt(aptRaw, 10)) : aptRaw.toUpperCase()
+          return { dbEmpNome: dbNome, aptNumero: aptNorm }
+        }
+      }
+    }
+  }
+
   console.warn(`[Sync] parseNomeQuarto: prefixo desconhecido em "${roomName}"`)
   return null
 }
@@ -68,12 +90,21 @@ export async function runAmenitizSync(
   supabase: SupabaseClient<any>,
   mes: number,
   ano: number,
-  { empFiltro, actorUserId }: { empFiltro?: string | null; actorUserId?: string | null } = {}
+  {
+    empFiltro,
+    actorUserId,
+    // reservasOnly: apenas upsert em amenitiz_reservas, sem tocar diarias/importacoes/syncs.
+    // Usado pelo botão do proprietário — não destrutivo.
+    reservasOnly,
+  }: { empFiltro?: string | null; actorUserId?: string | null; reservasOnly?: boolean } = {}
 ): Promise<SyncAmenitizResult> {
-  const { data: syncLog } = await supabase
-    .from('amenitiz_syncs')
-    .insert({ mes, ano, status: 'em_andamento', sincronizado_por: actorUserId ?? null })
-    .select().single()
+  // Só cria log de sync para runs completos (cron/admin), não para checks do proprietário
+  const { data: syncLog } = reservasOnly
+    ? { data: null }
+    : await supabase
+        .from('amenitiz_syncs')
+        .insert({ mes, ano, status: 'em_andamento', sincronizado_por: actorUserId ?? null })
+        .select().single()
 
   const { data: apartamentos, error: aptError } = await supabase
     .from('apartamentos')
@@ -109,7 +140,7 @@ export async function runAmenitizSync(
     reservas = await fetchTodasReservasMes(mes, ano)
   } catch (fetchErr: unknown) {
     const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
-    if (syncLog?.id) {
+    if (!reservasOnly && syncLog?.id) {
       await supabase.from('amenitiz_syncs').update({ status: 'erro', erro_mensagem: msg, updated_at: new Date().toISOString() }).eq('id', syncLog.id)
     }
     return { success: false, mes, ano, total_reservas: 0, faturamento_bruto: 0, faturamento_liquido: 0, apartamentos_sincronizados: 0, apts_nao_encontrados: [], error: msg }
@@ -146,19 +177,26 @@ export async function runAmenitizSync(
 
     const nomeHospede = [`${r.booker.first_name} ${r.booker.last_name}`.trim(), r.booker.phone?.trim() ? `— ${r.booker.phone.trim()}` : ''].filter(Boolean).join(' ')
 
+    // Resolver aptInfo ANTES do upsert para incluir apartamento_id como FK real
+    // (migration 022 — necessário para RLS do portal funcionar por FK, não por texto)
+    const aptInfo = aptNumRoom.startsWith('room:')
+      ? aptMapByRoomId[room.individual_room_id ?? '']
+      : lookupApt(aptMapCompleto, empNomeDoRoom, aptNumRoom)
+
+    // apartamento_id só é incluído no payload quando o lookup tem sucesso.
+    // Ao omitir o campo no ON CONFLICT UPDATE, preservamos o valor existente no banco
+    // em vez de sobrescrever com null quando o lookup falha temporariamente.
+    const aptId = aptInfo?.id
     await supabase.from('amenitiz_reservas').upsert({
       booking_id: r.booking_id, hotel_uuid: process.env.AMENITIZ_HOTEL_UUID!,
       status: r.status, source: r.source, plataforma_normalizada: plataformaNormalizada,
       checkin: r.checkin, checkout: r.checkout,
       individual_room_number: aptNumRoom, individual_room_name: roomName,
+      ...(aptId ? { apartamento_id: aptId } : {}),
       valor_bruto: valorBruto, taxa_aplicada: taxaAplicada, valor_liquido: valorLiquido,
       nome_hospede: nomeHospede, email_hospede: r.booker.email, phone_hospede: r.booker.phone,
       mes_competencia: mes, ano_competencia: ano, raw_data: r,
     }, { onConflict: 'booking_id' })
-
-    const aptInfo = aptNumRoom.startsWith('room:')
-      ? aptMapByRoomId[room.individual_room_id ?? '']
-      : lookupApt(aptMapCompleto, empNomeDoRoom, aptNumRoom)
 
     if (!aptInfo) {
       const aviso = `${empNomeDoRoom} ${aptNumRoom}`
@@ -178,44 +216,48 @@ export async function runAmenitizSync(
     totalLiquido += valorLiquido
   }
 
-  const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-  const dataFim    = new Date(ano, mes, 0).toISOString().slice(0, 10)
+  // Bloco destrutivo — DELETE + re-INSERT de diárias e logs.
+  // NUNCA executado em modo reservasOnly (botão do proprietário).
+  if (!reservasOnly) {
+    const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+    const dataFim    = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
-  if (empFiltroNorm) {
-    const aptIds = Object.values(aptMapCompleto).map(i => i.id)
-    if (aptIds.length > 0) {
-      await supabase.from('diarias').delete().gte('data', dataInicio).lte('data', dataFim).in('apartamento_id', aptIds)
+    if (empFiltroNorm) {
+      const aptIds = Object.values(aptMapCompleto).map(i => i.id)
+      if (aptIds.length > 0) {
+        await supabase.from('diarias').delete().gte('data', dataInicio).lte('data', dataFim).in('apartamento_id', aptIds)
+      }
+    } else {
+      await supabase.from('diarias').delete().gte('data', dataInicio).lte('data', dataFim)
     }
-  } else {
-    await supabase.from('diarias').delete().gte('data', dataInicio).lte('data', dataFim)
-  }
 
-  const diariasParaInserir = Object.values(porAptId).map(d => ({
-    apartamento_id: d.aptId,
-    valor:          Math.round(d.totalLiquido * 100) / 100,
-    data:           dataInicio,
-    tipo_gestao:    d.tipoGestao,
-  }))
+    const diariasParaInserir = Object.values(porAptId).map(d => ({
+      apartamento_id: d.aptId,
+      valor:          Math.round(d.totalLiquido * 100) / 100,
+      data:           dataInicio,
+      tipo_gestao:    d.tipoGestao,
+    }))
 
-  if (diariasParaInserir.length > 0) {
-    const { error } = await supabase.from('diarias').insert(diariasParaInserir)
-    if (error) throw new Error(`Erro ao inserir diárias: ${error.message}`)
-  }
+    if (diariasParaInserir.length > 0) {
+      const { error } = await supabase.from('diarias').insert(diariasParaInserir)
+      if (error) throw new Error(`Erro ao inserir diárias: ${error.message}`)
+    }
 
-  await supabase.from('importacoes').insert({
-    nome_arquivo:  empFiltroNorm ? `amenitiz-sync-${empFiltroNorm.toLowerCase()}-${mes}-${ano}` : `amenitiz-sync-${mes}-${ano}`,
-    tipo:          'diarias_adm',
-    mes, ano,
-    status:        'concluido',
-    importado_por: actorUserId ?? null,
-  })
+    await supabase.from('importacoes').insert({
+      nome_arquivo:  empFiltroNorm ? `amenitiz-sync-${empFiltroNorm.toLowerCase()}-${mes}-${ano}` : `amenitiz-sync-${mes}-${ano}`,
+      tipo:          'diarias_adm',
+      mes, ano,
+      status:        'concluido',
+      importado_por: actorUserId ?? null,
+    })
 
-  if (syncLog?.id) {
-    await supabase.from('amenitiz_syncs').update({
-      status: 'concluido', total_reservas: totalReservas,
-      faturamento_bruto: totalBruto, faturamento_liquido: totalLiquido,
-      updated_at: new Date().toISOString(),
-    }).eq('id', syncLog.id)
+    if (syncLog?.id) {
+      await supabase.from('amenitiz_syncs').update({
+        status: 'concluido', total_reservas: totalReservas,
+        faturamento_bruto: totalBruto, faturamento_liquido: totalLiquido,
+        updated_at: new Date().toISOString(),
+      }).eq('id', syncLog.id)
+    }
   }
 
   return {
@@ -223,7 +265,7 @@ export async function runAmenitizSync(
     total_reservas: totalReservas,
     faturamento_bruto: Math.round(totalBruto * 100) / 100,
     faturamento_liquido: Math.round(totalLiquido * 100) / 100,
-    apartamentos_sincronizados: diariasParaInserir.length,
+    apartamentos_sincronizados: Object.keys(porAptId).length,
     apts_nao_encontrados: naoEncontrados,
   }
 }

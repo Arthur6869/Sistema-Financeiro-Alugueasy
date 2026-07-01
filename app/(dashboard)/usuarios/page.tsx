@@ -24,7 +24,7 @@ export default async function UsuariosPage() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, full_name, role, created_at')
+      .select('id, full_name, role, created_at, ativo')
       .order('created_at'),
     supabase
       .from('apartamentos')

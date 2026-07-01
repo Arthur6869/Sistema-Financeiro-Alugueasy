@@ -31,11 +31,26 @@ export function normalize(s: string): string {
   return s.trim().toUpperCase().replace(/\s+/g, '')
 }
 
-/** Converte valor bruto (número ou string) para float */
+/**
+ * Converte valor monetário BR para float, respeitando os separadores reais da planilha.
+ * "1.108,52"  → 1108.52   (vírgula=decimal, pontos=milhar)
+ * "11.180.31" → 11180.31  (múltiplos pontos sem vírgula: último ponto é decimal)
+ * "769.05"    → 769.05    (um ponto: decimal padrão)
+ */
 export function parseNumero(raw: unknown): number {
   if (raw == null) return NaN
   if (typeof raw === 'number') return raw
-  const s = String(raw).replace('R$', '').replace(/\./g, '').replace(',', '.').trim()
+  let s = String(raw).replace(/R\$\s*/gi, '').replace(/\s+/g, '').trim()
+  if (!s || s === '-') return NaN
+  if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else {
+    const dots = (s.match(/\./g) ?? []).length
+    if (dots > 1) {
+      const lastDot = s.lastIndexOf('.')
+      s = s.slice(0, lastDot).replace(/\./g, '') + '.' + s.slice(lastDot + 1)
+    }
+  }
   return parseFloat(s)
 }
 

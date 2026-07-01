@@ -62,7 +62,7 @@ export default async function ProprietarioHistoricoPage() {
 
       const [{ data: fat }, { data: cus }] = await Promise.all([
         supabase.from('diarias').select('valor').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
-        supabase.from('custos').select('valor').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
+        supabase.from('custos_proprietario').select('valor').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
       ])
 
       const faturamento = (fat ?? []).reduce((s, r) => s + (r.valor ?? 0), 0)
@@ -114,8 +114,14 @@ export default async function ProprietarioHistoricoPage() {
         .status-pill { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; padding: 4px 10px; border-radius: 100px; display: inline-block; }
         .status-sem { background: #f1f2f5; color: #94a3b8; }
         .status-ok { background: #f0fdf4; color: #14532d; }
+        .status-current { background: #e6f1fb; color: #0c447c; }
 
         .table-scroll { overflow-x: auto; }
+
+        @media (max-width: 640px) {
+          .hide-col { display: none; }
+          .hist-table .num.repasse { font-size: 14px; }
+        }
       `}</style>
 
       <div className="pg-wrap">
@@ -146,10 +152,10 @@ export default async function ProprietarioHistoricoPage() {
                 <tr>
                   <th>Mês</th>
                   <th>Status</th>
-                  <th className="num">Faturamento</th>
-                  <th className="num">Custos</th>
-                  <th className="num">Lucro</th>
-                  <th className="num">Repasse</th>
+                  <th className="num hide-col">Faturamento</th>
+                  <th className="num hide-col">Custos</th>
+                  <th className="num hide-col">Lucro</th>
+                  <th className="num hide-col">Repasse AlugEasy</th>
                   <th className="num">Seu valor</th>
                 </tr>
               </thead>
@@ -157,12 +163,16 @@ export default async function ProprietarioHistoricoPage() {
                 {dados.map(d => (
                   d.semDados ? (
                     <tr key={`${d.m}-${d.a}`}>
-                      <td className="hist-month" style={{ color: '#94a3b8' }}>{MESES[d.m - 1]} {d.a}</td>
-                      <td><span className="status-pill status-sem">{d.isAtual ? 'Em andamento' : 'Sem dados'}</span></td>
-                      <td className="num dim">—</td>
-                      <td className="num dim">—</td>
-                      <td className="num dim">—</td>
-                      <td className="num dim">—</td>
+                      <td className="hist-month" style={{ color: d.isAtual ? '#0f1a2e' : '#94a3b8' }}>{MESES[d.m - 1]} {d.a}</td>
+                      <td>
+                        <span className={`status-pill ${d.isAtual ? 'status-current' : 'status-sem'}`}>
+                          {d.isAtual ? 'Em andamento' : 'Sem dados'}
+                        </span>
+                      </td>
+                      <td className="num dim hide-col">—</td>
+                      <td className="num dim hide-col">—</td>
+                      <td className="num dim hide-col">—</td>
+                      <td className="num dim hide-col">—</td>
                       <td className="num dim">—</td>
                     </tr>
                   ) : (

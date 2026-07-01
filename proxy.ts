@@ -53,11 +53,17 @@ export async function proxy(request: NextRequest) {
   // Redirecionamento por role após confirmar autenticação
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, ativo')
     .eq('id', user.id)
     .single()
 
   const role = profile?.role ?? 'analista'
+
+  // Proprietário desativado → encerra sessão e redireciona para login
+  if (role === 'proprietario' && profile?.ativo === false) {
+    await supabase.auth.signOut()
+    return NextResponse.redirect(new URL('/login-proprietario?erro=conta_desativada', request.url))
+  }
 
   // Proprietário tentando acessar rotas internas → redireciona para portal
   if (role === 'proprietario' && !pathname.startsWith('/proprietario')) {

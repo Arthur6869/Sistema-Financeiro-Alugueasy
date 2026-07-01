@@ -113,9 +113,15 @@ export async function POST(request: NextRequest) {
     let custosCount = 0
 
     // =====================================================================
-    // CUSTOS — por apartamento, por categoria
+    // CUSTOS — um registro por unidade (valor = subtotal da coluna)
+    // Algoritmo: lê a linha imediatamente acima de "TOTAL:" como subtotal
+    // por unidade. Valida soma das unidades ≈ total da aba (tol. R$ 0,05).
     // =====================================================================
     if (tipo.startsWith('custos')) {
+      type CostItem = { apartamento_id: string; numero: string; categoria: string; valor: number; sheet: string }
+      const allItems: CostItem[] = []
+      const divergencias: Array<{ sheet: string; erro: string }> = []
+
       const sheetsToProcess = workbook.SheetNames.filter(name =>
         !name.toUpperCase().includes('RESULTADO') &&
         !name.toUpperCase().includes('RESUMO')
@@ -126,129 +132,200 @@ export async function POST(request: NextRequest) {
       for (const sheetName of sheetsToProcess) {
         const empreendimento_id = resolverEmpId(sheetName)
         if (!empreendimento_id) {
-          console.warn(`[CUSTOS] "${sheetName}" não encontrado no banco. Pulando.`)
+          console.warn(`[CUSTOS] "${sheetName}" não encontrado no banco — ignorado`)
           sheetsIgnorados.push(sheetName)
           continue
         }
 
         const worksheet = workbook.Sheets[sheetName]
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null }) as unknown[][]
+        if (!rows || rows.length < 4) { sheetsIgnorados.push(sheetName); continue }
 
-        if (!rows || rows.length < 2) continue
-
-        const aptCols = extrairColunasApartamento(rows, empreendimento_id, aptMap)
-        const totalRowIdx = encontrarLinhaTotais(rows, aptCols)
-
-        if (totalRowIdx < 0) {
-          console.warn(`[CUSTOS] "${sheetName}" — apts=${aptCols.length} totalRow=${totalRowIdx} — aba ignorada`)
-          sheetsIgnorados.push(sheetName)
-          continue
-        }
-
-        // Descobre a linha de cabeçalho (onde estão os números de apt)
-        let headerRowIdx = 0
-        outerLoop: for (let ri = 0; ri < Math.min(10, rows.length); ri++) {
+        // 1. Linha de cabeçalho: primeira linha 0-7 com célula começando em "Descri"
+        let headerRowIdx = -1
+        for (let ri = 0; ri < Math.min(8, rows.length); ri++) {
           const row = rows[ri]
           if (!row) continue
-          for (const { colIdx } of aptCols) {
-            const cell = row[colIdx]
-            if (cell != null && extrairNumeroApt(String(cell).trim())) {
-              headerRowIdx = ri
-              break outerLoop
+          if (row.some(c => typeof c === 'string' && c.trim().toLowerCase().startsWith('descri'))) {
+            headerRowIdx = ri
+            break
+          }
+        }
+
+        // 2. Colunas de unidade: col c onde col c+1 começa com "Descri"
+        let unitCols: ColApartamento[] = []
+        const aptNaoNoBanco: string[] = []
+        if (headerRowIdx >= 0) {
+          const hRow = rows[headerRowIdx]
+          for (let c = 0; c < hRow.length - 1; c++) {
+            const next = hRow[c + 1]
+            if (typeof next !== 'string' || !next.trim().toLowerCase().startsWith('descri')) continue
+            const cellVal = hRow[c]
+            if (cellVal == null) continue
+            const aptNum = extrairNumeroApt(String(cellVal).trim())
+            if (!aptNum) continue
+            const key = `${empreendimento_id}::${normalizar(aptNum)}`
+            const apartamento_id = aptMap[key]
+            if (apartamento_id) {
+              unitCols.push({ colIdx: c, apartamento_id, numero: aptNum })
+            } else {
+              aptNaoNoBanco.push(aptNum)
             }
           }
         }
 
-        let sheetOk = false
-
-        const totalLinha = extrairTotalLinha(rows[totalRowIdx] ?? [], aptCols)
-        let aptosGravados = 0
-
-        for (const { colIdx, apartamento_id, numero } of aptCols) {
-          const aptCustos: CustoInsert[] = []
-
-          for (let ri = headerRowIdx + 1; ri < totalRowIdx; ri++) {
-            const row = rows[ri]
-            if (!row) continue
-
-            const rawVal = row[colIdx]
-            // Categoria fica na coluna ímpar imediatamente após o valor do apt
-            const rawDesc = row[colIdx + 1]
-
-            const descStr = String(rawDesc ?? '').trim()
-            if (!descStr || descStr === '-') continue
-
-            const valor = arredondar(parseNumero(rawVal))
-            if (isNaN(valor) || valor <= 0) continue
-
-            aptCustos.push({ apartamento_id, categoria: descStr, valor, mes, ano, tipo_gestao })
-          }
-
-          if (aptCustos.length === 0) {
-            console.warn(`[CUSTOS] ${sheetName} apt ${numero}: nenhuma categoria encontrada`)
-            continue
-          }
-
-          // DELETE por apt antes de reinserir (evita duplicação sem apagar outros apts)
-          const { error: delErr } = await supabase
-            .from('custos').delete()
-            .eq('apartamento_id', apartamento_id)
-            .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
-
-          if (delErr) {
-            console.error(`[CUSTOS] Erro ao limpar ${sheetName} apt ${numero}:`, delErr.message)
-            continue
-          }
-
-          const { error: insErr } = await supabase.from('custos').insert(aptCustos)
-          if (insErr) {
-            console.error(`[CUSTOS] Erro ao inserir ${sheetName} apt ${numero}:`, insErr.message)
-            sheetsIgnorados.push(`${sheetName}:apt${numero}`)
-          } else {
-            custosCount += aptCustos.length
-            sheetOk = true
-            aptosGravados++
-            const soma = aptCustos.reduce((a, c) => a + c.valor, 0)
-            console.log(`[CUSTOS] ✓ ${sheetName} apt ${numero}: ${aptCustos.length} categorias, R$ ${soma.toFixed(2)}`)
+        // Fallback: detectar unidades por número de apartamento na linha de cabeçalho
+        if (unitCols.length === 0) {
+          unitCols = extrairColunasApartamento(rows, empreendimento_id, aptMap)
+          if (unitCols.length > 0 && headerRowIdx < 0) {
+            outerLoop: for (let ri = 0; ri < Math.min(10, rows.length); ri++) {
+              const row = rows[ri]
+              if (!row) continue
+              for (const { colIdx } of unitCols) {
+                const cell = row[colIdx]
+                if (cell != null && extrairNumeroApt(String(cell).trim())) {
+                  headerRowIdx = ri
+                  break outerLoop
+                }
+              }
+            }
           }
         }
 
-        // Se nenhum apt foi gravado mas há um TOTAL na planilha,
-        // usa fallback no primeiro apt do empreendimento/tipo.
-        if (aptosGravados === 0 && totalLinha > 0) {
-          const aptFallback = allApartamentos.find(
-            a => a.empreendimento_id === empreendimento_id && a.tipo_gestao === tipo_gestao
-          )
-          if (aptFallback) {
-            await supabase
-              .from('custos').delete()
-              .eq('apartamento_id', aptFallback.id)
-              .eq('mes', mes).eq('ano', ano)
-              .eq('tipo_gestao', tipo_gestao)
+        if (unitCols.length === 0) {
+          console.warn(`[CUSTOS] "${sheetName}" — nenhuma coluna de unidade encontrada`)
+          sheetsIgnorados.push(sheetName)
+          continue
+        }
 
-            await supabase.from('custos').insert({
-              apartamento_id: aptFallback.id,
-              mes,
-              ano,
-              categoria: 'Total Consolidado',
-              valor: totalLinha,
-              tipo_gestao,
+        // 3. Linha TOTAL: (primeira após o cabeçalho com célula começando em "TOTAL")
+        let totalRowIdx = -1
+        for (let ri = Math.max(1, headerRowIdx + 1); ri < rows.length; ri++) {
+          const row = rows[ri]
+          if (!row) continue
+          if (row.some(c => c != null && String(c).trim().toUpperCase().startsWith('TOTAL'))) {
+            totalRowIdx = ri
+            break
+          }
+        }
+
+        if (totalRowIdx < 0) {
+          console.warn(`[CUSTOS] "${sheetName}" — linha TOTAL não encontrada`)
+          sheetsIgnorados.push(sheetName)
+          continue
+        }
+
+        // 4. Linha de subtotal = imediatamente acima de TOTAL:
+        const subtotalRowIdx = totalRowIdx - 1
+        if (subtotalRowIdx <= headerRowIdx) {
+          console.warn(`[CUSTOS] "${sheetName}" — TOTAL muito próximo do cabeçalho`)
+          sheetsIgnorados.push(sheetName)
+          continue
+        }
+
+        const subtotalRow = rows[subtotalRowIdx] ?? []
+        const totalRow    = rows[totalRowIdx]    ?? []
+
+        // 5a. Ler subtotais por unidade (linha acima de TOTAL) — usados para validação.
+        const subtotalPorApt: Record<string, number> = {}
+        let temSubtotalInvalido = false
+        for (const { colIdx, apartamento_id, numero } of unitCols) {
+          const raw   = subtotalRow[colIdx]
+          const valor = arredondar(parseMoneyBR(raw))
+          if (isNaN(valor)) {
+            console.warn(`[CUSTOS] ${sheetName} apt ${numero}: subtotal inválido (${raw})`)
+            divergencias.push({ sheet: sheetName, erro: `Apt ${numero}: subtotal inválido (${JSON.stringify(raw)})` })
+            temSubtotalInvalido = true
+            continue
+          }
+          if (valor > 0) subtotalPorApt[apartamento_id] = valor
+        }
+        if (temSubtotalInvalido) continue
+        if (Object.keys(subtotalPorApt).length === 0) { sheetsIgnorados.push(sheetName); continue }
+
+        // 5b. Ler linhas individuais de custo (entre cabeçalho e subtotal).
+        // Estrutura da planilha: col[c] = valor, col[c+1] = nome da categoria.
+        const sheetItems: CostItem[] = []
+        for (let ri = headerRowIdx + 1; ri < subtotalRowIdx; ri++) {
+          const row = rows[ri] ?? []
+          for (const { colIdx, apartamento_id, numero } of unitCols) {
+            const valor = arredondar(parseMoneyBR(row[colIdx]))
+            if (isNaN(valor) || valor <= 0) continue
+            const categoria = String(row[colIdx + 1] ?? '').trim()
+            if (!categoria) continue
+            sheetItems.push({ apartamento_id, numero, categoria, valor, sheet: sheetName })
+          }
+        }
+
+        // 5c. Se não encontrou itens individuais, usa subtotal como "Total Consolidado".
+        const sheetItemsParaUsar: CostItem[] = sheetItems.length > 0
+          ? sheetItems
+          : Object.entries(subtotalPorApt).map(([apartamento_id, valor]) => {
+              const col = unitCols.find(u => u.apartamento_id === apartamento_id)
+              return { apartamento_id, numero: col?.numero ?? '', categoria: 'Total Consolidado', valor, sheet: sheetName }
             })
 
-            console.warn(`[import] fallback TOTAL para ${sheetName}: apt ${aptFallback.numero}, R$ ${totalLinha}`)
-            custosCount++
-            sheetOk = true
-          }
+        // 6. Total geral da aba: primeiro valor numérico na linha TOTAL:
+        let grandTotal = 0
+        for (const cell of totalRow) {
+          if (cell == null) continue
+          const v = parseMoneyBR(cell)
+          if (!isNaN(v) && v > 0) { grandTotal = arredondar(v); break }
         }
 
-        if (!sheetOk) sheetsIgnorados.push(sheetName)
+        // 7. Validar Σ subtotais ≈ TOTAL: (tolerância R$ 0,05)
+        const somaUnidades = arredondar(Object.values(subtotalPorApt).reduce((s, v) => s + v, 0))
+        if (grandTotal > 0 && Math.abs(somaUnidades - grandTotal) > 0.05) {
+          const difStr = `Σ R$ ${somaUnidades.toFixed(2)} ≠ TOTAL R$ ${grandTotal.toFixed(2)}`
+          const naoStr = aptNaoNoBanco.length > 0
+            ? ` | Apts não cadastrados no banco: ${aptNaoNoBanco.join(', ')}`
+            : ''
+          console.error(`[CUSTOS] "${sheetName}" — ${difStr}${naoStr}`)
+          divergencias.push({ sheet: sheetName, erro: `${difStr}${naoStr}` })
+          continue
+        }
+
+        allItems.push(...sheetItemsParaUsar)
+        console.log(`[CUSTOS] ✓ "${sheetName}" — ${sheetItemsParaUsar.length} item(ns), R$ ${somaUnidades.toFixed(2)} (${sheetItems.length > 0 ? 'detalhado' : 'consolidado'})`)
       }
 
-      if (custosCount === 0) {
+      // Divergências de validação → HTTP 422 (não grava nada)
+      if (divergencias.length > 0) {
         return NextResponse.json({
-          error: 'Nenhum custo foi encontrado no arquivo. Verifique se o arquivo correto foi enviado.'
+          error: 'Divergências encontradas. Corrija as abas indicadas antes de importar.',
+          divergencias,
+          abas_ok: [...new Set(allItems.map(u => u.sheet))],
+          nao_gravados: sheetsIgnorados,
+        }, { status: 422 })
+      }
+
+      if (allItems.length === 0) {
+        return NextResponse.json({
+          error: 'Nenhum custo encontrado no arquivo. Verifique se o arquivo correto foi enviado.'
         }, { status: 400 })
       }
+
+      // DELETE único por (mes, ano, tipo_gestao) antes de inserir
+      const { error: delPeriodoErr } = await supabase
+        .from('custos').delete()
+        .eq('mes', mes).eq('ano', ano).eq('tipo_gestao', tipo_gestao)
+      if (delPeriodoErr) {
+        return NextResponse.json({ error: `Erro ao limpar período: ${delPeriodoErr.message}` }, { status: 500 })
+      }
+
+      // INSERT em lote — uma linha por item de custo com categoria individual
+      const custosToInsert: CustoInsert[] = allItems.map(item => ({
+        apartamento_id: item.apartamento_id,
+        mes, ano,
+        categoria: item.categoria,
+        valor: item.valor,
+        tipo_gestao,
+      }))
+      const { error: insErr } = await supabase.from('custos').insert(custosToInsert)
+      if (insErr) {
+        return NextResponse.json({ error: `Erro ao inserir custos: ${insErr.message}` }, { status: 500 })
+      }
+      custosCount = custosToInsert.length
     }
 
     // =====================================================================
@@ -400,6 +477,31 @@ function parseNumero(raw: unknown): number {
   return parseFloat(s)
 }
 
+/**
+ * Converte valor monetário BR para float, respeitando os separadores reais da planilha.
+ * "1.108,52"  → 1108.52   (vírgula=decimal, pontos=milhar)
+ * "11.180.31" → 11180.31  (múltiplos pontos sem vírgula: último ponto é decimal)
+ * "769.05"    → 769.05    (um ponto: decimal padrão)
+ */
+function parseMoneyBR(raw: unknown): number {
+  if (raw == null) return NaN
+  if (typeof raw === 'number') return raw
+  let s = String(raw).replace(/R\$\s*/gi, '').replace(/\s+/g, '').trim()
+  if (!s || s === '-') return NaN
+  if (s.includes(',')) {
+    // Formato BR: "1.108,52" → remove pontos de milhar, troca vírgula por ponto
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else {
+    const dots = (s.match(/\./g) ?? []).length
+    if (dots > 1) {
+      // Múltiplos pontos, sem vírgula: "11.180.31" → último ponto é decimal
+      const lastDot = s.lastIndexOf('.')
+      s = s.slice(0, lastDot).replace(/\./g, '') + '.' + s.slice(lastDot + 1)
+    }
+  }
+  return parseFloat(s)
+}
+
 /** Arredonda para 2 casas decimais, evitando floats como 53664.01873333 */
 function arredondar(v: number): number {
   return Math.round(v * 100) / 100
@@ -520,8 +622,11 @@ function extrairNumeroApt(cell: string): string | null {
   // Número puro (célula numérica do Excel convertida para string): "204", "1419", "11"
   if (/^\d+$/.test(s)) return s
 
-  // Alfanumérico curto: "A 104", "D 137", "1615A", "A113"
-  if (s.length <= 10 && /^[A-Za-z]?\s*\d/.test(s)) return s
+  // Composto: "1615A - 1615", "1701 - 1701A"
+  if (/^\d+[A-Za-z]?\s*-\s*\d+[A-Za-z]?$/.test(s)) return s
+
+  // Alfanumérico: "A 104", "D 137", "1615A", "A113", "D138"
+  if (s.length <= 15 && /^[A-Za-z]?\s*\d/.test(s)) return s
 
   return null
 }

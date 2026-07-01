@@ -29,7 +29,24 @@ export async function GET(request: NextRequest) {
     if (authErr || !user)
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    // All data via admin client (bypasses RLS)
+    // Verificar ownership: proprietário só acessa seus próprios apartamentos
+    const { data: profile } = await supabase
+      .from('profiles').select('role').eq('id', user.id).single()
+
+    if (profile?.role === 'proprietario') {
+      const { count } = await supabase
+        .from('proprietario_apartamentos')
+        .select('*', { count: 'exact', head: true })
+        .eq('proprietario_id', user.id)
+        .eq('apartamento_id', apartamentoId)
+        .eq('ativo', true)
+      if (!count || count === 0)
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+    } else if (!profile || !['admin', 'analista'].includes(profile.role)) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+    }
+
+    // All data via admin client (bypasses RLS — autorização já verificada acima)
     const admin = createAdminClient()
 
     type AptRow = {
@@ -76,34 +93,72 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       admin.from('diarias').select('valor, tipo_gestao').eq('apartamento_id', apartamentoId).gte('data', dataInicio).lte('data', dataFim),
       admin.from('custos').select('valor, categoria, tipo_gestao').eq('apartamento_id', apartamentoId).eq('mes', mes).eq('ano', ano),
+      // Reservas por sobreposição de datas (não mes_competencia).
+      // Reservas que cruzam o mês têm valor prorado proporcionalmente logo abaixo.
       admin.from('amenitiz_reservas')
         .select('valor_liquido, status, checkin, checkout, nome_hospede, plataforma')
-        .eq('individual_room_number', String(apt.numero))
-        .eq('mes_competencia', mes)
-        .eq('ano_competencia', ano)
+        .eq('apartamento_id', apartamentoId)
+        .lte('checkin', dataFim)
+        .gte('checkout', dataInicio)
         .order('checkin'),
     ])
     const diarias = (diariasRaw ?? []) as DiariaRow[]
     const custos  = (custosRaw ?? []) as CustoRow[]
-    const reservasRaw = (reservasRawData ?? []) as ReservaRow[]
 
-    // ── Histórico 6 meses (sequencial — depende de apt.numero / apt.id) ─────
+    // Proration: clipa datas ao mês e calcula valor proporcional às noites no período.
+    const firstDayMs  = new Date(dataInicio + 'T00:00:00').getTime()
+    const nextMonthMs = new Date(ano, mes, 1).getTime()
+    const reservasRaw: ReservaRow[] = ((reservasRawData ?? []) as ReservaRow[]).flatMap(r => {
+      let checkin  = r.checkin
+      let checkout = r.checkout
+      let valor    = r.valor_liquido
+      if (r.checkin && r.checkout && r.valor_liquido != null) {
+        const ci = new Date(r.checkin  + 'T00:00:00').getTime()
+        const co = new Date(r.checkout + 'T00:00:00').getTime()
+        const totalNights = (co - ci) / 86400000
+        const monthNights = (Math.min(co, nextMonthMs) - Math.max(ci, firstDayMs)) / 86400000
+        if (monthNights <= 0) return []
+        if (totalNights > 0 && monthNights < totalNights) {
+          valor    = (monthNights / totalNights) * r.valor_liquido
+          if (ci < firstDayMs)  checkin  = dataInicio
+          if (co > nextMonthMs) checkout = dataFim
+        }
+      }
+      return [{ ...r, checkin, checkout, valor_liquido: valor }]
+    })
+
+    // ── Histórico 6 meses (sequencial — usa diárias + proration de reservas) ─
     const historicoMeses: Array<{ label: string; faturamento: number; custos: number; lucro: number }> = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(ano, mes - 1 - i, 1)
       const m = d.getMonth() + 1
       const a = d.getFullYear()
-      const [{ data: fatH }, { data: custH }] = await Promise.all([
-        admin.from('amenitiz_reservas').select('valor_liquido')
-          .eq('individual_room_number', String(apt.numero))
-          .eq('mes_competencia', m).eq('ano_competencia', a),
-        admin.from('custos').select('valor')
-          .eq('apartamento_id', apt.id)
-          .eq('mes', m).eq('ano', a),
+      const di = `${a}-${String(m).padStart(2, '0')}-01`
+      const df = new Date(a, m, 0).toISOString().slice(0, 10)
+      const firstMs  = new Date(di + 'T00:00:00').getTime()
+      const nextMs   = new Date(a, m, 1).getTime()
+      const [{ data: fatDiarias }, { data: fatReservas }, { data: custH }] = await Promise.all([
+        admin.from('diarias').select('valor').eq('apartamento_id', apt.id).gte('data', di).lte('data', df),
+        admin.from('amenitiz_reservas').select('valor_liquido, checkin, checkout, status')
+          .eq('apartamento_id', apt.id).lte('checkin', df).gte('checkout', di),
+        admin.from('custos').select('valor').eq('apartamento_id', apt.id).eq('mes', m).eq('ano', a),
       ])
-      const fat = ((fatH ?? []) as Array<{ valor_liquido: number | null }>).reduce((s, r) => s + (r.valor_liquido ?? 0), 0)
-      const cust = ((custH ?? []) as Array<{ valor: number | null }>).reduce((s, r) => s + (r.valor ?? 0), 0)
-      historicoMeses.push({ label: `${MESES_ABREV[m - 1]}/${a}`, faturamento: r2(fat), custos: r2(cust), lucro: r2(fat - cust) })
+      const fatDiariaTotal = ((fatDiarias ?? []) as Array<{ valor: number | null }>)
+        .reduce((s, r) => s + (r.valor ?? 0), 0)
+      const fatReservaTotal = fatDiariaTotal > 0 ? 0 :
+        ((fatReservas ?? []) as Array<{ valor_liquido: number | null; checkin: string | null; checkout: string | null; status: string | null }>)
+          .filter(r => !['cancelled', 'canceled', 'no_show'].includes(String(r.status ?? '').toLowerCase()))
+          .reduce((s, r) => {
+            if (!r.checkin || !r.checkout || r.valor_liquido == null) return s + (r.valor_liquido ?? 0)
+            const ci2 = new Date(r.checkin + 'T00:00:00').getTime()
+            const co2 = new Date(r.checkout + 'T00:00:00').getTime()
+            const tot = (co2 - ci2) / 86400000
+            const mn  = (Math.min(co2, nextMs) - Math.max(ci2, firstMs)) / 86400000
+            return s + (tot > 0 && mn < tot ? (mn / tot) * r.valor_liquido : (r.valor_liquido ?? 0))
+          }, 0)
+      const fat  = r2(fatDiariaTotal + fatReservaTotal)
+      const cust = r2(((custH ?? []) as Array<{ valor: number | null }>).reduce((s, r) => s + (r.valor ?? 0), 0))
+      historicoMeses.push({ label: `${MESES_ABREV[m - 1]}/${a}`, faturamento: fat, custos: cust, lucro: r2(fat - cust) })
     }
 
     // ── Cálculos de faturamento ──────────────────────────────────────────────
@@ -135,13 +190,28 @@ export async function GET(request: NextRequest) {
     const valorLiquidoProprietario = lucroLiquido - valorRepasse
 
     // ── Indicadores operacionais ─────────────────────────────────────────────
-    const numReservas = reservasValidas.length
-    const totalDiarias = reservasValidas.reduce((s, r) => {
-      const noites = Math.max(1, Math.round((new Date(`${r.checkout}T00:00:00`).getTime() - new Date(`${r.checkin}T00:00:00`).getTime()) / 86_400_000))
-      return s + noites
-    }, 0)
-    const valorMedioDiaria = totalDiarias > 0 ? receitaReservasTotal / totalDiarias : 0
-    const mediaDiariasPorReserva = numReservas > 0 ? totalDiarias / numReservas : 0
+    let numReservas: number
+    let totalDiarias: number
+    let valorMedioDiaria: number
+    let mediaDiariasPorReserva: number
+    if (usarDiarias) {
+      totalDiarias = (diarias ?? []).reduce((s) => s + 1, 0)
+      numReservas = totalDiarias > 0 ? Math.max(1, Math.round(totalDiarias / 3)) : 0
+      valorMedioDiaria = totalDiarias > 0 ? receitaTotal / totalDiarias : 0
+      mediaDiariasPorReserva = numReservas > 0 ? totalDiarias / numReservas : 0
+    } else {
+      numReservas = reservasValidas.length
+      totalDiarias = reservasValidas.reduce((s, r) => {
+        const noites = Math.max(1, Math.round(
+          (new Date(r.checkout + 'T00:00:00').getTime() - new Date(r.checkin + 'T00:00:00').getTime()) / 86_400_000
+        ))
+        return s + noites
+      }, 0)
+      valorMedioDiaria = totalDiarias > 0 ? receitaReservasTotal / totalDiarias : 0
+      mediaDiariasPorReserva = numReservas > 0 ? totalDiarias / numReservas : 0
+    }
+    const diasNoMes = new Date(Number(ano), Number(mes), 0).getDate()
+    const taxaOcupacao = diasNoMes > 0 ? (totalDiarias / diasNoMes) * 100 : undefined
 
     // ── Breakdown por plataforma ─────────────────────────────────────────────
     const platMap: Record<string, number> = {}
@@ -206,6 +276,7 @@ export async function GET(request: NextRequest) {
         custosDetalhados={custosDetalhados}
         numReservas={numReservas}
         totalDiarias={totalDiarias}
+        taxaOcupacao={taxaOcupacao}
         valorMedioDiaria={r2(valorMedioDiaria)}
         mediaDiariasPorReserva={r2(mediaDiariasPorReserva)}
         usandoDiarias={usarDiarias}

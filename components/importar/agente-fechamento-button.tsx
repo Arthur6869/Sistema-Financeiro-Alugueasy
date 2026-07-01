@@ -48,6 +48,31 @@ export function AgenteFechamentoButton() {
   const [relatorio, setRelatorio] = useState<RelatorioFechamento | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [alertasAberto, setAlertasAberto] = useState(true)
+  const [testeLoading, setTesteLoading] = useState(false)
+  const [testeResultado, setTesteResultado] = useState<string | null>(null)
+
+  async function testarEmail() {
+    setTesteLoading(true)
+    setTesteResultado(null)
+    try {
+      const res = await fetch('/api/teste-extrato', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes, ano }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setTesteResultado(`✅ Email enviado para ${data.email_enviado_para} (proprietário: ${data.proprietario_usado}, ${data.apartamentos} apt(s), período ${data.periodo})`)
+      } else {
+        const erros = (data.tentativas ?? []).map((t: { proprietario: string; error?: string }) => `${t.proprietario}: ${t.error}`).join(' | ')
+        setTesteResultado(`❌ Falha ao enviar: ${erros || data.error}`)
+      }
+    } catch (e) {
+      setTesteResultado(`❌ Erro: ${(e as Error).message}`)
+    } finally {
+      setTesteLoading(false)
+    }
+  }
 
   async function executar() {
     setLoading(true)
@@ -139,7 +164,24 @@ export function AgenteFechamentoButton() {
             </>
           )}
         </Button>
+        <Button
+          onClick={testarEmail}
+          disabled={testeLoading || loading}
+          variant="outline"
+          className="gap-2 text-gray-600 border-gray-300"
+        >
+          {testeLoading ? (
+            <span className="animate-spin inline-block w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full" />
+          ) : null}
+          Testar email
+        </Button>
       </div>
+
+      {testeResultado && (
+        <div className={`mt-3 p-3 rounded-lg text-sm ${testeResultado.startsWith('✅') ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+          {testeResultado}
+        </div>
+      )}
 
       {erro && (
         <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
