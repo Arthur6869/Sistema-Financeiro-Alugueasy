@@ -717,7 +717,36 @@ preservam o fallback e usam o helper apenas no ramo de sessão.
 - Painel de **alertas proativos** no topo do dashboard (`lib/alertas.ts` + `components/dashboard/alertas-panel.tsx`): room_ids faltando, sync com erro, `categorias_repassaveis` vazia, margem < 10%.
 - Botões "Exportar XLSX" nas páginas Custos e Reservas.
 
-**Migrations novas:** 027 (índices `amenitiz_syncs(mes,ano,status)` e `amenitiz_reservas(apartamento_id)` + template de seed de `categorias_repassaveis` — seed é decisão de negócio, pendente) e 028 (`audit_log`).
+**Migrations novas:** 027 (índices `amenitiz_syncs(mes,ano,status)` e `amenitiz_reservas(apartamento_id)` + seed de `categorias_repassaveis` com todas as categorias existentes) e 028 (`audit_log`). **Ambas aplicadas em produção em 02/07/2026.**
+
+---
+
+### Crons — pg_cron no Supabase (02/07/2026)
+
+Os crons do `vercel.json` **nunca executaram**: o Vercel Cron faz requisições **GET**
+e as rotas de cron só têm handler **POST** (além do plano Hobby limitar a 1 execução
+diária). Foram substituídos por 3 jobs `pg_cron` + `pg_net` no banco Supabase, que
+fazem POST autenticado com a chave interna (guardada no **Supabase Vault** como
+`alugueasy_internal_api_key`):
+
+| Job | Cron (UTC) | Chamada |
+|---|---|---|
+| `amenitiz-reservas-5min` | `*/5 * * * *` | `POST /api/amenitiz-sync-cron?modo=reservas` — sync leve, só upsert de `amenitiz_reservas` (não-destrutivo, alimenta o realtime do portal) |
+| `amenitiz-sync-diario` | `0 8 * * *` (05:00 BRT) | `POST /api/amenitiz-sync-cron` — sync completo (diárias + logs) |
+| `agente-fechamento-mensal` | `0 11 1 * *` (08:00 BRT dia 1) | `POST /api/agente-fechamento` |
+
+Gerenciamento: `SELECT * FROM cron.job;` e histórico em `cron.job_run_details` /
+respostas HTTP em `net._http_response`. O `vercel.json` não tem mais a chave `crons`.
+
+### Rotação de chaves Supabase (02/07/2026)
+
+As chaves **legadas** (JWT `anon` / `service_role`) foram **desabilitadas** — a
+service_role antiga estava exposta no histórico do git (`.claude/settings.json`) e
+está morta (retorna 401). O app usa as chaves novas:
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `sb_publishable_...`
+- `SUPABASE_SERVICE_ROLE_KEY` = `sb_secret_...`
+Atualizadas em `.env.local`, `mcp-server/.env` e nas envs da Vercel (Production +
+Preview). Se precisar de novas chaves: Dashboard → Settings → API Keys.
 
 ---
 
