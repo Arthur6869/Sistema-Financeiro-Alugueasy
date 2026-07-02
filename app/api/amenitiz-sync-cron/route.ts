@@ -28,6 +28,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
+  // ?modo=reservas → apenas upsert de amenitiz_reservas (leve, não-destrutivo,
+  // alimenta o realtime do portal). Usado pelo pg_cron de 5 em 5 minutos.
+  // Sem o parâmetro → sync completo (diarias + logs). Usado pelo pg_cron diário.
+  const reservasOnly = new URL(request.url).searchParams.get('modo') === 'reservas'
+
   const supabase = createAdminClient()
   const periodos = janelaMovel()
   const inicio = Date.now()
@@ -36,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   for (const { mes, ano } of periodos) {
     try {
-      const r = await runAmenitizSync(supabase, mes, ano)
+      const r = await runAmenitizSync(supabase, mes, ano, { reservasOnly })
       resultados.push({ mes, ano, success: r.success, total_reservas: r.total_reservas,
         faturamento_liquido: r.faturamento_liquido, apts_nao_encontrados: r.apts_nao_encontrados,
         error: r.error ?? null })
@@ -60,6 +65,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     executado_em: new Date().toISOString(),
+    modo: reservasOnly ? 'reservas' : 'completo',
     duracao_ms: Date.now() - inicio,
     periodos_sincronizados: periodos.length,
     resultados,
