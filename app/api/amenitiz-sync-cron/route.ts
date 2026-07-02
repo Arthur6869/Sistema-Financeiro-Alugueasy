@@ -13,11 +13,16 @@ function autenticado(request: NextRequest): boolean {
       || (!!internalKey && xInternal === internalKey)
 }
 
+// Permite a rota rodar até 60s (o sync completo de 3 meses leva ~30-45s).
+export const maxDuration = 60
+
 // Janela móvel: mês corrente + 2 meses anteriores (~60 dias).
 // Cobre casos de reserva alterada retroativamente e falhas de webhook.
-function janelaMovel(): Array<{ mes: number; ano: number }> {
+// No modo reservas (cron de 5 min) só o mês corrente — o sync completo diário
+// cobre os retroativos, e 1 fetch na Amenitiz mantém a execução em ~10s.
+function janelaMovel(meses: number): Array<{ mes: number; ano: number }> {
   const agora = new Date()
-  return Array.from({ length: 3 }, (_, i) => {
+  return Array.from({ length: meses }, (_, i) => {
     const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1)
     return { mes: d.getMonth() + 1, ano: d.getFullYear() }
   })
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
   const reservasOnly = new URL(request.url).searchParams.get('modo') === 'reservas'
 
   const supabase = createAdminClient()
-  const periodos = janelaMovel()
+  const periodos = janelaMovel(reservasOnly ? 1 : 3)
   const inicio = Date.now()
   const resultados: Record<string, unknown>[] = []
   let algumSucesso = false
