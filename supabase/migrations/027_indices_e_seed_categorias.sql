@@ -27,16 +27,14 @@ CREATE INDEX IF NOT EXISTS idx_amenitiz_syncs_periodo_status
 CREATE INDEX IF NOT EXISTS idx_amenitiz_reservas_apartamento
   ON amenitiz_reservas (apartamento_id);
 
--- Seed de categorias repassáveis — DESCOMENTE e ajuste antes de aplicar.
--- A comparação da policy usa upper(), então capitalização não importa.
---
--- INSERT INTO categorias_repassaveis (categoria) VALUES
---   ('Condomínio'),
---   ('Energia'),
---   ('Água'),
---   ('Internet'),
---   ('Limpeza'),
---   ('Manutenção')
--- ON CONFLICT (categoria) DO NOTHING;
+-- Seed: todas as categorias já existentes em custos são repassáveis.
+-- Racional (02/07/2026): o email de extrato enviado aos proprietários
+-- (lib/enviar-extrato-core.ts) calcula lucro/repasse com TODOS os custos dos
+-- apartamentos vinculados; seedar todas as categorias existentes torna o
+-- portal consistente com o email. Categorias NOVAS continuam deny-by-default:
+-- precisam ser adicionadas aqui explicitamente pelo analista.
+INSERT INTO categorias_repassaveis (categoria)
+SELECT DISTINCT categoria FROM custos WHERE categoria IS NOT NULL
+ON CONFLICT (categoria) DO NOTHING;
 
-SELECT '027 aplicada — índices criados; seed de categorias pendente de revisão' AS status;
+SELECT '027 aplicada — índices criados + categorias existentes seedadas' AS status;

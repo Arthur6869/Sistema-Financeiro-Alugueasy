@@ -83,3 +83,4 @@ vercel/.vercel
 
 # ── Next.js gerado (commitado por convenção) ──
 # next-env.d.ts é gerado mas deve ser versionado conforme docs do Next.js
+.env*
