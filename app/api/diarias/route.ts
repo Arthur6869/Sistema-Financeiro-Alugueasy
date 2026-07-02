@@ -1,22 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { user: null, role: null }
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  return { user, role: profile?.role ?? null }
-}
-
 export async function POST(request: NextRequest) {
-  const { user, role } = await getAuthContext()
-  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-  if (role !== 'analista') {
-    return NextResponse.json({ error: 'Apenas analistas podem inserir diárias' }, { status: 403 })
-  }
+  const { response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const apartamento_id = String(body.apartamento_id ?? '').trim()

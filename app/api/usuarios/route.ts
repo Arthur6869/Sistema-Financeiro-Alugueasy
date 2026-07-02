@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Cliente admin (service_role) — único que pode criar usuários no Auth
@@ -8,22 +9,6 @@ function getAdminClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error('SUPABASE_SERVICE_ROLE_KEY não configurada')
   return createAdminClient(url, key)
-}
-
-async function verificarAnalista() {
-  const supabase = await createClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) {
-    return { erro: NextResponse.json({ error: 'Não autenticado' }, { status: 401 }), user: null }
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista') {
-    return { erro: NextResponse.json({ error: 'Apenas analistas podem gerenciar usuários' }, { status: 403 }), user: null }
-  }
-
-  return { erro: null, user }
 }
 
 async function validarProprietario(userId: string) {
@@ -46,8 +31,8 @@ async function validarProprietario(userId: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const { erro } = await verificarAnalista()
-  if (erro) return erro
+  const { response } = await requireAnalista()
+  if (response) return response
 
   const userId = request.nextUrl.searchParams.get('user_id')
   if (!userId) {
@@ -83,8 +68,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   // ── Autenticação e permissão ─────────────────────────────────────────────
-  const { erro } = await verificarAnalista()
-  if (erro) return erro
+  const { response } = await requireAnalista()
+  if (response) return response
 
   // ── Validar body ─────────────────────────────────────────────────────────
   const body = await request.json()
@@ -168,8 +153,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { erro } = await verificarAnalista()
-  if (erro) return erro
+  const { response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const { user_id, email, password } = body as {

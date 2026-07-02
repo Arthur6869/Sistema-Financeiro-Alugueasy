@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ManualCostFilters } from '@/components/custos/manual-cost-filters'
 import { ManualCostForm } from '@/components/custos/manual-cost-form'
@@ -143,6 +144,7 @@ export function ManualCostsPageClient({
         return
       }
       setInfoMessage('Custo lançado com sucesso.')
+      toast.success('Custo lançado com sucesso')
       resetForm(keepContext)
       await loadItems()
     } finally {
@@ -158,6 +160,7 @@ export function ManualCostsPageClient({
       setErrorMessage(body.error ?? 'Erro ao excluir custo')
       return
     }
+    toast.success('Custo excluído com sucesso')
     await loadItems()
   }
 
@@ -173,6 +176,7 @@ export function ManualCostsPageClient({
       setErrorMessage(body.error ?? 'Erro ao editar custo')
       return
     }
+    toast.success('Custo atualizado com sucesso')
     await loadItems()
   }
 

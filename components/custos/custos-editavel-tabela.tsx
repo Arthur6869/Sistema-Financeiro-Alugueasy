@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { Pencil, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight, RefreshCw, SearchX } from 'lucide-react'
+import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/constants'
 
 export interface CustoRow {
@@ -123,6 +124,7 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
       setRows(prev => prev.map(r => r.id === id ? { ...r, categoria: state.categoria.trim(), valor } : r))
       setEditadosCount(c => c + 1)
       setEditingId(null)
+      toast.success('Custo atualizado com sucesso')
     } finally {
       setSavingId(null)
     }
@@ -141,6 +143,7 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
     const res = await fetch(`/api/custos/${id}`, { method: 'DELETE' })
     if (res.ok) {
       setRows(prev => prev.filter(r => r.id !== id))
+      toast.success('Custo excluído com sucesso')
     } else {
       const body = await res.json()
       setErro(body.error ?? 'Erro ao excluir')
@@ -232,8 +235,12 @@ export function CustosEditavelTabela({ custos: initial, role, categoriasSugerida
         <TableBody>
           {paginados.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={canWrite ? 6 : 5} className="text-center text-gray-400 py-12">
-                Nenhum custo encontrado
+              <TableCell colSpan={canWrite ? 6 : 5} className="py-12">
+                <div className="flex flex-col items-center justify-center text-center gap-2">
+                  <SearchX size={36} className="text-gray-300" />
+                  <p className="text-sm font-medium text-gray-500">Nenhum registro encontrado</p>
+                  <p className="text-xs text-gray-400">Ajuste os filtros ou o período selecionado.</p>
+                </div>
               </TableCell>
             </TableRow>
           ) : paginados.map(row => {

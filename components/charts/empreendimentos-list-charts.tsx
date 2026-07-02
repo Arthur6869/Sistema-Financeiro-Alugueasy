@@ -39,7 +39,7 @@ export function EmpreendimentosListCharts({ data, periodo }: { data: EmpChartIte
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
               <XAxis dataKey="nomeAbrev" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={48} />
-              <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+              <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
               <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: '11px', color: '#6b7280' }} />
               <Bar dataKey="faturamento" name="Faturamento" fill="#193660" radius={[4, 4, 0, 0]} maxBarSize={36} />
               <Bar dataKey="custos" name="Custos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={36} />
@@ -60,7 +60,7 @@ export function EmpreendimentosListCharts({ data, periodo }: { data: EmpChartIte
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
               <XAxis dataKey="nomeAbrev" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={48} />
-              <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+              <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
               <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} />
               <Bar dataKey="lucro" name="Lucro Líquido" radius={[4, 4, 0, 0]} maxBarSize={36}>
                 {data.map((entry, i) => (

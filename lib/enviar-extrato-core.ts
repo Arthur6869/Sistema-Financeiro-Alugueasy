@@ -67,9 +67,18 @@ export async function enviarExtratoProprietario(
   const fatData  = (fatRaw ?? []) as unknown as RowValor[]
   const custData = (cusRaw ?? []) as unknown as RowValor[]
 
+  // Somas pré-indexadas por apartamento — evita filter O(N) dentro do map
+  const somaPorApt = (rows: RowValor[]) => {
+    const m = new Map<string, number>()
+    for (const r of rows) m.set(r.apartamento_id, (m.get(r.apartamento_id) ?? 0) + (r.valor ?? 0))
+    return m
+  }
+  const fatPorApt = somaPorApt(fatData)
+  const cusPorApt = somaPorApt(custData)
+
   const aptsDados = apts.map(apt => {
-    const faturamento = fatData.filter(r => r.apartamento_id === apt.id).reduce((s, r) => s + (r.valor ?? 0), 0)
-    const custos      = custData.filter(r => r.apartamento_id === apt.id).reduce((s, r) => s + (r.valor ?? 0), 0)
+    const faturamento = fatPorApt.get(apt.id) ?? 0
+    const custos      = cusPorApt.get(apt.id) ?? 0
     const lucro       = faturamento - custos
     const taxaRepasse = apt.taxa_repasse ?? 0
     const tipoRepasse = apt.tipo_repasse ?? 'lucro'

@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import * as XLSX from 'xlsx'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -291,17 +292,8 @@ export async function POST(request: NextRequest) {
     }, { status: 501 })
   }
 
-  const supabase = await createClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista') {
-    return NextResponse.json({ error: 'Apenas analistas podem sincronizar planilhas' }, { status: 403 })
-  }
+  const { user, supabase, response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const { mes, ano, tipo } = body as { mes: number; ano: number; tipo: string }

@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Pencil, Check, X, Trash2, Loader2, CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { Pencil, Check, X, Trash2, Loader2, CalendarDays, ChevronLeft, ChevronRight, RefreshCw, SearchX } from 'lucide-react'
+import { toast } from 'sonner'
 import { formatCurrency, MESES } from '@/lib/constants'
 
 export interface ReservaRow {
@@ -184,6 +185,7 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
       setEditadosCount(c => c + 1)
       setEditingId(null)
       setEditState(null)
+      toast.success('Reserva atualizada com sucesso')
     } finally {
       setSavingId(null)
     }
@@ -202,6 +204,7 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
     const res = await fetch(`/api/reservas/${id}`, { method: 'DELETE' })
     if (res.ok) {
       setRows(prev => prev.filter(r => r.id !== id))
+      toast.success('Reserva excluída com sucesso')
     } else {
       const body = await res.json()
       setErro(body.error ?? 'Erro ao excluir')
@@ -320,6 +323,17 @@ export function ReservasEditavelTabela({ reservas: initial, role, mes, ano }: Pr
           </TableRow>
         </TableHeader>
         <TableBody>
+          {paginados.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={canWrite ? 8 : 7} className="py-12">
+                <div className="flex flex-col items-center justify-center text-center gap-2">
+                  <SearchX size={36} className="text-gray-300" />
+                  <p className="text-sm font-medium text-gray-500">Nenhum registro encontrado</p>
+                  <p className="text-xs text-gray-400">Ajuste os filtros ou o período selecionado.</p>
+                </div>
+              </TableCell>
+            </TableRow>
+          )}
           {paginados.map((row, idx) => {
             const isEditing = editingId === row.id
             const isSaving = savingId === row.id

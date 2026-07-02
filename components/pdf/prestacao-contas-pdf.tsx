@@ -337,19 +337,20 @@ function arcPath(cx: number, cy: number, r: number, start: number, end: number) 
 
 function DonutChart({ dados, size }: { dados: Array<{ label: string; valor: number }>; size: number }) {
   const total = dados.reduce((s, d) => s + d.valor, 0)
-  let cursor = 0
   const cx = size / 2
   const cy = size / 2
   const r = size / 2 - 4
   if (total <= 0) return <Circle cx={cx} cy={cy} r={r} fill={COLOR.cinzaClaro} />
+  const segmentos = dados.reduce<Array<{ label: string; start: number; end: number }>>((acc, d) => {
+    const start = acc.length > 0 ? acc[acc.length - 1].end : 0
+    acc.push({ label: d.label, start, end: start + (d.valor / total) * 360 })
+    return acc
+  }, [])
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {dados.map((d, i) => {
-        const start = cursor
-        const end = cursor + (d.valor / total) * 360
-        cursor = end
-        return <Path key={d.label} d={arcPath(cx, cy, r, start, end)} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-      })}
+      {segmentos.map((seg, i) => (
+        <Path key={seg.label} d={arcPath(cx, cy, r, seg.start, seg.end)} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+      ))}
       <Circle cx={cx} cy={cy} r={r * 0.58} fill={COLOR.branco} />
     </Svg>
   )

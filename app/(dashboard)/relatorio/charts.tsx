@@ -45,7 +45,7 @@ export function RelatorioLineChart({ data }: { data: MonthData[] }) {
               tickLine={false}
             />
             <Tooltip
-              formatter={(value: any) => formatCurrency(Number(value || 0), 0)}
+              formatter={(value: unknown) => formatCurrency(Number(value || 0), 0)}
               contentStyle={{
                 borderRadius: '8px',
                 border: '1px solid #e5e7eb',

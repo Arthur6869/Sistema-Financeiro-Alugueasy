@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, PieChart, Pie, Legend, ReferenceLine,
 } from 'recharts'
+import type { PieLabelRenderProps } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/constants'
 
@@ -29,8 +30,15 @@ const tooltipStyle = {
 }
 
 const RADIAN = Math.PI / 180
-function renderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
+
+function renderCustomLabel(props: PieLabelRenderProps) {
+  const percent = Number(props.percent ?? 0)
   if (percent < 0.06) return null
+  const cx = Number(props.cx ?? 0)
+  const cy = Number(props.cy ?? 0)
+  const midAngle = Number(props.midAngle ?? 0)
+  const innerRadius = Number(props.innerRadius ?? 0)
+  const outerRadius = Number(props.outerRadius ?? 0)
   const r = innerRadius + (outerRadius - innerRadius) * 0.55
   const x = cx + r * Math.cos(-midAngle * RADIAN)
   const y = cy + r * Math.sin(-midAngle * RADIAN)
@@ -84,7 +92,7 @@ export function EmpreendimentoDetailCharts({
                     dataKey="value" labelLine={false} label={renderCustomLabel}>
                     {fatDonutData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % 2]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+                  <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -103,7 +111,7 @@ export function EmpreendimentoDetailCharts({
                     dataKey="value" labelLine={false} label={renderCustomLabel}>
                     {custosDonutData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % 2]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+                  <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -127,7 +135,7 @@ export function EmpreendimentoDetailCharts({
                   tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="numero" tick={{ fontSize: 11, fill: '#6b7280' }}
                   axisLine={false} tickLine={false} width={36} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+                <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
                 <ReferenceLine x={0} stroke="#e5e7eb" strokeWidth={1.5} />
                 <Bar dataKey="lucro" name="Lucro Líquido" radius={[0, 4, 4, 0]} maxBarSize={22}>
                   {sorted.map((entry, i) => (

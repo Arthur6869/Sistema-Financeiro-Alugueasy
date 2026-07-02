@@ -1,6 +1,38 @@
 import { createClient } from '@/lib/supabase/server'
 import { MESES } from '@/lib/constants'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
+import { AlertasPanel } from '@/components/dashboard/alertas-panel'
+import { verificarAlertas } from '@/lib/alertas'
+
+type DiariaDashRow = {
+  apartamento_id: string | null
+  valor: number | null
+  tipo_gestao: string | null
+  apartamentos: {
+    numero: string
+    empreendimento_id: string
+    tipo_gestao: string | null
+    empreendimentos: { nome: string } | null
+  } | null
+}
+
+type CustoDashRow = {
+  valor: number | null
+  apartamento_id: string | null
+  tipo_gestao: string | null
+  apartamentos: {
+    empreendimento_id: string
+    empreendimentos: { nome: string } | null
+  } | null
+}
+
+type AptDashRow = {
+  id: string
+  numero: string
+  empreendimento_id: string
+  tipo_gestao: string | null
+  empreendimentos: { nome: string } | null
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -74,8 +106,12 @@ export default async function DashboardPage({
   if (diariasError) console.error('[dashboard] diarias:', diariasError.message)
   if (custosError)  console.error('[dashboard] custos:', custosError.message)
 
+  const diariasRows = (diariasData ?? []) as unknown as DiariaDashRow[]
+  const custosRows = (custosData ?? []) as unknown as CustoDashRow[]
+  const apartamentosRows = (apartamentosData ?? []) as unknown as AptDashRow[]
+
   // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz
-  const usandoDiariasXlsx = (diariasData?.length ?? 0) > 0
+  const usandoDiariasXlsx = diariasRows.length > 0
 
   // Busca Amenitiz somente como fallback — evita query desnecessária quando diarias tem dados
   let reservasData: Array<{ valor_liquido: number; individual_room_number: string | number; checkin: string | null; checkout: string | null; status: string | null }> | null = null
@@ -106,7 +142,7 @@ export default async function DashboardPage({
 
   // Totais financeiros
   const faturamentoTotal = usandoDiariasXlsx
-    ? diariasData!.reduce((acc: number, d: any) => acc + (d.valor || 0), 0)
+    ? diariasRows.reduce((acc, d) => acc + (d.valor || 0), 0)
     : (reservasData?.reduce((acc, r) => acc + (r.valor_liquido || 0), 0) ?? 0)
 
   const CUSTOS_OP_FIXO = 43509.92
@@ -131,11 +167,12 @@ export default async function DashboardPage({
       )
     )
     custosReservas = porMes.reduce(
-      (total, { data }) => total + (data?.reduce((s, c: any) => s + (c.valor || 0), 0) ?? 0),
+      (total, { data }) =>
+        total + ((data ?? []) as Array<{ valor: number | null }>).reduce((s, c) => s + (c.valor || 0), 0),
       0
     )
   } else {
-    custosReservas = custosData?.reduce((acc, c) => acc + (c.valor || 0), 0) ?? 0
+    custosReservas = custosRows.reduce((acc, c) => acc + (c.valor || 0), 0)
   }
   const custosTotal = custosReservas + custosOperacionais
   const lucroTotal = faturamentoTotal - custosTotal
@@ -144,12 +181,12 @@ export default async function DashboardPage({
   const custosPct = faturamentoTotal > 0 ? Math.min(100, Math.round((custosTotal / faturamentoTotal) * 100)) : 0
 
   // Map de apartamentos por ID — O(1) em vez de O(n) por .find() nos loops
-  const aptLookupMap = new Map<string, any>()
-  apartamentosData?.forEach((a: any) => aptLookupMap.set(a.id, a))
+  const aptLookupMap = new Map<string, AptDashRow>()
+  apartamentosRows.forEach((a) => aptLookupMap.set(a.id, a))
 
   // Map por número de apartamento — usado somente no fallback Amenitiz
-  const aptByNumberMap = new Map<string, any>()
-  apartamentosData?.forEach((a: any) => {
+  const aptByNumberMap = new Map<string, AptDashRow>()
+  apartamentosRows.forEach((a) => {
     const key = String(a.numero).trim()
     if (!aptByNumberMap.has(key)) aptByNumberMap.set(key, a)
   })
@@ -160,7 +197,7 @@ export default async function DashboardPage({
   }> = {}
 
   if (usandoDiariasXlsx) {
-    diariasData!.forEach((d: any) => {
+    diariasRows.forEach((d) => {
       const id = d.apartamento_id
       if (!id) return
       if (!aptCardMap[id]) {
@@ -175,14 +212,14 @@ export default async function DashboardPage({
     })
   }
 
-  custosData?.forEach((c: any) => {
+  custosRows.forEach((c) => {
     const id = c.apartamento_id
     if (!id) return
     if (!aptCardMap[id]) {
       const apt = aptLookupMap.get(id)
       aptCardMap[id] = {
         numero: apt?.numero || '?',
-        empNome: (apt?.empreendimentos as any)?.nome || '—',
+        empNome: apt?.empreendimentos?.nome || '—',
         tipo: apt?.tipo_gestao || c.tipo_gestao || '',
         fat: 0, custos: 0,
       }
@@ -198,7 +235,7 @@ export default async function DashboardPage({
   const empreendimentoMap: Record<string, { fat: number; custos: number }> = {}
 
   if (usandoDiariasXlsx) {
-    diariasData!.forEach((d: any) => {
+    diariasRows.forEach((d) => {
       const nome = d.apartamentos?.empreendimentos?.nome
       if (nome) {
         if (!empreendimentoMap[nome]) empreendimentoMap[nome] = { fat: 0, custos: 0 }
@@ -207,10 +244,10 @@ export default async function DashboardPage({
     })
   } else {
     // Fallback Amenitiz: identifica empreendimento pelo número do apt via Map (O(1))
-    reservasData?.forEach((r: any) => {
+    reservasData?.forEach((r) => {
       const aptNum = String(r.individual_room_number).trim()
       const apt = aptByNumberMap.get(aptNum)
-      const empNome = apt ? ((apt.empreendimentos as any)?.nome || '') : ''
+      const empNome = apt ? (apt.empreendimentos?.nome || '') : ''
       if (empNome) {
         if (!empreendimentoMap[empNome]) empreendimentoMap[empNome] = { fat: 0, custos: 0 }
         empreendimentoMap[empNome].fat += r.valor_liquido || 0
@@ -218,7 +255,7 @@ export default async function DashboardPage({
     })
   }
 
-  custosData?.forEach((c: any) => {
+  custosRows.forEach((c) => {
     const nome = c.apartamentos?.empreendimentos?.nome
     if (nome) {
       if (!empreendimentoMap[nome]) empreendimentoMap[nome] = { fat: 0, custos: 0 }
@@ -242,7 +279,12 @@ export default async function DashboardPage({
   // Exibe dados se há qualquer faturamento ou custo — não esconde períodos só com custos
   const hasData = faturamentoTotal > 0 || custosReservas > 0
 
+  // Checagens proativas (room_ids, sync com erro, categorias repassáveis, margem)
+  const alertas = await verificarAlertas(supabase, { mes, ano, faturamentoTotal, margemPct })
+
   return (
+    <>
+    <AlertasPanel alertas={alertas} />
     <DashboardContent
       mes={mes}
       ano={ano}
@@ -261,5 +303,6 @@ export default async function DashboardPage({
       empreendimentoCards={empreendimentoCards}
       apartamentoCards={apartamentoCards}
     />
+    </>
   )
 }

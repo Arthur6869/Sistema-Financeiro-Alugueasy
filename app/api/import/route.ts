@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import * as XLSX from 'xlsx'
 import { parsePlanilhaResultado, parsePlanilhaTotais } from '@/lib/xlsx-parser'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authErr } = await supabase.auth.getUser()
-    if (authErr || !user) {
-      return NextResponse.json({ error: 'Usuário não autenticado. Faça login novamente.' }, { status: 401 })
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (profile?.role !== 'analista') {
-      return NextResponse.json({ error: 'Apenas analistas podem importar planilhas' }, { status: 403 })
-    }
+    const { user, supabase, response } = await requireAnalista()
+    if (response) return response
 
     const formData = await request.formData()
     const file = formData.get('file') as File

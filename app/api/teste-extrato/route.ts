@@ -1,19 +1,16 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import { enviarExtratoProprietario } from '@/lib/enviar-extrato-core'
 import { NextRequest, NextResponse } from 'next/server'
 
-const TEST_EMAIL = 'arthuralugueasy@gmail.com'
-
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const { user, response } = await requireAnalista()
+  if (response) return response
 
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista') {
-    return NextResponse.json({ error: 'Apenas analistas podem executar o teste' }, { status: 403 })
+  // O email de teste vai para o próprio analista logado — nunca para proprietários.
+  const testEmail = user.email
+  if (!testEmail) {
+    return NextResponse.json({ error: 'Usuário logado não possui email para receber o teste' }, { status: 400 })
   }
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>
@@ -31,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   const resultados = []
   for (const prop of proprietarios as Array<{ id: string; full_name: string }>) {
-    const result = await enviarExtratoProprietario(prop.id, mes, ano, TEST_EMAIL, 'onboarding@resend.dev')
+    const result = await enviarExtratoProprietario(prop.id, mes, ano, testEmail, 'onboarding@resend.dev')
     resultados.push({ proprietario: prop.full_name, ...result })
     if (result.success) break // envia só o primeiro que funcionar
   }
@@ -40,7 +37,7 @@ export async function POST(request: NextRequest) {
   if (sucesso) {
     return NextResponse.json({
       ok: true,
-      email_enviado_para: TEST_EMAIL,
+      email_enviado_para: testEmail,
       proprietario_usado: sucesso.proprietario,
       apartamentos: sucesso.apartamentos,
       periodo: `${String(mes).padStart(2, '0')}/${ano}`,

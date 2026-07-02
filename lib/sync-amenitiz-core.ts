@@ -150,6 +150,16 @@ export async function runAmenitizSync(
   let totalReservas = 0, totalBruto = 0, totalLiquido = 0
   const naoEncontrados: string[] = []
 
+  // Payloads acumulados para upsert em lote (evita N round trips ao Supabase).
+  // Dois mapas separados: PostgREST exige que todos os objetos do batch tenham
+  // as mesmas chaves, e apartamento_id é omitido quando o lookup falha (para
+  // preservar o valor existente no banco). Map por booking_id deduplica dentro
+  // do lote — o Postgres rejeita batch que afeta a mesma linha duas vezes.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payloadsComApt = new Map<string, any>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payloadsSemApt = new Map<string, any>()
+
   for (const r of reservas) {
     if (['cancelled', 'canceled', 'no_show'].includes(r.status)) continue
     const room = r.rooms?.[0]
@@ -187,16 +197,21 @@ export async function runAmenitizSync(
     // Ao omitir o campo no ON CONFLICT UPDATE, preservamos o valor existente no banco
     // em vez de sobrescrever com null quando o lookup falha temporariamente.
     const aptId = aptInfo?.id
-    await supabase.from('amenitiz_reservas').upsert({
+    const payload = {
       booking_id: r.booking_id, hotel_uuid: process.env.AMENITIZ_HOTEL_UUID!,
       status: r.status, source: r.source, plataforma_normalizada: plataformaNormalizada,
       checkin: r.checkin, checkout: r.checkout,
       individual_room_number: aptNumRoom, individual_room_name: roomName,
-      ...(aptId ? { apartamento_id: aptId } : {}),
       valor_bruto: valorBruto, taxa_aplicada: taxaAplicada, valor_liquido: valorLiquido,
       nome_hospede: nomeHospede, email_hospede: r.booker.email, phone_hospede: r.booker.phone,
       mes_competencia: mes, ano_competencia: ano, raw_data: r,
-    }, { onConflict: 'booking_id' })
+    }
+    if (aptId) {
+      payloadsSemApt.delete(r.booking_id)
+      payloadsComApt.set(r.booking_id, { ...payload, apartamento_id: aptId })
+    } else if (!payloadsComApt.has(r.booking_id)) {
+      payloadsSemApt.set(r.booking_id, payload)
+    }
 
     if (!aptInfo) {
       const aviso = `${empNomeDoRoom} ${aptNumRoom}`
@@ -214,6 +229,23 @@ export async function runAmenitizSync(
     totalReservas++
     totalBruto   += valorBruto
     totalLiquido += valorLiquido
+  }
+
+  // Upsert em lotes de 500 — antes era 1 round trip por reserva (N+1).
+  const LOTE = 500
+  for (const rows of [Array.from(payloadsComApt.values()), Array.from(payloadsSemApt.values())]) {
+    for (let i = 0; i < rows.length; i += LOTE) {
+      const { error: upsertError } = await supabase
+        .from('amenitiz_reservas')
+        .upsert(rows.slice(i, i + LOTE), { onConflict: 'booking_id' })
+      if (upsertError) {
+        const msg = `Erro ao gravar reservas (lote ${i / LOTE + 1}): ${upsertError.message}`
+        if (!reservasOnly && syncLog?.id) {
+          await supabase.from('amenitiz_syncs').update({ status: 'erro', erro_mensagem: msg, updated_at: new Date().toISOString() }).eq('id', syncLog.id)
+        }
+        return { success: false, mes, ano, total_reservas: 0, faturamento_bruto: 0, faturamento_liquido: 0, apartamentos_sincronizados: 0, apts_nao_encontrados: naoEncontrados, error: msg }
+      }
+    }
   }
 
   // Bloco destrutivo — DELETE + re-INSERT de diárias e logs.

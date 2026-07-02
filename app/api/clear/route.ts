@@ -1,35 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { isInternalApiRequest } from '@/lib/internal-api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAnalista } from '@/lib/api-auth'
+import { registrarAuditoria } from '@/lib/audit'
+import { fetchAllRows } from '@/lib/supabase-fetch-all'
 
 export async function DELETE(request: NextRequest) {
+  const auditBase = {
+    usuarioId: null as string | null,
+    origem: 'web' as 'web' | 'interna',
+    mes: 0,
+    ano: 0,
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const mes = parseInt(searchParams.get('mes') || '')
     const ano = parseInt(searchParams.get('ano') || '')
 
-    if (!mes || !ano) {
+    if (!mes || !ano || mes < 1 || mes > 12 || ano < 2000 || ano > 2100) {
       return NextResponse.json(
-        { error: 'Parâmetros mes e ano são obrigatórios' },
+        { error: 'Parâmetros mes (1-12) e ano válidos são obrigatórios' },
         { status: 400 }
       )
     }
+    auditBase.mes = mes
+    auditBase.ano = ano
 
     const internalRequest = isInternalApiRequest(request)
-    const supabase = internalRequest ? createAdminClient() : await createClient()
+    let supabase
 
-    if (!internalRequest) {
-      const { data: { user }, error: authErr } = await supabase.auth.getUser()
-      if (authErr || !user) {
-        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles').select('role').eq('id', user.id).single()
-      if (profile?.role !== 'analista') {
-        return NextResponse.json({ error: 'Apenas analistas podem limpar dados' }, { status: 403 })
-      }
+    if (internalRequest) {
+      auditBase.origem = 'interna'
+      supabase = createAdminClient()
+    } else {
+      const auth = await requireAnalista()
+      if (auth.response) return auth.response
+      auditBase.usuarioId = auth.user.id
+      supabase = auth.supabase
     }
 
     const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
@@ -37,95 +45,141 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`[LIMPEZA] Iniciando limpeza de ${mes}/${ano}...`)
 
-    // Apagar diárias do período
-    const { count: diariasCount, error: errDiarias } = await supabase
+    // ── 1. Snapshot completo (paginado — o cap db-max-rows de 1000 linhas
+    //       truncaria um select simples, enquanto o DELETE removeria tudo).
+    //       raw_data das reservas é omitido (volume). Qualquer erro de leitura
+    //       ABORTA antes de apagar: sem snapshot íntegro não há recuperação.
+    const sb = supabase
+    const [snapDiarias, snapCustos, snapImportacoes, snapReservas, snapSyncs] = await Promise.all([
+      fetchAllRows((f, t) => sb.from('diarias').select('*').gte('data', dataInicio).lte('data', dataFim).range(f, t)),
+      fetchAllRows((f, t) => sb.from('custos').select('*').eq('mes', mes).eq('ano', ano).range(f, t)),
+      fetchAllRows((f, t) => sb.from('importacoes').select('*').eq('mes', mes).eq('ano', ano).range(f, t)),
+      fetchAllRows((f, t) => sb.from('amenitiz_reservas')
+        .select('booking_id, status, source, checkin, checkout, individual_room_number, apartamento_id, valor_bruto, valor_liquido, nome_hospede, mes_competencia, ano_competencia')
+        .eq('mes_competencia', mes).eq('ano_competencia', ano).range(f, t)),
+      fetchAllRows((f, t) => sb.from('amenitiz_syncs').select('*').eq('mes', mes).eq('ano', ano).range(f, t)),
+    ])
+
+    const snapErro = [snapDiarias, snapCustos, snapImportacoes, snapReservas, snapSyncs]
+      .map(s => s.error).find(Boolean)
+    if (snapErro) {
+      return NextResponse.json(
+        { error: `Falha ao ler os dados para auditoria — nada foi apagado: ${snapErro}` },
+        { status: 500 }
+      )
+    }
+
+    // ── 2. Persistir o snapshot ANTES dos deletes. Se a auditoria não gravar,
+    //       aborta: a garantia de recuperação é pré-condição da limpeza.
+    const snapshotGravado = await registrarAuditoria({
+      usuarioId: auditBase.usuarioId,
+      origem: auditBase.origem,
+      acao: 'clear_periodo_snapshot',
+      detalhes: {
+        mes, ano,
+        snapshot: {
+          diarias: snapDiarias.rows,
+          custos: snapCustos.rows,
+          importacoes: snapImportacoes.rows,
+          amenitiz_reservas: snapReservas.rows,
+          amenitiz_syncs: snapSyncs.rows,
+        },
+      },
+    })
+    if (!snapshotGravado) {
+      return NextResponse.json(
+        { error: 'Falha ao gravar o snapshot de auditoria — nada foi apagado' },
+        { status: 500 }
+      )
+    }
+
+    // ── 3. Deletes com contagem real. diarias/custos abortam em erro (com
+    //       auditoria do resultado parcial); os demais registram a falha e seguem.
+    const removed = { diarias: 0, custos: 0, importacoes: 0, amenitiz_reservas: 0, amenitiz_syncs: 0 }
+    const falhas: string[] = []
+
+    const auditarResultado = async () => {
+      const total = Object.values(removed).reduce((s, n) => s + n, 0)
+      await registrarAuditoria({
+        usuarioId: auditBase.usuarioId,
+        origem: auditBase.origem,
+        acao: 'clear_periodo_resultado',
+        registrosAfetados: total,
+        detalhes: { mes, ano, removed, falhas },
+      })
+      return total
+    }
+
+    const { count: delDiarias, error: errDiarias } = await supabase
       .from('diarias')
-      .delete()
+      .delete({ count: 'exact' })
       .gte('data', dataInicio)
       .lte('data', dataFim)
-
     if (errDiarias) {
-      console.error('Erro ao limpar diárias:', errDiarias)
-      return NextResponse.json(
-        { error: `Erro ao limpar diárias: ${errDiarias.message}` },
-        { status: 500 }
-      )
+      falhas.push(`diarias: ${errDiarias.message}`)
+      await auditarResultado()
+      return NextResponse.json({ error: `Erro ao limpar diárias: ${errDiarias.message}` }, { status: 500 })
     }
+    removed.diarias = delDiarias ?? 0
 
-    console.log(`[LIMPEZA] Apagadas ${diariasCount} registros de diárias`)
-
-    // Apagar custos do período
-    const { count: custosCount, error: errCustos } = await supabase
+    const { count: delCustos, error: errCustos } = await supabase
       .from('custos')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('mes', mes)
       .eq('ano', ano)
-
     if (errCustos) {
-      console.error('Erro ao limpar custos:', errCustos)
-      return NextResponse.json(
-        { error: `Erro ao limpar custos: ${errCustos.message}` },
-        { status: 500 }
-      )
+      falhas.push(`custos: ${errCustos.message}`)
+      await auditarResultado()
+      return NextResponse.json({ error: `Erro ao limpar custos: ${errCustos.message}` }, { status: 500 })
     }
+    removed.custos = delCustos ?? 0
 
-    console.log(`[LIMPEZA] Apagados ${custosCount} registros de custos`)
-
-    // Apagar importações do período
-    const { count: importCount, error: errImportacoes } = await supabase
+    const { count: delImportacoes, error: errImportacoes } = await supabase
       .from('importacoes')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('mes', mes)
       .eq('ano', ano)
+    if (errImportacoes) falhas.push(`importacoes: ${errImportacoes.message}`)
+    else removed.importacoes = delImportacoes ?? 0
 
-    if (errImportacoes) {
-      console.warn('Aviso ao limpar importações:', errImportacoes.message)
-    } else {
-      console.log(`[LIMPEZA] Apagados ${importCount} registros de importações`)
-    }
-
-    // Apagar reservas Amenitiz do período
-    const { count: reservasCount, error: errReservas } = await supabase
+    const { count: delReservas, error: errReservas } = await supabase
       .from('amenitiz_reservas')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('mes_competencia', mes)
       .eq('ano_competencia', ano)
+    if (errReservas) falhas.push(`amenitiz_reservas: ${errReservas.message}`)
+    else removed.amenitiz_reservas = delReservas ?? 0
 
-    if (errReservas) {
-      console.warn('Aviso ao limpar reservas Amenitiz:', errReservas.message)
-    } else {
-      console.log(`[LIMPEZA] Apagados ${reservasCount} registros de amenitiz_reservas`)
-    }
-
-    // Apagar log de sincronização Amenitiz do período
-    const { count: syncsCount, error: errSyncs } = await supabase
+    const { count: delSyncs, error: errSyncs } = await supabase
       .from('amenitiz_syncs')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('mes', mes)
       .eq('ano', ano)
+    if (errSyncs) falhas.push(`amenitiz_syncs: ${errSyncs.message}`)
+    else removed.amenitiz_syncs = delSyncs ?? 0
 
-    if (errSyncs) {
-      console.warn('Aviso ao limpar syncs Amenitiz:', errSyncs.message)
-    } else {
-      console.log(`[LIMPEZA] Apagados ${syncsCount} registros de amenitiz_syncs`)
-    }
+    const totalRemovido = await auditarResultado()
 
-    console.log(`[LIMPEZA] ✓ Limpeza concluída com sucesso`)
+    console.log(`[LIMPEZA] ✓ Limpeza concluída — ${totalRemovido} registro(s) removido(s)${falhas.length ? ` | falhas: ${falhas.join('; ')}` : ''}`)
 
     return NextResponse.json({
-      success: true,
-      message: `Dados de ${mes}/${ano} removidos com sucesso.`,
-      removed: {
-        diarias: diariasCount || 0,
-        custos: custosCount || 0,
-        importacoes: importCount || 0,
-        amenitiz_reservas: reservasCount || 0,
-        amenitiz_syncs: syncsCount || 0,
-      }
+      success: falhas.length === 0,
+      message: falhas.length === 0
+        ? `Dados de ${mes}/${ano} removidos com sucesso.`
+        : `Dados de ${mes}/${ano} parcialmente removidos — falhas: ${falhas.join('; ')}`,
+      removed,
+      ...(falhas.length > 0 ? { falhas } : {}),
     })
 
-  } catch (error: any) {
-    console.error('Erro na limpeza:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('Erro na limpeza:', msg)
+    await registrarAuditoria({
+      usuarioId: auditBase.usuarioId,
+      origem: auditBase.origem,
+      acao: 'clear_periodo_erro',
+      detalhes: { mes: auditBase.mes, ano: auditBase.ano, erro: msg },
+    })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

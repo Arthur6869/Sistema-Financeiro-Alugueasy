@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Settings, X, Loader2, Home, Building2, Eye, EyeOff } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -160,6 +161,7 @@ export function GerenciarProprietarioModal({
       setEmailOriginal(credenciais.email.trim())
       setCredenciais(prev => ({ ...prev, password: '' }))
       setSucesso(true)
+      toast.success('Acessos e credenciais atualizados com sucesso')
       setTimeout(fechar, 1200)
     } catch {
       setErro('Erro de conexão. Tente novamente.')

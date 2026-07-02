@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Mail, Loader2, ChevronDown } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { MESES } from '@/lib/constants'
 
@@ -32,12 +33,15 @@ export function EnviarExtratoButton({ proprietarioId, proprietarioNome }: Props)
       const data = await res.json()
       if (res.ok) {
         setResultado({ ok: true, msg: `Email enviado para ${data.email_enviado_para}` })
+        toast.success(`Extrato enviado para ${data.email_enviado_para}`)
         setTimeout(() => { setAberto(false); setResultado(null) }, 3000)
       } else {
         setResultado({ ok: false, msg: data.error ?? 'Erro desconhecido' })
+        toast.error(data.error ?? 'Erro ao enviar extrato')
       }
     } catch {
       setResultado({ ok: false, msg: 'Erro de conexão' })
+      toast.error('Erro de conexão ao enviar extrato')
     } finally {
       setLoading(false)
     }

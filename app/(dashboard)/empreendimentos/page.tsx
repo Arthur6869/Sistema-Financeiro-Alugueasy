@@ -19,6 +19,41 @@ import { MESES } from '@/lib/constants'
 
 const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 
+type ReservaAmenitizRow = {
+  valor_liquido: number | null
+  individual_room_number: string | number | null
+  status: string | null
+  checkin: string | null
+  checkout: string | null
+}
+
+type AptReservaRow = {
+  valor_liquido: number | null
+  status: string | null
+  checkin: string | null
+  checkout: string | null
+}
+
+type AptInfoRow = {
+  id: string
+  numero: string
+  empreendimento_id: string
+  tipo_gestao: string | null
+}
+
+type DiariaEmpRow = {
+  valor: number | null
+  tipo_gestao: string | null
+  apartamento_id: string | null
+  apartamentos: { empreendimento_id: string } | null
+}
+
+type CustoEmpRow = {
+  valor: number | null
+  tipo_gestao: string | null
+  apartamentos: { empreendimento_id: string } | null
+}
+
 type FinData = {
   fat: number; custos: number
   fatAdm: number; fatSub: number
@@ -222,8 +257,9 @@ export default async function EmpreendimentosPage({
   // Proration: proporciona valor_liquido de reservas que cruzam o limite do mês.
   const empFDayMs  = mes > 0 ? new Date(dataInicio + 'T00:00:00').getTime() : 0
   const empNMonthMs = mes > 0 ? new Date(ano, mes, 1).getTime() : 0
+  const reservasRows = (reservasDataRaw ?? []) as unknown as ReservaAmenitizRow[]
   const reservasData = mes > 0
-    ? (reservasDataRaw ?? []).flatMap((r: any) => {
+    ? reservasRows.flatMap((r) => {
         if (!r.checkin || !r.checkout || r.valor_liquido == null) return [r]
         const ci = new Date(r.checkin + 'T00:00:00').getTime()
         const co = new Date(r.checkout + 'T00:00:00').getTime()
@@ -232,13 +268,13 @@ export default async function EmpreendimentosPage({
         if (mn <= 0) return []
         return [{ ...r, valor_liquido: tot > 0 && mn < tot ? (mn / tot) * r.valor_liquido : r.valor_liquido }]
       })
-    : (reservasDataRaw ?? [])
+    : reservasRows
 
   // Mapa: apartamento_id → empreendimento_id + tipo_gestao
   const aptInfoMap: Record<string, { empId: string; tipoGestao: string }> = {}
   // Mapa: numero_upper → apartamento_id (para cruzar com individual_room_number do Amenitiz)
   const aptNumeroToId: Record<string, string> = {}
-  ;(apartamentosData ?? []).forEach((a: any) => {
+  ;((apartamentosData ?? []) as unknown as AptInfoRow[]).forEach((a) => {
     aptInfoMap[a.id] = { empId: a.empreendimento_id, tipoGestao: a.tipo_gestao ?? 'adm' }
     aptNumeroToId[String(a.numero).trim().toUpperCase()] = a.id
   })
@@ -248,7 +284,7 @@ export default async function EmpreendimentosPage({
   // Rastrear quais apartamento_ids já têm dados de diárias (para não duplicar com Amenitiz)
   const aptsComDiarias = new Set<string>()
 
-  diariasData?.forEach((d: any) => {
+  ;((diariasData ?? []) as unknown as DiariaEmpRow[]).forEach((d) => {
     const id = d.apartamentos?.empreendimento_id
     if (!id) return
     if (!finMap[id]) finMap[id] = emptyFin()
@@ -261,7 +297,7 @@ export default async function EmpreendimentosPage({
   })
 
   // Fallback Amenitiz: adicionar apartamentos sem diárias via amenitiz_reservas
-  ;(reservasData ?? []).forEach((r: any) => {
+  reservasData.forEach((r) => {
     // Ignorar canceladas/no-shows
     if (['cancelled', 'canceled', 'no_show'].includes(r.status ?? '')) return
     const aptId = aptNumeroToId[String(r.individual_room_number ?? '').trim().toUpperCase()]
@@ -279,7 +315,7 @@ export default async function EmpreendimentosPage({
     finMap[empId].gestao.add(info.tipoGestao)
   })
 
-  custosData?.forEach((c: any) => {
+  ;((custosData ?? []) as unknown as CustoEmpRow[]).forEach((c) => {
     const id = c.apartamentos?.empreendimento_id
     if (!id) return
     if (!finMap[id]) finMap[id] = emptyFin()
@@ -303,8 +339,9 @@ export default async function EmpreendimentosPage({
       supabase.from('amenitiz_reservas').select('valor_liquido, status, checkin, checkout').lte('checkin', dataFim).gte('checkout', dataInicio).eq('individual_room_number', apt?.numero ?? 0),
     ])
 
+    const aptReservasRows = (aptReservasRaw ?? []) as unknown as AptReservaRow[]
     const aptReservas = mes > 0
-      ? (aptReservasRaw ?? []).flatMap((r: any) => {
+      ? aptReservasRows.flatMap((r) => {
           if (!r.checkin || !r.checkout || r.valor_liquido == null) return [r]
           const ci = new Date(r.checkin + 'T00:00:00').getTime()
           const co = new Date(r.checkout + 'T00:00:00').getTime()
@@ -313,7 +350,7 @@ export default async function EmpreendimentosPage({
           if (mn <= 0) return []
           return [{ ...r, valor_liquido: tot > 0 && mn < tot ? (mn / tot) * r.valor_liquido : r.valor_liquido }]
         })
-      : (aptReservasRaw ?? [])
+      : aptReservasRows
 
     const af = emptyFin()
     const aptTemDiarias = (aptDiarias?.length ?? 0) > 0
@@ -327,8 +364,8 @@ export default async function EmpreendimentosPage({
 
     // Fallback: usar amenitiz_reservas se não há diárias importadas
     if (!aptTemDiarias) {
-      const tipoGestaoApt = (apt as any)?.tipo_gestao ?? 'adm'
-      ;(aptReservas ?? []).forEach((r: any) => {
+      const tipoGestaoApt = (apt as { tipo_gestao?: string | null } | null)?.tipo_gestao ?? 'adm'
+      aptReservas.forEach((r) => {
         if (['cancelled', 'canceled', 'no_show'].includes(r.status ?? '')) return
         const v = r.valor_liquido || 0
         af.fat += v

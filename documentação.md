@@ -687,6 +687,40 @@ Sincroniza contexto técnico do projeto para uma nota no Obsidian local (API em 
 
 ---
 
+### Atualizações de 01/07/2026 (rodada de melhorias)
+
+**Autenticação centralizada** — `lib/api-auth.ts` exporta `requireAnalista()`, que
+encapsula o padrão `getUser() → select role → 403`. Usado por todas as rotas que
+exigem analista (15+ rotas). Rotas com fallback interno (`x-alugueasy-internal-key`)
+preservam o fallback e usam o helper apenas no ramo de sessão.
+
+**Rotas removidas:**
+- `POST /api/run-migration` e página `/executar-migration` — obsoletas (migration 003 já aplicada); removidas por risco de execução de SQL arbitrário.
+- `POST /api/amenitiz-webhook` — endpoint desabilitado (Bloco 2 não concluído); recuperável no histórico git quando o Bloco 2 for retomado.
+
+**`POST /api/teste-extrato`** — email de teste agora vai para o **email do analista logado** (antes: hardcoded).
+
+**`DELETE /api/clear`** — fluxo auditado (migration 028): lê snapshot **paginado** (contorna o cap db-max-rows de 1000 linhas via `lib/supabase-fetch-all.ts`), **aborta se a leitura ou a gravação do snapshot falhar** (nada é apagado sem recuperação garantida), grava `clear_periodo_snapshot` em `audit_log` ANTES dos deletes, executa os deletes com `count: 'exact'` e registra `clear_periodo_resultado` com contagens reais + falhas (ou `clear_periodo_erro` em exceção). Também apaga `amenitiz_reservas` e `amenitiz_syncs` do período.
+
+**`GET /api/exportar-xlsx?tabela=custos|reservas&mes&ano`** — novo export plano (uma linha por registro) para contabilidade, paginado via `fetchAllRows` (sem truncamento do db-max-rows). Acesso: admin ou analista.
+
+**Performance:**
+- `lib/sync-amenitiz-core.ts` — upsert de reservas em **lotes de 500** (antes: 1 round trip por reserva). Erros de upsert agora são detectados e marcam o sync como `erro` (antes: silenciosos).
+- `app/api/agente-fechamento` — envio de extratos em lotes paralelos de 2 (`Promise.allSettled`; limite de 2 req/s do Resend).
+- `lib/enviar-extrato-core.ts` — agregação por apartamento via `Map` (antes: filter O(N×M)).
+- `lib/supabase-fetch-all.ts` — helper `fetchAllRows()` para leituras completas paginadas (o `.limit(N)` do PostgREST é capado pelo db-max-rows).
+
+**UI:**
+- Toasts globais via `sonner` (`<Toaster />` em `app/layout.tsx`) em todo CRUD.
+- `loading.tsx` com skeletons em 8 rotas; estados vazios nas tabelas editáveis.
+- Painel **Reconciliação de Dados** na página Importar (`components/importar/sync-status-panel.tsx`): último sync, reservas sem `apartamento_id`, apts sem `room_id`.
+- Painel de **alertas proativos** no topo do dashboard (`lib/alertas.ts` + `components/dashboard/alertas-panel.tsx`): room_ids faltando, sync com erro, `categorias_repassaveis` vazia, margem < 10%.
+- Botões "Exportar XLSX" nas páginas Custos e Reservas.
+
+**Migrations novas:** 027 (índices `amenitiz_syncs(mes,ano,status)` e `amenitiz_reservas(apartamento_id)` + template de seed de `categorias_repassaveis` — seed é decisão de negócio, pendente) e 028 (`audit_log`).
+
+---
+
 ## 9. Pipeline de Importação de Planilhas
 
 ### Formato das planilhas de Custos

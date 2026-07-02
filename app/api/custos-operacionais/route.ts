@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/custos-operacionais?mes=5&ano=2026
@@ -27,14 +28,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/custos-operacionais  { mes, ano, diarias }
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista')
-    return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const mes = parseInt(body.mes)

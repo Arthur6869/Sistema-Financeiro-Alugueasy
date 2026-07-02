@@ -88,7 +88,7 @@ export default async function RelatorioPage({
   const categorias = Array.from(categoriasSet).sort()
 
   const pivotData = categorias.map((cat) => {
-    const row: Record<string, any> = { categoria: cat }
+    const row: Record<string, string | number | null> = { categoria: cat }
     let totalRow = 0
     periodos.forEach(({ mes, ano, label }) => {
       const val = custosAll
@@ -104,7 +104,7 @@ export default async function RelatorioPage({
   // Totais por coluna (mês)
   const totaisColuna: Record<string, number> = {}
   periodos.forEach(({ label }) => {
-    totaisColuna[label] = pivotData.reduce((acc, row) => acc + (row[label] || 0), 0)
+    totaisColuna[label] = pivotData.reduce((acc, row) => acc + ((row[label] as number | null) || 0), 0)
   })
   const grandTotal = Object.values(totaisColuna).reduce((a, b) => a + b, 0)
 

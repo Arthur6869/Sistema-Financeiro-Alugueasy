@@ -34,8 +34,8 @@ export function LimparDadosButton({ mes, ano }: LimparDadosButtonProps) {
       } else {
         alert(`✗ Erro: ${data.error}`)
       }
-    } catch (error: any) {
-      alert(`✗ Erro de rede: ${error.message}`)
+    } catch (error) {
+      alert(`✗ Erro de rede: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setLoading(false)
     }

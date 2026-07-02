@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 interface GerarPdfButtonProps {
@@ -26,7 +27,7 @@ export function GerarPdfButton({ apartamentoId, mes, ano, label }: GerarPdfButto
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
         const message = payload?.error || 'Não foi possível gerar o PDF.'
-        alert(message)
+        toast.error(message)
         return
       }
 
@@ -44,7 +45,7 @@ export function GerarPdfButton({ apartamentoId, mes, ano, label }: GerarPdfButto
       a.remove()
       URL.revokeObjectURL(href)
     } catch (error) {
-      alert('Erro ao gerar PDF. Tente novamente.')
+      toast.error('Erro ao gerar PDF. Tente novamente.')
     } finally {
       setLoading(false)
     }

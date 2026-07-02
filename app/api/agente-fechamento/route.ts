@@ -4,6 +4,10 @@ import { Resend } from 'resend'
 import { runAmenitizSync } from '@/lib/sync-amenitiz-core'
 import { enviarExtratoProprietario } from '@/lib/enviar-extrato-core'
 
+type CustoEmpNomeRow = {
+  apartamentos: { empreendimentos: { nome: string } | null } | null
+}
+
 async function autenticar(request: NextRequest): Promise<boolean> {
   const internalKey = request.headers.get('x-alugueasy-internal-key')
   if (internalKey && internalKey === process.env.ALUGUEASY_INTERNAL_API_KEY) {
@@ -73,7 +77,9 @@ export async function POST(request: NextRequest) {
     .eq('mes', mesFinal).eq('ano', anoFinal).eq('tipo_gestao', 'adm')
 
   const empsAdm = new Set(
-    (custosAdm ?? []).map((r: any) => r.apartamentos?.empreendimentos?.nome).filter(Boolean)
+    ((custosAdm ?? []) as unknown as CustoEmpNomeRow[])
+      .map((r) => r.apartamentos?.empreendimentos?.nome)
+      .filter(Boolean)
   )
   etapas.custos_adm = { empreendimentos_com_dados: empsAdm.size, lista: [...empsAdm] }
   if (empsAdm.size < 5)
@@ -86,7 +92,9 @@ export async function POST(request: NextRequest) {
     .eq('mes', mesFinal).eq('ano', anoFinal).eq('tipo_gestao', 'sub')
 
   const empsSub = new Set(
-    (custosSub ?? []).map((r: any) => r.apartamentos?.empreendimentos?.nome).filter(Boolean)
+    ((custosSub ?? []) as unknown as CustoEmpNomeRow[])
+      .map((r) => r.apartamentos?.empreendimentos?.nome)
+      .filter(Boolean)
   )
   etapas.custos_sub = { empreendimentos_com_dados: empsSub.size, lista: [...empsSub] }
   if (empsSub.size < 5)
@@ -99,8 +107,8 @@ export async function POST(request: NextRequest) {
     supabase.from('custos').select('valor').eq('mes', mesFinal).eq('ano', anoFinal),
   ])
 
-  const faturamento = (fatData ?? []).reduce((a: number, r: any) => a + (r.valor_liquido ?? 0), 0)
-  const custos = (custData ?? []).reduce((a: number, r: any) => a + (r.valor ?? 0), 0)
+  const faturamento = ((fatData ?? []) as Array<{ valor_liquido: number | null }>).reduce((a, r) => a + (r.valor_liquido ?? 0), 0)
+  const custos = ((custData ?? []) as Array<{ valor: number | null }>).reduce((a, r) => a + (r.valor ?? 0), 0)
   const lucro = faturamento - custos
   const margem = faturamento > 0 ? (lucro / faturamento * 100) : 0
 
@@ -120,7 +128,7 @@ export async function POST(request: NextRequest) {
     .from('custos').select('id, categoria, valor')
     .eq('mes', mesFinal).eq('ano', anoFinal).eq('origem', 'manual')
 
-  const valorManuais = (manuais ?? []).reduce((a: number, r: any) => a + (r.valor ?? 0), 0)
+  const valorManuais = ((manuais ?? []) as Array<{ valor: number | null }>).reduce((a, r) => a + (r.valor ?? 0), 0)
   etapas.custos_manuais = { total: manuais?.length ?? 0, valor_total: Math.round(valorManuais * 100) / 100 }
   if ((manuais?.length ?? 0) > 0)
     alertas.push(`ℹ️ ${manuais!.length} lançamento(s) manual(is) — revisar antes de fechar`)
@@ -132,14 +140,21 @@ export async function POST(request: NextRequest) {
   const emailsEnviados: string[] = []
   const emailsErro: string[] = []
 
-  for (const prop of (proprietarios ?? []) as Array<{ id: string; full_name: string }>) {
-    try {
-      const emailResult = await enviarExtratoProprietario(prop.id, mesFinal, anoFinal)
-      if (emailResult.success) emailsEnviados.push(prop.full_name)
-      else emailsErro.push(prop.full_name)
-    } catch {
-      emailsErro.push(prop.full_name)
-    }
+  // Lotes de 2 em paralelo: reduz o wall-clock (~6 queries por proprietário)
+  // sem exceder o rate limit padrão do Resend de 2 req/s — com lote de 3, os
+  // três sends tendem a cair na mesma janela de 1s e o excedente vira 429.
+  const listaProprietarios = (proprietarios ?? []) as Array<{ id: string; full_name: string }>
+  const LOTE_EMAILS = 2
+  for (let i = 0; i < listaProprietarios.length; i += LOTE_EMAILS) {
+    const lote = listaProprietarios.slice(i, i + LOTE_EMAILS)
+    const resultados = await Promise.allSettled(
+      lote.map(prop => enviarExtratoProprietario(prop.id, mesFinal, anoFinal))
+    )
+    resultados.forEach((r, idx) => {
+      const nome = lote[idx].full_name
+      if (r.status === 'fulfilled' && r.value.success) emailsEnviados.push(nome)
+      else emailsErro.push(nome)
+    })
   }
 
   etapas.emails = {
@@ -237,16 +252,16 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ])
 
-  const faturamento = (fat ?? []).reduce((a: number, r: any) => a + (r.valor_liquido ?? 0), 0)
-  const custos = (cust ?? []).reduce((a: number, r: any) => a + (r.valor ?? 0), 0)
+  const faturamento = ((fat ?? []) as Array<{ valor_liquido: number | null }>).reduce((a, r) => a + (r.valor_liquido ?? 0), 0)
+  const custos = ((cust ?? []) as Array<{ valor: number | null }>).reduce((a, r) => a + (r.valor ?? 0), 0)
 
   return NextResponse.json({
     periodo: `${String(mes).padStart(2, '0')}/${ano}`,
     faturamento: Math.round(faturamento * 100) / 100,
     custos: Math.round(custos * 100) / 100,
     lucro: Math.round((faturamento - custos) * 100) / 100,
-    sync_status: (sync as any)?.status ?? 'nunca sincronizado',
-    sync_updated_at: (sync as any)?.updated_at ?? null,
+    sync_status: (sync as { status?: string | null; updated_at?: string | null } | null)?.status ?? 'nunca sincronizado',
+    sync_updated_at: (sync as { status?: string | null; updated_at?: string | null } | null)?.updated_at ?? null,
     pronto_para_fechar: faturamento > 0 && custos > 0,
   })
 }

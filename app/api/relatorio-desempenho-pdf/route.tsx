@@ -11,6 +11,14 @@ function r2(n: number) { return Math.round(n * 100) / 100 }
 
 export async function GET(request: NextRequest) {
   try {
+    return await gerarRelatorioPdf(request)
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Erro ao gerar o PDF'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
+async function gerarRelatorioPdf(request: NextRequest): Promise<Response> {
     const { searchParams } = new URL(request.url)
     const mes = parseInt(searchParams.get('mes') || '')
     const ano = parseInt(searchParams.get('ano') || '')
@@ -66,9 +74,6 @@ export async function GET(request: NextRequest) {
       aptsPorEmp[apt.empreendimento_id].push(apt)
     }
 
-    let grandFaturamento = 0
-    let grandCustos = 0
-
     const empsComDados = empreendimentos.map((emp) => {
       const aptsDoEmp = aptsPorEmp[emp.id] ?? []
 
@@ -97,9 +102,6 @@ export async function GET(request: NextRequest) {
       const aptsLucro = aptDesempenhos.filter((a) => a.lucroLiquido >= 0).length
       const aptsPrejuizo = aptDesempenhos.filter((a) => a.lucroLiquido < 0).length
 
-      grandFaturamento += totalFaturamento
-      grandCustos += totalCustos
-
       return {
         id: emp.id,
         nome: emp.nome,
@@ -114,6 +116,8 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    const grandFaturamento = empsComDados.reduce((s, e) => s + e.totalFaturamento, 0)
+    const grandCustos = empsComDados.reduce((s, e) => s + e.totalCustos, 0)
     const grandLucro = r2(grandFaturamento - grandCustos)
     const margemMedia = grandFaturamento > 0 ? r2((grandLucro / grandFaturamento) * 100) : 0
 
@@ -147,8 +151,4 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="Relatorio_Desempenho_${MESES[mes - 1]}-${ano}.pdf"`,
       },
     })
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Erro ao gerar o PDF'
-    return NextResponse.json({ error: msg }, { status: 500 })
-  }
 }

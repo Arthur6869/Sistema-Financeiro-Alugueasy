@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Pencil, Loader2, X } from 'lucide-react'
@@ -35,15 +35,15 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (!open) return
+  function abrirModal() {
     setTaxaRepasse(apartamento.taxa_repasse ?? 0)
     setTipoRepasse(apartamento.tipo_repasse ?? 'lucro')
     setTipoGestao(apartamento.tipo_gestao ?? 'adm')
     setNomeProprietario(apartamento.nome_proprietario ?? '')
     setModeloContrato(apartamento.modelo_contrato ?? 'administracao')
     setError('')
-  }, [open, apartamento])
+    setOpen(true)
+  }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -92,7 +92,7 @@ export function EditarApartamentoRepasseModal({ apartamento, role }: EditarApart
         </span>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={abrirModal}
           className="inline-flex items-center justify-center rounded-md border border-gray-200 px-2 py-1 text-gray-600 hover:bg-gray-50 transition"
           aria-label={`Editar repasse do apartamento ${apartamento.numero}`}
         >

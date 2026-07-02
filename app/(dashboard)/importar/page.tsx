@@ -28,6 +28,7 @@ import { AmenitizSyncButton } from '@/components/shared/amenitiz-sync-button'
 import { SyncPlanilhasButton } from '@/components/shared/sync-planilhas-button'
 import { ObsidianSyncButton } from '@/components/shared/obsidian-sync-button'
 import { AgenteFechamentoButton } from '@/components/importar/agente-fechamento-button'
+import { SyncStatusPanel } from '@/components/importar/sync-status-panel'
 
 const TIPOS = [
   {
@@ -48,6 +49,16 @@ const TIPOS = [
   },
 ]
 
+type ImportacaoRow = {
+  id: string
+  created_at: string
+  tipo: string
+  mes: number
+  ano: number
+  nome_arquivo: string | null
+  status: string
+}
+
 const TIPO_LABELS: Record<string, string> = {
   custos_adm: 'Custos ADM',
   custos_sub: 'Custos SUB',
@@ -61,9 +72,9 @@ export default function ImportarPage() {
   const [mes, setMes] = useState(now.getMonth() + 1)
   const [ano, setAno] = useState(now.getFullYear())
   const [uploading, setUploading] = useState<string | null>(null)
-  const [results, setResults] = useState<Record<string, 'ok' | 'error'>>({})
+  const [results, setResults] = useState<Record<string, 'ok' | 'error' | undefined>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [historico, setHistorico] = useState<any[]>([])
+  const [historico, setHistorico] = useState<ImportacaoRow[]>([])
   const [loadingHistorico, setLoadingHistorico] = useState(true)
   const [filtroMes, setFiltroMes] = useState(0)
   const [filtroAno, setFiltroAno] = useState(now.getFullYear())
@@ -100,7 +111,7 @@ export default function ImportarPage() {
     if (fMes > 0) query = query.eq('mes', fMes) as typeof query
     if (fAno > 0) query = query.eq('ano', fAno) as typeof query
     const { data } = await query
-    setHistorico(data ?? [])
+    setHistorico(((data ?? []) as unknown as ImportacaoRow[]))
     setLoadingHistorico(false)
   }, [])
 
@@ -110,7 +121,7 @@ export default function ImportarPage() {
 
   async function handleUpload(tipo: string, file: File) {
     setUploading(tipo)
-    setResults((prev) => ({ ...prev, [tipo]: undefined as any }))
+    setResults((prev) => ({ ...prev, [tipo]: undefined }))
     setErrors((prev) => ({ ...prev, [tipo]: '' }))
 
     const formData = new FormData()
@@ -133,15 +144,15 @@ export default function ImportarPage() {
         setErrors((prev) => ({ ...prev, [tipo]: body?.error ?? `HTTP ${res.status}` }))
         setResults((prev) => ({ ...prev, [tipo]: 'error' }))
       }
-    } catch (e: any) {
-      setErrors((prev) => ({ ...prev, [tipo]: e?.message ?? 'Erro de rede' }))
+    } catch (e) {
+      setErrors((prev) => ({ ...prev, [tipo]: e instanceof Error ? e.message : 'Erro de rede' }))
       setResults((prev) => ({ ...prev, [tipo]: 'error' }))
     } finally {
       setUploading(null)
     }
   }
 
-  async function handleDelete(imp: any) {
+  async function handleDelete(imp: ImportacaoRow) {
     const periodoLabel = `${MESES[(imp.mes ?? 1) - 1]} ${imp.ano}`
     const tipoLabel = TIPO_LABELS[imp.tipo] ?? imp.tipo
     if (!confirm(`Excluir todos os dados de "${tipoLabel}" referentes a ${periodoLabel}?\n\nEsta ação remove os registros do banco e não pode ser desfeita.`)) return
@@ -236,6 +247,9 @@ export default function ImportarPage() {
       {/* Seções exclusivas do Analista */}
       {role === 'analista' && (
         <>
+          {/* Reconciliação: último sync, reservas sem vínculo, apts sem room_id */}
+          <SyncStatusPanel />
+
           {/* Agente de Fechamento */}
           <AgenteFechamentoButton />
 

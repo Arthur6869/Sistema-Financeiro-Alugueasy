@@ -1,15 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
-
-async function verificarAnalista(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return { user: null, erro: NextResponse.json({ error: 'Não autenticado' }, { status: 401 }) }
-
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista') return { user: null, erro: NextResponse.json({ error: 'Apenas analistas podem gerenciar vínculos' }, { status: 403 }) }
-
-  return { user, erro: null }
-}
 
 // GET ?proprietario_id=uuid — lista vínculos de um proprietário
 export async function GET(request: NextRequest) {
@@ -32,9 +23,8 @@ export async function GET(request: NextRequest) {
 
 // POST — vincula apartamentos a um proprietário
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { erro } = await verificarAnalista(supabase)
-  if (erro) return erro
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const { proprietario_id, apartamento_ids } = body as {
@@ -62,9 +52,8 @@ export async function POST(request: NextRequest) {
 
 // DELETE — soft delete de vínculo (ativo = false)
 export async function DELETE(request: NextRequest) {
-  const supabase = await createClient()
-  const { erro } = await verificarAnalista(supabase)
-  if (erro) return erro
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const { proprietario_id, apartamento_id } = body as {
@@ -88,9 +77,8 @@ export async function DELETE(request: NextRequest) {
 
 // PATCH — sincroniza lista completa de apt_ids ativos para um proprietário
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient()
-  const { erro } = await verificarAnalista(supabase)
-  if (erro) return erro
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const body = await request.json()
   const { proprietario_id, apartamento_ids_ativos } = body as {

@@ -1,14 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista') return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+  const { response } = await requireAnalista()
+  if (response) return response
 
   const admin = createAdminClient()
 

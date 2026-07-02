@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 import { isInternalApiRequest } from '@/lib/internal-api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { testConnection } from '@/lib/amenitiz'
@@ -15,20 +16,15 @@ export async function POST(request: NextRequest) {
     }
 
     const internalRequest = isInternalApiRequest(request)
-    const supabase = internalRequest ? createAdminClient() : await createClient()
     let actorUserId: string | null = null
-
-    if (!internalRequest) {
-      const { data: { user }, error: authErr } = await supabase.auth.getUser()
-      if (authErr || !user) {
-        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-      }
-      const { data: profile } = await supabase
-        .from('profiles').select('role').eq('id', user.id).single()
-      if (profile?.role !== 'analista') {
-        return NextResponse.json({ error: 'Apenas analistas podem sincronizar' }, { status: 403 })
-      }
-      actorUserId = user.id
+    let supabase
+    if (internalRequest) {
+      supabase = createAdminClient()
+    } else {
+      const auth = await requireAnalista()
+      if (auth.response) return auth.response
+      supabase = auth.supabase
+      actorUserId = auth.user.id
     }
 
     const empFiltro = empreendimento ? String(empreendimento).toUpperCase().trim() : null

@@ -1,17 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
-
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { user: null, role: null }
-
-  // Aceitar chamada interna (MCP / agente)
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  return { user, role: profile?.role ?? null }
-}
 
 function acceptsInternalKey(request: NextRequest): boolean {
   const key = request.headers.get('x-alugueasy-internal-key')
@@ -24,10 +13,8 @@ export async function PATCH(
 ) {
   const isInternal = acceptsInternalKey(request)
   if (!isInternal) {
-    const { user, role } = await getAuthContext()
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-    if (role !== 'analista')
-      return NextResponse.json({ error: 'Apenas analistas podem editar custos' }, { status: 403 })
+    const { response } = await requireAnalista()
+    if (response) return response
   }
 
   const { id } = await context.params
@@ -55,10 +42,12 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const atualizado = data as { categoria: string; valor: number }
+
   return NextResponse.json({
     success: true,
     custo: data,
-    mensagem: `Custo atualizado: ${(data as any).categoria} → R$ ${(data as any).valor}`,
+    mensagem: `Custo atualizado: ${atualizado.categoria} → R$ ${atualizado.valor}`,
   })
 }
 
@@ -68,10 +57,8 @@ export async function DELETE(
 ) {
   const isInternal = acceptsInternalKey(request)
   if (!isInternal) {
-    const { user, role } = await getAuthContext()
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-    if (role !== 'analista')
-      return NextResponse.json({ error: 'Apenas analistas podem excluir custos' }, { status: 403 })
+    const { response } = await requireAnalista()
+    if (response) return response
   }
 
   const { id } = await context.params

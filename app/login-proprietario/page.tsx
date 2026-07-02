@@ -37,17 +37,22 @@ export default function LoginProprietarioPage() {
   const [systemError, setSystemError] = useState('')
 
   useEffect(() => {
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      if (!url || !key || url.includes('undefined') || key.includes('undefined')) {
-        setSystemError('⚠️ Configuração incompleta. Variáveis de ambiente não encontradas.')
-        return
+    let active = true
+    Promise.resolve().then(() => {
+      if (!active) return
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        if (!url || !key || url.includes('undefined') || key.includes('undefined')) {
+          setSystemError('⚠️ Configuração incompleta. Variáveis de ambiente não encontradas.')
+          return
+        }
+        setSupabase(createClient())
+      } catch (err) {
+        setSystemError(`Erro ao inicializar: ${err instanceof Error ? err.message : String(err)}`)
       }
-      setSupabase(createClient())
-    } catch (err: any) {
-      setSystemError(`Erro ao inicializar: ${err.message}`)
-    }
+    })
+    return () => { active = false }
   }, [])
 
   async function handleLogin(e: React.FormEvent) {
@@ -79,8 +84,9 @@ export default function LoginProprietarioPage() {
       await new Promise(resolve => setTimeout(resolve, 500))
       router.push('/proprietario/bem-vindo')
       router.refresh()
-    } catch (err: any) {
-      setError(`Erro: ${err.message || 'Falha na autenticação. Verifique sua conexão.'}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      setError(`Erro: ${msg || 'Falha na autenticação. Verifique sua conexão.'}`)
       setLoading(false)
     }
   }

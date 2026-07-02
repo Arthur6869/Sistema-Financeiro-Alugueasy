@@ -6,6 +6,15 @@ import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import { DiariasPageClient } from '@/components/diarias/diarias-page-client'
+import type { DiariaRow } from '@/components/diarias/diarias-editavel-tabela'
+
+type ApartamentoRaw = {
+  id: string
+  numero: string
+  empreendimento_id: string
+  tipo_gestao: 'adm' | 'sub' | null
+  empreendimentos: { nome: string } | null
+}
 import { ExportarXlsxButton } from '@/components/diarias/exportar-xlsx-button'
 
 export default async function DiariasPage({
@@ -46,7 +55,7 @@ export default async function DiariasPage({
     supabase.from('apartamentos').select('id, numero, empreendimento_id, tipo_gestao, empreendimentos(nome)').order('numero'),
   ])
 
-  const apartamentos = (apartamentosRaw ?? []).map((a: any) => ({
+  const apartamentos = ((apartamentosRaw ?? []) as unknown as ApartamentoRaw[]).map((a) => ({
     id: a.id,
     numero: a.numero,
     empreendimento_id: a.empreendimento_id,
@@ -54,7 +63,8 @@ export default async function DiariasPage({
     empreendimento_nome: a.empreendimentos?.nome ?? '—',
   }))
 
-  const total = (diarias ?? []).reduce((acc, d) => acc + ((d as any).valor || 0), 0)
+  const diariasRows = (diarias ?? []) as unknown as DiariaRow[]
+  const total = diariasRows.reduce((acc, d) => acc + (d.valor || 0), 0)
 
   const periodoLabel =
     mes > 0 && ano > 0 ? `${MESES[mes - 1]} ${ano}` :
@@ -68,7 +78,7 @@ export default async function DiariasPage({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Diárias</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Receitas de {periodoLabel} — {(diarias ?? []).length} registro(s)
+            Receitas de {periodoLabel} — {diariasRows.length} registro(s)
             {tipoFiltro && (
               <span className="ml-1 text-[#193660]">· {tipoFiltro.toUpperCase()}</span>
             )}
@@ -100,7 +110,7 @@ export default async function DiariasPage({
         </CardHeader>
         <CardContent>
           <DiariasPageClient
-            initialDiarias={(diarias ?? []) as any}
+            initialDiarias={diariasRows}
             apartamentos={apartamentos}
             role={profile?.role ?? ''}
             mes={mes}

@@ -7,7 +7,8 @@ import { Suspense } from 'react'
 import { MESES } from '@/lib/constants'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { CustosEditavelTabela } from '@/components/custos/custos-editavel-tabela'
+import { CustosEditavelTabela, type CustoRow } from '@/components/custos/custos-editavel-tabela'
+import { ExportarTabelaXlsxButton } from '@/components/shared/exportar-tabela-xlsx-button'
 
 export default async function CustosPage({
   searchParams,
@@ -42,7 +43,7 @@ export default async function CustosPage({
       .order('categoria'),
   ])
 
-  const custos = custosResult.data ?? []
+  const custos = (custosResult.data ?? []) as unknown as CustoRow[]
   const totalRegistros = custos.length
   const total = custos.reduce((acc, c) => acc + (c.valor || 0), 0)
   const categorias = [...new Set(
@@ -63,12 +64,13 @@ export default async function CustosPage({
           <p className="text-gray-500 text-sm mt-1">
             Despesas de {periodoLabel} — {totalRegistros} lançamento(s)
           </p>
-          <div className="mt-3">
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
             <Link href={`/custos/manual?mes=${mes}&ano=${ano}`}>
               <Button size="sm" className="bg-[#193660] hover:bg-[#193660]/90">
                 Lançamento Manual
               </Button>
             </Link>
+            <ExportarTabelaXlsxButton tabela="custos" mes={mes} ano={ano} />
           </div>
         </div>
         <Suspense fallback={null}>
@@ -90,7 +92,7 @@ export default async function CustosPage({
         </CardHeader>
         <CardContent>
           <CustosEditavelTabela
-            custos={custos as any}
+            custos={custos}
             role={profile?.role ?? 'admin'}
             categoriasSugeridas={categorias}
           />

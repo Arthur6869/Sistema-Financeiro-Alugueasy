@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Trash2, Loader2, AlertTriangle, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface DeleteButtonProps {
   table: 'empreendimentos' | 'apartamentos'
@@ -26,9 +27,11 @@ export function DeleteButton({ table, id, label }: DeleteButtonProps) {
     setLoading(false)
     if (err) {
       setError(err.message)
+      toast.error(err.message)
       return
     }
     setConfirm(false)
+    toast.success('Excluído com sucesso')
     router.refresh()
   }
 

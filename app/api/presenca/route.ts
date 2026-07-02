@@ -1,12 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import { requireAnalista } from '@/lib/api-auth'
+import { NextResponse } from 'next/server'
 
 const ONLINE_WINDOW_SECONDS = 90
-
-async function getRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const { data } = await supabase.from('profiles').select('role').eq('id', userId).single()
-  return data?.role ?? null
-}
 
 // POST: heartbeat do usuário logado (admin/analista/proprietario)
 export async function POST() {
@@ -28,15 +24,9 @@ export async function POST() {
 }
 
 // GET: lista presença (apenas analista)
-export async function GET(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-
-  const role = await getRole(supabase, user.id)
-  if (role !== 'analista') {
-    return NextResponse.json({ error: 'Apenas analistas podem ver presença' }, { status: 403 })
-  }
+export async function GET() {
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const { data, error: selErr } = await supabase
     .from('user_presence')

@@ -48,7 +48,9 @@
       "Bash(supabase projects *)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); deps={**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}; print\\([k for k in deps if 'pg' in k.lower\\(\\) or 'postgres' in k.lower\\(\\) or 'supabase' in k.lower\\(\\)]\\)\")",
       "Bash(psql --version)",
-      "Bash(xargs grep -l \"notFound\\\\|error\\\\|Error\")"
+      "Bash(xargs grep -l \"notFound\\\\|error\\\\|Error\")",
+      "Bash(git rm *)",
+      "PowerShell(npx tsc --noEmit 2>&1)"
     ],
     "additionalDirectories": [
       "\\tmp"

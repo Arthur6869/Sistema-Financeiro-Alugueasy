@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAnalista } from '@/lib/api-auth'
 
 function parseNumero(input: unknown): number {
   if (typeof input === 'number') return input
@@ -7,29 +7,12 @@ function parseNumero(input: unknown): number {
   return Number(input.replace(',', '.').trim())
 }
 
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) return { supabase, user: null, role: null }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  return { supabase, user, role: profile?.role ?? null }
-}
-
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, user, role } = await getAuthContext()
-  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-  if (role !== 'analista') {
-    return NextResponse.json({ error: 'Apenas analistas podem editar custos manuais' }, { status: 403 })
-  }
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const { id } = await context.params
   const body = await request.json()
@@ -88,11 +71,8 @@ export async function DELETE(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, user, role } = await getAuthContext()
-  if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
-  if (role !== 'analista') {
-    return NextResponse.json({ error: 'Apenas analistas podem excluir custos manuais' }, { status: 403 })
-  }
+  const { supabase, response } = await requireAnalista()
+  if (response) return response
 
   const { id } = await context.params
   const { data: custoAtual, error: currentErr } = await supabase

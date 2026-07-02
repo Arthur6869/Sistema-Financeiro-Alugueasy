@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { ReservasEditavelTabela } from '@/components/reservas/reservas-editavel-tabela'
+import { ReservasEditavelTabela, type ReservaRow } from '@/components/reservas/reservas-editavel-tabela'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
+import { ExportarTabelaXlsxButton } from '@/components/shared/exportar-tabela-xlsx-button'
 import { MESES } from '@/lib/constants'
 import { Suspense } from 'react'
 
@@ -56,13 +57,16 @@ export default async function ReservasPage({
             </strong>
           </p>
         </div>
-        <Suspense fallback={null}>
-          <MonthYearFilter mes={mes} ano={ano} />
-        </Suspense>
+        <div className="flex items-center gap-3 flex-wrap">
+          <ExportarTabelaXlsxButton tabela="reservas" mes={mes} ano={ano} />
+          <Suspense fallback={null}>
+            <MonthYearFilter mes={mes} ano={ano} />
+          </Suspense>
+        </div>
       </div>
 
       <ReservasEditavelTabela
-        reservas={(reservas ?? []) as any}
+        reservas={(reservas ?? []) as unknown as ReservaRow[]}
         role={profile?.role ?? ''}
         mes={mes}
         ano={ano}

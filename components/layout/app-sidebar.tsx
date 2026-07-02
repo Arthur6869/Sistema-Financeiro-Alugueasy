@@ -52,7 +52,6 @@ const navItems = [
 const adminItems = [
   { href: '/importar', label: 'Importar', icon: Upload },
   { href: '/usuarios', label: 'Usuários', icon: Users },
-  { href: '/executar-migration', label: 'Migration', icon: Upload },
 ]
 
 type ModalType = 'empreendimento' | 'apartamento' | null

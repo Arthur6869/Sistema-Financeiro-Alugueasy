@@ -4,6 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts'
+import type { PieLabelRenderProps } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/constants'
 
@@ -23,8 +24,15 @@ const PIE_COLORS = [
 ]
 
 const RADIAN = Math.PI / 180
-function renderLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
+
+function renderLabel(props: PieLabelRenderProps) {
+  const percent = Number(props.percent ?? 0)
   if (percent < 0.05) return null
+  const cx = Number(props.cx ?? 0)
+  const cy = Number(props.cy ?? 0)
+  const midAngle = Number(props.midAngle ?? 0)
+  const innerRadius = Number(props.innerRadius ?? 0)
+  const outerRadius = Number(props.outerRadius ?? 0)
   const r = innerRadius + (outerRadius - innerRadius) * 0.5
   const x = cx + r * Math.cos(-midAngle * RADIAN)
   const y = cy + r * Math.sin(-midAngle * RADIAN)
@@ -79,7 +87,7 @@ export function ApartamentoCharts({
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                 <XAxis dataKey="data" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={44} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+                <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
                 <Area type="monotone" dataKey="valor" name="Faturamento" stroke="#193660" strokeWidth={2}
                   fill="url(#gradFat)" dot={{ r: 3, fill: '#193660', strokeWidth: 0 }} activeDot={{ r: 5 }} />
               </AreaChart>
@@ -102,7 +110,7 @@ export function ApartamentoCharts({
                   dataKey="value" labelLine={false} label={renderLabel}>
                   {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
+                <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={tooltipStyle} />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: '10px', marginTop: '4px' }} />
               </PieChart>
             </ResponsiveContainer>

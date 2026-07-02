@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface Apartamento {
   id: string
@@ -84,6 +85,7 @@ export function DiariasNovaForm({ apartamentos, defaultMes, defaultAno, onInsert
       if (!res.ok) { setErro(body.error ?? 'Erro ao inserir diária'); return }
       onInserted(body.diaria)
       setSucesso(true)
+      toast.success('Diária criada')
       if (keepOpen) {
         setApartamentoId('')
         setValor('')

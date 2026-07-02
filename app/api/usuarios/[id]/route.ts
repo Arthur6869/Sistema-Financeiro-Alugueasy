@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 function getAdminClient() {
@@ -9,27 +9,13 @@ function getAdminClient() {
   return createAdminClient(url, key)
 }
 
-async function verificarAnalista() {
-  const supabase = await createClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) {
-    return { erro: NextResponse.json({ error: 'Não autenticado' }, { status: 401 }), user: null }
-  }
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'analista') {
-    return { erro: NextResponse.json({ error: 'Apenas analistas podem gerenciar usuários' }, { status: 403 }), user: null }
-  }
-  return { erro: null, user }
-}
-
 // PATCH /api/usuarios/[id] — desativar ou reativar um proprietário
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { erro } = await verificarAnalista()
-  if (erro) return erro
+  const { response } = await requireAnalista()
+  if (response) return response
 
   const { id } = await params
   const body = await request.json()
@@ -66,8 +52,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { erro } = await verificarAnalista()
-  if (erro) return erro
+  const { response } = await requireAnalista()
+  if (response) return response
 
   const { id } = await params
   const adminClient = getAdminClient()
