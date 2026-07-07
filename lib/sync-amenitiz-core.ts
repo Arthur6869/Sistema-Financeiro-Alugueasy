@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
   // Formato "Nome Completo - Número" (separador ' - ' no nome do quarto no Amenitiz)
   ['LINK NOROESTE',   'LINK'],
+  // "Asa Sul 415 - 104": 415 é a quadra (parte do nome), 104 é o apartamento
+  ['ASA SUL 415',     'ASA SUL'],
   // Formato "Prefixo Número" (empreendimento + nº no mesmo segmento)
   ['BRISAS DO LAGO',  'BRISAS'],
   ['METROPOLITAN',    'METROPOLITAN'],
@@ -22,6 +24,34 @@ const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
   ['ATHOS BULCÃO',    'ATHOS'],
   ['ATHOS',           'ATHOS'],
 ]
+
+// Anúncios que trocaram de imóvel na Amenitiz (renomearam o anúncio e passaram a
+// operar outro apartamento). Reservas com check-in ANTES de inicioNovoImovel
+// pertencem ao imóvel antigo. antigo === null → imóvel antigo ainda não
+// identificado no sistema: a reserva é gravada com apartamento_id = null
+// (não aparece no portal de nenhum proprietário nem nas diárias).
+const TRANSFERENCIAS_ANUNCIO: Array<{
+  empNome: string
+  aptNum: string
+  inicioNovoImovel: string // 'YYYY-MM-DD' — primeiro check-in do imóvel novo
+  antigo: { empNome: string; aptNum: string } | null
+}> = [
+  // "Link Noroeste - 204": até 28/05/2026 o anúncio era de outro imóvel
+  // (confirmado pelo usuário em 07/07/2026); LINK 204 começou em 29/05/2026.
+  { empNome: 'LINK', aptNum: '204', inicioNovoImovel: '2026-05-29', antigo: null },
+]
+
+// Unidades que a Amenitiz anuncia separadas mas que no sistema são UM único
+// apartamento (anúncio conjunto — mesmas unidades físicas). A reserva de
+// qualquer unidade individual é alocada ao apartamento conjunto no lookup;
+// individual_room_name/number preservam a unidade real para exibição.
+// Confirmado pelo usuário em 07/07/2026 (Metropolitan).
+const APELIDOS_APARTAMENTO: Record<string, string> = {
+  'METROPOLITAN::1615':  '1615A - 1615',
+  'METROPOLITAN::1615A': '1615A - 1615',
+  'METROPOLITAN::1701':  '1701 - 1701A',
+  'METROPOLITAN::1701A': '1701 - 1701A',
+}
 
 function parseNomeQuarto(roomName: string): { dbEmpNome: string; aptNumero: string } | null {
   if (!roomName) return null
@@ -161,7 +191,10 @@ export async function runAmenitizSync(
   const payloadsSemApt = new Map<string, any>()
 
   for (const r of reservas) {
-    if (['cancelled', 'canceled', 'no_show'].includes(r.status)) continue
+    // Cancelada/no-show NÃO é pulada: o upsert precisa atualizar o status da linha
+    // existente (senão uma reserva confirmada→cancelada fica 'confirmed' para sempre,
+    // inflando o faturamento). Ela só não entra na agregação de diárias/totais.
+    const cancelada = ['cancelled', 'canceled', 'no_show'].includes(r.status)
     const room = r.rooms?.[0]
     if (!room) continue
 
@@ -183,15 +216,32 @@ export async function runAmenitizSync(
       }
     }
 
+    // Anúncio transferido: reserva anterior à troca pertence ao imóvel antigo.
+    // Com antigo conhecido, remapeia (taxa e vínculo do imóvel certo); sem
+    // antigo, marca para gravar com FK nula (limpa atribuição errada existente).
+    const transferencia = TRANSFERENCIAS_ANUNCIO.find(t =>
+      t.empNome === empNomeDoRoom && t.aptNum === aptNumRoom && r.checkin < t.inicioNovoImovel)
+    const semVinculoTransferencia = !!transferencia && transferencia.antigo === null
+    if (transferencia?.antigo) {
+      empNomeDoRoom = transferencia.antigo.empNome
+      aptNumRoom    = transferencia.antigo.aptNum
+    }
+
+    // Anúncio conjunto: a unidade individual resolve para o apartamento conjunto
+    // no vínculo/diárias; a reserva continua exibindo a unidade real.
+    const aptNumCanonico = APELIDOS_APARTAMENTO[`${empNomeDoRoom}::${aptNumRoom}`] ?? aptNumRoom
+
     const { valorLiquido, taxaAplicada, plataformaNormalizada } = calcularValorLiquido(valorBruto, r.source, empNomeDoRoom, aptNumRoom)
 
     const nomeHospede = [`${r.booker.first_name} ${r.booker.last_name}`.trim(), r.booker.phone?.trim() ? `— ${r.booker.phone.trim()}` : ''].filter(Boolean).join(' ')
 
     // Resolver aptInfo ANTES do upsert para incluir apartamento_id como FK real
     // (migration 022 — necessário para RLS do portal funcionar por FK, não por texto)
-    const aptInfo = aptNumRoom.startsWith('room:')
-      ? aptMapByRoomId[room.individual_room_id ?? '']
-      : lookupApt(aptMapCompleto, empNomeDoRoom, aptNumRoom)
+    const aptInfo = semVinculoTransferencia
+      ? undefined
+      : aptNumRoom.startsWith('room:')
+        ? aptMapByRoomId[room.individual_room_id ?? '']
+        : lookupApt(aptMapCompleto, empNomeDoRoom, aptNumCanonico)
 
     // apartamento_id só é incluído no payload quando o lookup tem sucesso.
     // Ao omitir o campo no ON CONFLICT UPDATE, preservamos o valor existente no banco
@@ -206,12 +256,22 @@ export async function runAmenitizSync(
       nome_hospede: nomeHospede, email_hospede: r.booker.email, phone_hospede: r.booker.phone,
       mes_competencia: mes, ano_competencia: ano, raw_data: r,
     }
-    if (aptId) {
+    if (semVinculoTransferencia) {
+      // FK explicitamente nula: sobrescreve atribuição errada gravada antes da regra
+      payloadsSemApt.delete(r.booking_id)
+      payloadsComApt.set(r.booking_id, { ...payload, apartamento_id: null })
+    } else if (aptId) {
       payloadsSemApt.delete(r.booking_id)
       payloadsComApt.set(r.booking_id, { ...payload, apartamento_id: aptId })
     } else if (!payloadsComApt.has(r.booking_id)) {
       payloadsSemApt.set(r.booking_id, payload)
     }
+
+    // Cancelada: linha atualizada acima (status), mas fora das diárias e dos totais
+    if (cancelada) continue
+
+    // Transferência sem imóvel antigo identificado: fora das diárias, sem aviso
+    if (semVinculoTransferencia) continue
 
     if (!aptInfo) {
       const aviso = `${empNomeDoRoom} ${aptNumRoom}`

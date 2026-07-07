@@ -41,6 +41,9 @@ const TAXA_BOOKING: Record<string, number> = {
   'BRISAS':         0.16,
   'MERCURE':        0.16, // exceto apt 1419 → 13%
   'MERCURE LIDER':  0.16,
+  'ASA SUL':        0.16,
+  'AMAZE':          0.13,
+  'LINK':           0.13, // confirmado pelo usuário em 07/07/2026
   'EASY':           0.13,
   'ATHOS':          0.13,
   'ATHOS BULCAO':   0.13,

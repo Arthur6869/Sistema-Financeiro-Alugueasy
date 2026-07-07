@@ -110,17 +110,22 @@ export default async function DashboardPage({
   const custosRows = (custosData ?? []) as unknown as CustoDashRow[]
   const apartamentosRows = (apartamentosData ?? []) as unknown as AptDashRow[]
 
-  // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz
-  const usandoDiariasXlsx = diariasRows.length > 0
+  // Determinar fonte de faturamento: xlsx (diarias) tem prioridade sobre Amenitiz.
+  // Exceção — mês corrente: amenitiz_reservas atualiza a cada 5 min (cron) enquanto
+  // diarias só muda no sync diário. Preferir reservas mantém o dashboard alinhado
+  // ao portal do proprietário, que exibe o faturamento ao vivo (taxas descontadas).
+  const isMesCorrente = mes === now.getMonth() + 1 && ano === now.getFullYear()
+  let usandoDiariasXlsx = diariasRows.length > 0
 
-  // Busca Amenitiz somente como fallback — evita query desnecessária quando diarias tem dados
-  let reservasData: Array<{ valor_liquido: number; individual_room_number: string | number; checkin: string | null; checkout: string | null; status: string | null }> | null = null
-  if (!usandoDiariasXlsx && dataInicio && dataFim) {
+  // Busca Amenitiz como fallback ou como fonte ao vivo do mês corrente
+  let reservasData: Array<{ valor_liquido: number; individual_room_number: string | number; checkin: string | null; checkout: string | null; status: string | null; apartamento_id: string | null }> | null = null
+  if ((!usandoDiariasXlsx || isMesCorrente) && dataInicio && dataFim) {
     const { data, error: reservasError } = await supabase
       .from('amenitiz_reservas')
-      .select('valor_liquido, individual_room_number, checkin, checkout, status')
+      .select('valor_liquido, individual_room_number, checkin, checkout, status, apartamento_id')
       .lte('checkin', dataFim)
       .gte('checkout', dataInicio)
+      .not('status', 'in', '(cancelled,canceled,no_show)')
     if (reservasError) console.error('[dashboard] amenitiz_reservas:', reservasError.message)
     // Proration: proporciona valor_liquido de reservas que cruzam o limite do mês.
     if (data && mes > 0) {
@@ -138,6 +143,9 @@ export default async function DashboardPage({
     } else {
       reservasData = data
     }
+
+    // Mês corrente com reservas ao vivo → elas assumem como fonte de faturamento
+    if (isMesCorrente && (reservasData?.length ?? 0) > 0) usandoDiariasXlsx = false
   }
 
   // Totais financeiros
@@ -210,6 +218,22 @@ export default async function DashboardPage({
       }
       aptCardMap[id].fat += d.valor || 0
     })
+  } else {
+    // Fonte Amenitiz: FK apartamento_id (preferida) ou número como fallback legado
+    reservasData?.forEach((r) => {
+      const apt = (r.apartamento_id ? aptLookupMap.get(r.apartamento_id) : undefined)
+        ?? aptByNumberMap.get(String(r.individual_room_number).trim())
+      if (!apt) return
+      if (!aptCardMap[apt.id]) {
+        aptCardMap[apt.id] = {
+          numero: apt.numero,
+          empNome: apt.empreendimentos?.nome || '—',
+          tipo: apt.tipo_gestao || '',
+          fat: 0, custos: 0,
+        }
+      }
+      aptCardMap[apt.id].fat += r.valor_liquido || 0
+    })
   }
 
   custosRows.forEach((c) => {
@@ -243,10 +267,10 @@ export default async function DashboardPage({
       }
     })
   } else {
-    // Fallback Amenitiz: identifica empreendimento pelo número do apt via Map (O(1))
+    // Fallback Amenitiz: FK apartamento_id (preferida) ou número do apt via Map (O(1))
     reservasData?.forEach((r) => {
-      const aptNum = String(r.individual_room_number).trim()
-      const apt = aptByNumberMap.get(aptNum)
+      const apt = (r.apartamento_id ? aptLookupMap.get(r.apartamento_id) : undefined)
+        ?? aptByNumberMap.get(String(r.individual_room_number).trim())
       const empNome = apt ? (apt.empreendimentos?.nome || '') : ''
       if (empNome) {
         if (!empreendimentoMap[empNome]) empreendimentoMap[empNome] = { fat: 0, custos: 0 }

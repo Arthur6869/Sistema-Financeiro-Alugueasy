@@ -43,6 +43,9 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
   const now = new Date()
   const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
   const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+  // Mês corrente: KPIs preferem amenitiz_reservas (cron 5 min + realtime) em vez
+  // de diárias (sync diário 05:00) — o faturamento sobe ao vivo, taxas já descontadas.
+  const isMesCorrente = mes === now.getMonth() + 1 && ano === now.getFullYear()
   const nomeMes = mes > 0 ? (MESES[mes - 1] ?? '') : ''
   const labelPeriodo = nomeMes ? `${nomeMes} ${ano}` : String(ano)
   const _firstName = profile?.full_name?.split(' ')[0] ?? 'Proprietário'
@@ -179,12 +182,15 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         apartamento_id: r.apartamento_id ?? '',
       }))
 
-    // KPIs: reservasProrated como fallback Amenitiz quando não há diárias importadas
+    // KPIs: reservasProrated como fallback Amenitiz quando não há diárias importadas.
+    // No mês corrente as reservas viram fonte primária (preferirReservas) para o
+    // faturamento acompanhar cada reserva nova em tempo real.
     const metricas = apartamentos.map(apt => calcularKPIs(
       (diariasData  ?? []).filter(d => d.apartamento_id === apt.id),
       (custosData   ?? []).filter(c => c.apartamento_id === apt.id),
       reservasProrated.filter(r => r.apartamento_id === apt.id),
       apt,
+      { preferirReservas: isMesCorrente },
     ))
 
     const total = somarKPIs(metricas)
@@ -341,7 +347,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               <span className="kpi-label">Faturamento</span>
             </div>
             <div className="kpi-val">R$ {formatBRL(kpis.faturamento)}</div>
-            <div className="kpi-foot">{labelPeriodo}</div>
+            <div className="kpi-foot">{isMesCorrente ? `${labelPeriodo} · ao vivo` : labelPeriodo}</div>
           </div>
 
           <div className="kpi-card k-red">

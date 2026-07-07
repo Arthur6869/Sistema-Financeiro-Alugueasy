@@ -30,11 +30,20 @@ export type KPIsResult = {
   tipoRepasseLabel:         string
 }
 
+export type CalcularKPIsOpts = {
+  // Inverte a preferência de fonte de receita: reservas Amenitiz > diárias.
+  // Usar APENAS para o mês corrente — amenitiz_reservas atualiza a cada 5 min
+  // (cron) enquanto diarias só muda no sync completo diário. Meses fechados
+  // devem continuar em diárias para bater com a prestação de contas/PDF.
+  preferirReservas?: boolean
+}
+
 export function calcularKPIs(
   diarias:  DiariaKpi[],
   custos:   CustoKpi[],
   reservas: ReservaKpi[],
   apt:      ApartamentoKpi,
+  opts?:    CalcularKPIsOpts,
 ): KPIsResult {
   // Receita primária: diárias conferidas (XLSX importado)
   const receitaAdmDiarias   = diarias.filter(d => d.tipo_gestao === 'adm').reduce((s, d) => s + Number(d.valor ?? 0), 0)
@@ -45,11 +54,17 @@ export function calcularKPIs(
   const reservasValidas     = reservas.filter(r => !['cancelled', 'canceled', 'no_show'].includes(String(r.status ?? '').toLowerCase()))
   const receitaReservasTotal = reservasValidas.reduce((s, r) => s + Number(r.valor_liquido ?? 0), 0)
 
-  // Preferência: diárias > reservas Amenitiz
-  const usarDiarias = receitaDiariasTotal > 0
+  // Preferência: diárias > reservas Amenitiz.
+  // Com preferirReservas (mês corrente), inverte: reservas são a fonte mais
+  // fresca (cron de 5 min + realtime) e o valor_liquido já desconta as taxas.
+  const usarDiarias = opts?.preferirReservas && receitaReservasTotal > 0
+    ? false
+    : receitaDiariasTotal > 0
   let receitaAdm = receitaAdmDiarias
   let receitaSub = receitaSubDiarias
   if (!usarDiarias && receitaReservasTotal > 0) {
+    receitaAdm = 0
+    receitaSub = 0
     const fallbackGestao = apt.tipo_gestao ?? (apt.modelo_contrato === 'sublocacao' ? 'sub' : 'adm')
     if (fallbackGestao === 'sub') receitaSub = receitaReservasTotal
     else                          receitaAdm = receitaReservasTotal
