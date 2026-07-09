@@ -353,7 +353,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
           <div className="kpi-card k-red">
             <div className="kpi-top">
               <div className="kpi-icon" style={{ background: '#fef2f2' }}><Receipt size={14} color="#dc2626" /></div>
-              <span className="kpi-label">Custos repassáveis</span>
+              <span className="kpi-label">Custos</span>
             </div>
             <div className="kpi-val">R$ {formatBRL(kpis.custos)}</div>
             {semCategoriasConfiguradas ? (
