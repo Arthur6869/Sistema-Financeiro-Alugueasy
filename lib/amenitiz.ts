@@ -202,6 +202,8 @@ async function fetchEndpoint(
   const baseUrl = process.env.AMENITIZ_BASE_URL
   if (!baseUrl) throw new Error('AMENITIZ_BASE_URL não configurado no .env.local')
 
+  // A API Amenitiz limita o range a 31 dias por chamada (HTTP 422 acima disso)
+  // — sempre 1 mês exato por request.
   const from = `${ano}-${String(mes).padStart(2, '0')}-01`
   const to = new Date(ano, mes, 0).toISOString().slice(0, 10)
   const pathQuery = `/bookings/${endpoint}?from=${from}&to=${to}`
@@ -242,41 +244,58 @@ export async function fetchTodasReservasMes(
   ano: number
 ): Promise<AmenitizReserva[]> {
   try {
-    const [porCheckin, porCriacao, porAtualizacao] = await Promise.all([
-      fetchEndpoint('checkin', mes, ano).catch((err) => {
-        console.error(`[Amenitiz] Erro ao buscar checkin:`, err);
-        return [];
-      }),
-      fetchEndpoint('created', mes, ano).catch((err) => {
-        console.error(`[Amenitiz] Erro ao buscar created:`, err);
-        return [];
-      }),
-      fetchEndpoint('updated', mes, ano).catch((err) => {
-        console.error(`[Amenitiz] Erro ao buscar updated:`, err);
-        return [];
-      }),
+    // A API limita cada chamada a 31 dias — para capturar reservas que
+    // entraram em meses anteriores e atravessam a virada (ex: check-in 31/dez,
+    // checkout 02/jan), o endpoint checkin é consultado também para os 2 meses
+    // anteriores (1 chamada de 1 mês cada). O filtro por sobreposição abaixo
+    // descarta o que não toca o mês solicitado.
+    const ant1 = mes === 1 ? { m: 12, a: ano - 1 } : { m: mes - 1, a: ano };
+    const ant2 = ant1.m === 1 ? { m: 12, a: ant1.a - 1 } : { m: ant1.m - 1, a: ant1.a };
+
+    const fetchSeguro = (endpoint: 'checkin' | 'created' | 'updated', m: number, a: number) =>
+      fetchEndpoint(endpoint, m, a).catch((err) => {
+        console.error(`[Amenitiz] Erro ao buscar ${endpoint} ${m}/${a}:`, err);
+        return [] as AmenitizReserva[];
+      });
+
+    const [porCheckin, porCheckinAnt1, porCheckinAnt2, porCriacao, porAtualizacao] = await Promise.all([
+      fetchSeguro('checkin', mes, ano),
+      fetchSeguro('checkin', ant1.m, ant1.a),
+      fetchSeguro('checkin', ant2.m, ant2.a),
+      fetchSeguro('created', mes, ano),
+      fetchSeguro('updated', mes, ano),
     ]);
 
     // Merge por booking_id — primeira ocorrência vence
     const mapa = new Map<string, AmenitizReserva>();
-    for (const r of [...porCheckin, ...porCriacao, ...porAtualizacao]) {
+    for (const r of [...porCheckin, ...porCheckinAnt1, ...porCheckinAnt2, ...porCriacao, ...porAtualizacao]) {
       if (r && r.booking_id && !mapa.has(r.booking_id)) {
         mapa.set(r.booking_id, r);
       }
     }
 
-    // Filtrar apenas reservas com check-in dentro do mês/ano solicitado.
-    const dataInicio = new Date(ano, mes - 1, 1);
-    const dataFim = new Date(ano, mes, 0);
+    // Mantém reservas com check-in no mês OU que atravessam a virada
+    // (check-in anterior, checkout depois do dia 01 — ainda hospedado no mês).
+    // O portal/PDF rateiam o valor por noites; as diárias do sync continuam
+    // por competência de check-in (ver sync-amenitiz-core).
+    // Comparação por STRING 'YYYY-MM-DD' — new Date('2026-06-01') é meia-noite
+    // UTC (= 21h do dia anterior em Brasília), o que descartava silenciosamente
+    // todas as reservas com check-in no dia 01 do mês.
+    const from = `${ano}-${String(mes).padStart(2, '0')}-01`;
+    const to = `${ano}-${String(mes).padStart(2, '0')}-${String(new Date(ano, mes, 0).getDate()).padStart(2, '0')}`;
 
     const reservasFiltradas = Array.from(mapa.values()).filter((r) => {
-      const checkinDate = new Date(r.checkin);
-      return checkinDate >= dataInicio && checkinDate <= dataFim;
+      const ci = String(r.checkin ?? '').slice(0, 10);
+      const co = String(r.checkout ?? '').slice(0, 10);
+      const checkinNoMes = ci >= from && ci <= to;
+      const atravessaVirada = ci < from && co > from; // checkout > dia 01 ⇒ ≥1 noite no mês
+      return checkinNoMes || atravessaVirada;
     });
 
     console.log(
-      `[Amenitiz] Merge: checkin=${porCheckin.length} created=${porCriacao.length} ` +
-      `updated=${porAtualizacao.length} → único=${mapa.size} → após filtro check-in=${reservasFiltradas.length}`
+      `[Amenitiz] Merge: checkin=${porCheckin.length}+${porCheckinAnt1.length}+${porCheckinAnt2.length} ` +
+      `created=${porCriacao.length} updated=${porAtualizacao.length} ` +
+      `→ único=${mapa.size} → após filtro sobreposição=${reservasFiltradas.length}`
     );
 
     return reservasFiltradas;

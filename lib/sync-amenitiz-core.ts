@@ -126,7 +126,10 @@ export async function runAmenitizSync(
     // reservasOnly: apenas upsert em amenitiz_reservas, sem tocar diarias/importacoes/syncs.
     // Usado pelo botão do proprietário — não destrutivo.
     reservasOnly,
-  }: { empFiltro?: string | null; actorUserId?: string | null; reservasOnly?: boolean } = {}
+    // apenasNovas: insere só booking_ids que ainda não existem no banco.
+    // Para backfill de meses passados sem sobrescrever edições manuais de analistas.
+    apenasNovas,
+  }: { empFiltro?: string | null; actorUserId?: string | null; reservasOnly?: boolean; apenasNovas?: boolean } = {}
 ): Promise<SyncAmenitizResult> {
   // Só cria log de sync para runs completos (cron/admin), não para checks do proprietário
   const { data: syncLog } = reservasOnly
@@ -179,6 +182,9 @@ export async function runAmenitizSync(
   const porAptId: Record<string, { aptId: string; empNome: string; aptNum: string; tipoGestao: string; totalBruto: number; totalLiquido: number; countReservas: number }> = {}
   let totalReservas = 0, totalBruto = 0, totalLiquido = 0
   const naoEncontrados: string[] = []
+
+  const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+  const dataFim    = new Date(ano, mes, 0).toISOString().slice(0, 10)
 
   // Payloads acumulados para upsert em lote (evita N round trips ao Supabase).
   // Dois mapas separados: PostgREST exige que todos os objetos do batch tenham
@@ -247,6 +253,13 @@ export async function runAmenitizSync(
     // Ao omitir o campo no ON CONFLICT UPDATE, preservamos o valor existente no banco
     // em vez de sobrescrever com null quando o lookup falha temporariamente.
     const aptId = aptInfo?.id
+    // Competência pela data de CHECK-IN — reserva que atravessa a virada é
+    // gravada também pelo sync do mês seguinte (para o portal ratear as noites),
+    // mas pertence ao mês em que o hóspede entrou. Idempotente entre syncs.
+    const ciStr = String(r.checkin ?? '').slice(0, 10)
+    const mesCompetencia = parseInt(ciStr.slice(5, 7)) || mes
+    const anoCompetencia = parseInt(ciStr.slice(0, 4)) || ano
+
     const payload = {
       booking_id: r.booking_id, hotel_uuid: process.env.AMENITIZ_HOTEL_UUID!,
       status: r.status, source: r.source, plataforma_normalizada: plataformaNormalizada,
@@ -254,7 +267,7 @@ export async function runAmenitizSync(
       individual_room_number: aptNumRoom, individual_room_name: roomName,
       valor_bruto: valorBruto, taxa_aplicada: taxaAplicada, valor_liquido: valorLiquido,
       nome_hospede: nomeHospede, email_hospede: r.booker.email, phone_hospede: r.booker.phone,
-      mes_competencia: mes, ano_competencia: ano, raw_data: r,
+      mes_competencia: mesCompetencia, ano_competencia: anoCompetencia, raw_data: r,
     }
     if (semVinculoTransferencia) {
       // FK explicitamente nula: sobrescreve atribuição errada gravada antes da regra
@@ -269,6 +282,11 @@ export async function runAmenitizSync(
 
     // Cancelada: linha atualizada acima (status), mas fora das diárias e dos totais
     if (cancelada) continue
+
+    // Atravessou a virada (check-in em mês anterior): upsertada acima para o
+    // portal ratear as noites deste mês, mas fora das diárias/totais — o valor
+    // integral já entra na competência do mês do check-in (sync daquele mês).
+    if (ciStr && ciStr < dataInicio) continue
 
     // Transferência sem imóvel antigo identificado: fora das diárias, sem aviso
     if (semVinculoTransferencia) continue
@@ -291,6 +309,22 @@ export async function runAmenitizSync(
     totalLiquido += valorLiquido
   }
 
+  // Backfill seguro: remove dos lotes os booking_ids já existentes, preservando
+  // linhas que analistas possam ter editado manualmente em meses passados.
+  if (apenasNovas) {
+    const ids = [...new Set([...payloadsComApt.keys(), ...payloadsSemApt.keys()])]
+    for (let i = 0; i < ids.length; i += 500) {
+      const { data: existentes } = await supabase
+        .from('amenitiz_reservas')
+        .select('booking_id')
+        .in('booking_id', ids.slice(i, i + 500))
+      for (const row of existentes ?? []) {
+        payloadsComApt.delete(row.booking_id)
+        payloadsSemApt.delete(row.booking_id)
+      }
+    }
+  }
+
   // Upsert em lotes de 500 — antes era 1 round trip por reserva (N+1).
   const LOTE = 500
   for (const rows of [Array.from(payloadsComApt.values()), Array.from(payloadsSemApt.values())]) {
@@ -311,9 +345,6 @@ export async function runAmenitizSync(
   // Bloco destrutivo — DELETE + re-INSERT de diárias e logs.
   // NUNCA executado em modo reservasOnly (botão do proprietário).
   if (!reservasOnly) {
-    const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
-    const dataFim    = new Date(ano, mes, 0).toISOString().slice(0, 10)
-
     if (empFiltroNorm) {
       const aptIds = Object.values(aptMapCompleto).map(i => i.id)
       if (aptIds.length > 0) {
