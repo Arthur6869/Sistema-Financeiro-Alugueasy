@@ -143,7 +143,7 @@ export default async function ProprietarioHistoricoPage() {
 
         <div className="panel" data-tour="his-tabela">
           <div className="panel-head">
-            <div className="panel-title"><Calendar size={16} color="#193660" /> Resumo mensal</div>
+            <div className="panel-title"><Calendar size={16} color="#193660" /> Resumo detalhado</div>
           </div>
 
           <div className="table-scroll">

@@ -192,7 +192,7 @@ const TOURS: Record<string, TourConfig> = {
       },
       {
         target: '[data-tour="his-tabela"]',
-        titulo: 'Resumo mensal',
+        titulo: 'Resumo detalhado',
         texto:
           'Cada linha é um mês: faturamento, custos, lucro, taxa AlugEasy e "Seu valor". O selo "Em andamento" marca o mês atual e "Sem dados" indica períodos sem lançamentos. As linhas com dados são clicáveis — toque em um mês para abrir a rentabilidade completa daquele período.',
       },
