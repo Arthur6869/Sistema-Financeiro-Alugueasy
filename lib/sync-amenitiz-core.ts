@@ -39,6 +39,10 @@ const TRANSFERENCIAS_ANUNCIO: Array<{
   // "Link Noroeste - 204": até 28/05/2026 o anúncio era de outro imóvel
   // (confirmado pelo usuário em 07/07/2026); LINK 204 começou em 29/05/2026.
   { empNome: 'LINK', aptNum: '204', inicioNovoImovel: '2026-05-29', antigo: null },
+  // "LINK Noroeste - 104": até 02/05/2026 o anúncio era o BRISAS B119 (a aba
+  // Cobranças das reservas antigas mostra "Brisas do Lago - B119"; confirmado
+  // pelo usuário em 27/07/2026). LINK 104 começou em 03/05/2026.
+  { empNome: 'LINK', aptNum: '104', inicioNovoImovel: '2026-05-03', antigo: { empNome: 'BRISAS', aptNum: 'B119' } },
 ]
 
 // Unidades que a Amenitiz anuncia separadas mas que no sistema são UM único
