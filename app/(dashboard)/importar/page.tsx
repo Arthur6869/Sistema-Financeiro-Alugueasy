@@ -273,7 +273,7 @@ export default function ImportarPage() {
                 </h2>
                 <p className="text-xs text-gray-500">
                   Busca reservas diretamente da plataforma e aplica as taxas automaticamente
-                  (Booking: 13%-16% | Airbnb: sem taxa | Alugueasy: 10%)
+                  (Booking: 13%-16% | Airbnb: 18,21% | Alugueasy: 10%)
                 </p>
               </div>
             </div>

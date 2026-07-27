@@ -56,7 +56,7 @@ export function AmenitizSyncButton({ mesInicial, anoInicial }: Props) {
       `Sincronizar ${MESES[mes - 1]} ${ano} com a Amenitiz?\n\n` +
       `Taxas aplicadas automaticamente:\n` +
       `• Booking: 13% ou 16% por empreendimento\n` +
-      `• Airbnb: sem taxa\n` +
+      `• Airbnb: 18,21%\n` +
       `• Alugueasy / Manual: 10%`
     )) return
 

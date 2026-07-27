@@ -60,6 +60,9 @@ const TAXA_BOOKING_ESPECIFICO: Record<string, number> = {
   'MERCURE::1419': 0.13,
 }
 
+// Airbnb — taxa única para todos os empreendimentos
+const TAXA_AIRBNB = 0.1821
+
 /**
  * Extrai o nome do empreendimento do campo individual_room_name.
  * Ex: "Brisas do Lago - Apartamento de 1 Quarto com Vista" → "BRISAS DO LAGO"
@@ -85,9 +88,15 @@ export function calcularValorLiquido(
   const emp = empNome.toUpperCase().trim()
   const apt = String(aptNumero).trim()
 
-  // AIRBNB — sem taxa (valor retornado já é líquido)
+  // AIRBNB — 18,21% para todos os empreendimentos (definido pelo usuário em
+  // 27/07/2026, vigência a partir de junho/2026; antes o valor era tratado
+  // como já líquido — reservas de competência jan–mai/2026 permanecem a 0%)
   if (src.includes('airbnb')) {
-    return { valorLiquido: valorBruto, taxaAplicada: 0, plataformaNormalizada: 'Airbnb' }
+    return {
+      valorLiquido: valorBruto * (1 - TAXA_AIRBNB),
+      taxaAplicada: TAXA_AIRBNB,
+      plataformaNormalizada: 'Airbnb',
+    }
   }
 
   // BOOKING — taxa varia por empreendimento (com caso especial por apt)
