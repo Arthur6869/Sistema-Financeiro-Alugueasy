@@ -72,10 +72,13 @@ async function main() {
 
   const CAMPOS = 'booking_id, individual_room_name, checkin, checkout, status, source, plataforma_normalizada, valor_bruto, taxa_aplicada, valor_liquido, mes_competencia, ano_competencia, nome_hospede, apartamento_id'
 
-  // 2a. Reservas atribuídas ao LINK 204 com check-in antes do corte
+  // 2a. Reservas atribuídas ao LINK 204 com check-in antes do corte.
+  // Exclui lançamentos manuais (booking_id 'manual%'): o usuário confirmou em
+  // 27/07 que a reserva direta de 19–21/05 ficou no imóvel físico do LINK 204.
   const { data: comFk, error: e1 } = await supabase
     .from('amenitiz_reservas').select(CAMPOS)
     .eq('apartamento_id', link204.id)
+    .not('booking_id', 'ilike', 'manual%')
     .lt('checkin', CORTE)
   if (e1) throw e1
 
