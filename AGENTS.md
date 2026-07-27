@@ -238,7 +238,7 @@ Sempre manter atualizado após mudanças:
 | Rota | Acesso | Descrição |
 |---|---|---|
 | `/proprietario` | `proprietario` | Dashboard com KPIs, cards por apt e gráfico de evolução |
-| `/proprietario/extrato` | `proprietario` | Extrato detalhado por apartamento — custos por categoria, cálculo de repasse |
+| `/proprietario/extrato` | `proprietario` | **Rentabilidade** (nome exibido na UI; rota mantém "extrato") — detalhado por apartamento, custos por categoria, cálculo de repasse |
 | `/proprietario/historico` | `proprietario` | Tabela dos últimos 12 meses com link para extrato |
 
 ### Regras obrigatórias

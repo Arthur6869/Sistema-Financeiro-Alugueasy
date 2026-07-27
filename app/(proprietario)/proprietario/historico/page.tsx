@@ -128,7 +128,7 @@ export default async function ProprietarioHistoricoPage() {
 
         <div className="pg-head">
           <h1 className="pg-greeting">Histórico</h1>
-          <p className="pg-greeting-sub">Últimos 12 meses — toque no mês para ver o extrato completo</p>
+          <p className="pg-greeting-sub">Últimos 12 meses — toque no mês para ver a rentabilidade completa</p>
         </div>
 
         <div className="panel" data-tour="his-grafico">

@@ -1192,7 +1192,7 @@ Admin/analista tenta acessar /proprietario → redirect / (middleware)
 | Rota | Arquivo | Descrição |
 |---|---|---|
 | `/proprietario` | `app/(proprietario)/proprietario/page.tsx` | Dashboard: KPIs, cards por apt, gráfico 6 meses |
-| `/proprietario/extrato` | `app/(proprietario)/proprietario/extrato/page.tsx` | Extrato detalhado por apt com custos por categoria |
+| `/proprietario/extrato` | `app/(proprietario)/proprietario/extrato/page.tsx` | **Rentabilidade** (nome exibido; a rota mantém "extrato") — detalhado por apt com custos por categoria |
 | `/proprietario/historico` | `app/(proprietario)/proprietario/historico/page.tsx` | Tabela últimos 12 meses |
 
 ### Banco de dados — nova tabela

@@ -204,7 +204,7 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
 
         <div className="pg-head">
           <div>
-            <h1 className="pg-greeting">Extrato — {labelPeriodo}</h1>
+            <h1 className="pg-greeting">Rentabilidade — {labelPeriodo}</h1>
             <p className="pg-greeting-sub">Demonstrativo completo de faturamento, custos e repasse</p>
           </div>
           <div className="pg-period" data-tour="ext-periodo">

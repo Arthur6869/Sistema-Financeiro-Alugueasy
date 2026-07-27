@@ -437,12 +437,12 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
           <div className="shortcut-grid">
             <Link href={`/proprietario/extrato?mes=${mes}&ano=${ano}`} className="shortcut-card">
               <div className="shortcut-icon" style={{ background: '#e6f1fb' }}><FileText size={17} color="#0c447c" /></div>
-              <div className="shortcut-title">Ver extrato completo</div>
+              <div className="shortcut-title">Ver rentabilidade completa</div>
               <div className="shortcut-desc">Detalhamento por apartamento do mês atual</div>
             </Link>
             <Link href={`/proprietario/extrato?mes=${mes}&ano=${ano}`} className="shortcut-card">
               <div className="shortcut-icon" style={{ background: '#faeeda' }}><Download size={17} color="#854f0b" /></div>
-              <div className="shortcut-title">Extrato e PDF</div>
+              <div className="shortcut-title">Rentabilidade e PDF</div>
               <div className="shortcut-desc">Veja o demonstrativo e baixe a prestação de contas</div>
             </Link>
             <Link href="/proprietario/historico" className="shortcut-card">

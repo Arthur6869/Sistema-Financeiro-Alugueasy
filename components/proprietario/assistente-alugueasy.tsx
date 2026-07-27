@@ -54,7 +54,7 @@ type TourConfig = {
 const TOURS: Record<string, TourConfig> = {
   /* ───────── Início (dashboard) ───────── */
   '/proprietario': {
-    proxima: { rota: '/proprietario/extrato', label: 'Continuar: Extrato' },
+    proxima: { rota: '/proprietario/extrato', label: 'Continuar: Rentabilidade' },
     steps: [
       {
         titulo: 'Bem-vindo ao seu portal! 👋',
@@ -95,28 +95,28 @@ const TOURS: Record<string, TourConfig> = {
         target: '[data-tour="atalhos"]',
         titulo: 'Acesso rápido',
         texto:
-          'Atalhos para o extrato completo do mês, o download do PDF de prestação de contas e o histórico dos últimos 12 meses.',
+          'Atalhos para a rentabilidade completa do mês, o download do PDF de prestação de contas e o histórico dos últimos 12 meses.',
       },
       {
         target: '[data-tour="navegacao"], [data-tour="navegacao-mobile"]',
         titulo: 'Navegação',
         texto:
-          'Use o menu para alternar entre Início, Extrato e Histórico. O período selecionado acompanha você entre as abas.',
+          'Use o menu para alternar entre Início, Rentabilidade e Histórico. O período selecionado acompanha você entre as abas.',
       },
       {
         titulo: 'Início concluído! ✅',
         texto:
-          'Você já conhece o painel principal. Quer continuar o tour na página de Extrato, onde fica a prestação de contas detalhada de cada apartamento?',
+          'Você já conhece o painel principal. Quer continuar o tour na página de Rentabilidade, onde fica a prestação de contas detalhada de cada apartamento?',
       },
     ],
   },
 
-  /* ───────── Extrato ───────── */
+  /* ───────── Rentabilidade (rota /proprietario/extrato) ───────── */
   '/proprietario/extrato': {
     proxima: { rota: '/proprietario/historico', label: 'Continuar: Histórico' },
     steps: [
       {
-        titulo: 'Extrato — prestação de contas 📄',
+        titulo: 'Rentabilidade — prestação de contas 📄',
         texto:
           'Esta página é o demonstrativo completo do período: cada apartamento tem um cartão com faturamento, custos detalhados, lucro e o cálculo do seu repasse.',
       },
@@ -124,7 +124,7 @@ const TOURS: Record<string, TourConfig> = {
         target: '[data-tour="ext-periodo"]',
         titulo: 'Escolha o período',
         texto:
-          'Selecione o mês e o ano do extrato. Escolhendo "Todos os meses", você vê o acumulado do ano inteiro.',
+          'Selecione o mês e o ano que deseja consultar. Escolhendo "Todos os meses", você vê o acumulado do ano inteiro.',
       },
       {
         target: '[data-tour="ext-card-head"]',
@@ -169,7 +169,7 @@ const TOURS: Record<string, TourConfig> = {
           'Gera a prestação de contas oficial do mês em PDF — pronta para enviar ao contador ou guardar no seu arquivo pessoal.',
       },
       {
-        titulo: 'Extrato concluído! ✅',
+        titulo: 'Rentabilidade concluída! ✅',
         texto:
           'Agora só falta o Histórico, onde você acompanha a evolução dos seus imóveis nos últimos 12 meses. Vamos lá?',
       },
@@ -194,12 +194,12 @@ const TOURS: Record<string, TourConfig> = {
         target: '[data-tour="his-tabela"]',
         titulo: 'Resumo mensal',
         texto:
-          'Cada linha é um mês: faturamento, custos, lucro, taxa AlugEasy e "Seu valor". O selo "Em andamento" marca o mês atual e "Sem dados" indica períodos sem lançamentos. As linhas com dados são clicáveis — toque em um mês para abrir o extrato completo daquele período.',
+          'Cada linha é um mês: faturamento, custos, lucro, taxa AlugEasy e "Seu valor". O selo "Em andamento" marca o mês atual e "Sem dados" indica períodos sem lançamentos. As linhas com dados são clicáveis — toque em um mês para abrir a rentabilidade completa daquele período.',
       },
       {
         titulo: 'Tour completo! 🎉',
         texto:
-          'Você conheceu tudo: Início, Extrato e Histórico. Se precisar de mim, é só tocar no botão com a minha foto no canto da tela. Boa gestão! 🏠',
+          'Você conheceu tudo: Início, Rentabilidade e Histórico. Se precisar de mim, é só tocar no botão com a minha foto no canto da tela. Boa gestão! 🏠',
       },
     ],
   },
@@ -223,7 +223,7 @@ const FAQS: Faq[] = [
     pergunta: 'Como é calculado o meu repasse?',
     resposta: [
       'Sobre o resultado do mês (lucro ou faturamento, conforme o seu contrato) é aplicada a taxa de gestão da AlugEasy. O que sobra é o seu repasse.',
-      'O card verde do painel mostra o valor do mês, e a aba Extrato detalha o cálculo completo, custo por custo.',
+      'O card verde do painel mostra o valor do mês, e a aba Rentabilidade detalha o cálculo completo, custo por custo.',
     ],
   },
   {
@@ -231,20 +231,20 @@ const FAQS: Faq[] = [
     pergunta: 'Como consultar outro mês?',
     resposta: [
       'Use o seletor de mês e ano no canto superior direito da tela.',
-      'O período escolhido acompanha você nas abas Início, Extrato e Histórico — não precisa selecionar de novo.',
+      'O período escolhido acompanha você nas abas Início, Rentabilidade e Histórico — não precisa selecionar de novo.',
     ],
   },
   {
     id: 'pdf',
     pergunta: 'Como baixar o PDF da prestação de contas?',
     resposta: [
-      'Abra a aba Extrato, escolha o mês desejado e toque em "Baixar PDF" no cartão do apartamento.',
+      'Abra a aba Rentabilidade, escolha o mês desejado e toque em "Baixar PDF" no cartão do apartamento.',
       'O arquivo é a prestação de contas completa do mês — pronto para o contador ou para o seu arquivo pessoal.',
     ],
   },
   {
     id: 'extrato-linhas',
-    pergunta: 'O que significa cada linha do Extrato?',
+    pergunta: 'O que significa cada linha da Rentabilidade?',
     resposta: [
       '• Faturamento — receita das hospedagens do imóvel no período.',
       '• Custos — total de despesas; as linhas com "↳" detalham cada categoria (limpeza, manutenção, insumos...).',
@@ -258,14 +258,14 @@ const FAQS: Faq[] = [
     pergunta: 'Como uso a página Histórico?',
     resposta: [
       'A página Histórico mostra a evolução dos últimos 12 meses: um gráfico com o repasse mês a mês e uma tabela com faturamento, custos, lucro e "Seu valor" de cada mês.',
-      'As linhas com dados são clicáveis — toque em um mês para abrir o extrato completo daquele período. O selo "Em andamento" marca o mês atual.',
+      'As linhas com dados são clicáveis — toque em um mês para abrir a rentabilidade completa daquele período. O selo "Em andamento" marca o mês atual.',
     ],
   },
   {
     id: 'gestao-modelo',
     pergunta: 'O que é Administração e Sublocação?',
     resposta: [
-      'É o modelo de contrato do seu imóvel com a AlugEasy — ele aparece no cartão de cada apartamento na aba Extrato.',
+      'É o modelo de contrato do seu imóvel com a AlugEasy — ele aparece no cartão de cada apartamento na aba Rentabilidade.',
       'O modelo define como a taxa de gestão é aplicada no cálculo do seu repasse, conforme o seu contrato.',
     ],
   },

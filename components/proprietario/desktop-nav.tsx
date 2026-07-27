@@ -6,7 +6,7 @@ import { Suspense } from 'react'
 
 const NAV = [
   { href: '/proprietario', label: 'Início' },
-  { href: '/proprietario/extrato', label: 'Extrato' },
+  { href: '/proprietario/extrato', label: 'Rentabilidade' },
   { href: '/proprietario/historico', label: 'Histórico' },
 ]
 

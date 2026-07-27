@@ -7,7 +7,7 @@ import { Suspense } from 'react'
 
 const items = [
   { href: '/proprietario', icon: Home, label: 'Início' },
-  { href: '/proprietario/extrato', icon: FileText, label: 'Extrato' },
+  { href: '/proprietario/extrato', icon: FileText, label: 'Rentabilidade' },
   { href: '/proprietario/historico', icon: History, label: 'Histórico' },
 ]
 
