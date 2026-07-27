@@ -186,7 +186,7 @@ const TOURS: Record<string, TourConfig> = {
       },
       {
         target: '[data-tour="his-grafico"]',
-        titulo: 'Gráfico de repasse',
+        titulo: 'Carteira mensal',
         texto:
           'A evolução do valor recebido mês a mês. Passe o mouse (ou o dedo) sobre as barras para ver o valor exato de cada mês.',
       },

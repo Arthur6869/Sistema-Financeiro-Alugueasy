@@ -134,7 +134,7 @@ export default async function ProprietarioHistoricoPage() {
         <div className="panel" data-tour="his-grafico">
           <div className="panel-head">
             <div>
-              <div className="panel-title"><TrendingUp size={16} color="#193660" /> Repasse mensal</div>
+              <div className="panel-title"><TrendingUp size={16} color="#193660" /> Carteira mensal</div>
               <div className="panel-sub">Evolução do valor recebido mês a mês</div>
             </div>
           </div>
