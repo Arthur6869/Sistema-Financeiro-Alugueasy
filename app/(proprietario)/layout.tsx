@@ -4,6 +4,7 @@ import { LogoutButton } from '@/components/proprietario/logout-button'
 import { BottomNav } from '@/components/proprietario/bottom-nav'
 import { DesktopNav } from '@/components/proprietario/desktop-nav'
 import { PresencaHeartbeat } from '@/components/presenca/presenca-heartbeat'
+import { AssistenteAlugEasy } from '@/components/proprietario/assistente-alugueasy'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -74,7 +75,9 @@ export default async function ProprietarioLayout({
           </div>
 
           {/* Nav desktop — repassa mes/ano da URL atual para manter filtro entre abas */}
-          <DesktopNav />
+          <div data-tour="navegacao" className="hidden md:block">
+            <DesktopNav />
+          </div>
 
           {/* Usuário + Sair */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -119,6 +122,9 @@ export default async function ProprietarioLayout({
       </footer>
 
       <BottomNav />
+
+      {/* Assistente virtual — tour guiado + ajuda rápida */}
+      <AssistenteAlugEasy />
     </div>
   )
 }

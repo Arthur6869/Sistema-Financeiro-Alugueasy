@@ -1225,6 +1225,7 @@ UNIQUE: `(proprietario_id, apartamento_id)`
 | `EvolucaoChart` | `components/proprietario/evolucao-chart.tsx` | Client (Recharts) |
 | `CadastrarProprietarioModal` | `components/modals/cadastrar-proprietario-modal.tsx` | Client |
 | `GerenciarProprietarioModal` | `components/modals/gerenciar-proprietario-modal.tsx` | Client |
+| `AssistenteAlugEasy` ("Alu") | `components/proprietario/assistente-alugueasy.tsx` | Client |
 
 ### APIs criadas/atualizadas
 
@@ -1247,6 +1248,26 @@ base = tipo_repasse === 'faturamento' ? faturamento : lucro
 repasse = base * (taxa_repasse / 100)
 valor_proprietario = lucro - repasse
 ```
+
+### Assistente virtual "Alu" (onboarding do portal)
+
+Assistente 100% client-side montada no layout do portal (`app/(proprietario)/layout.tsx`) — sem acesso a banco ou APIs.
+
+**Funções:**
+
+1. **Tour guiado** — destaca em sequência os elementos do dashboard marcados com `data-tour`:
+   `periodo` (filtro mês/ano + sync), `kpis`, `repasse`, `evolucao` (gráfico 6 meses), `ocupacao`, `atalhos` e `navegacao`/`navegacao-mobile` (menu desktop/bottom nav). Passos cujo alvo não existe na tela (ex.: mês sem dados) são pulados automaticamente. Fora do dashboard, iniciar o tour navega para `/proprietario?tour=1` e o tour começa sozinho.
+2. **Ajuda rápida** — painel estilo chat com respostas prontas (indicadores, cálculo do repasse, troca de mês, download do PDF no Extrato, painel de ocupação, tempo real, contato).
+
+**Comportamento:**
+
+- Botão flutuante verde (canto inferior direito; acima da bottom nav no mobile)
+- Abre sozinha na **primeira visita** ao `/proprietario` (flag `alu_bemvindo_visto` no localStorage; `alu_tour_visto` marca tour concluído/pulado)
+- Durante o tour a página fica bloqueada por overlay (z-index 99–110) e o alvo recebe spotlight com borda verde
+
+**Manutenção:** ao criar uma nova seção no dashboard, adicionar `data-tour="..."` no elemento e um passo em `TOUR_STEPS`; novas dúvidas frequentes entram no array `FAQS` do componente.
+
+**Avatar:** a arte oficial da ALU (mascote) deve ficar em `public/alu-avatar.png` — usada no botão flutuante, no cabeçalho do painel e no tooltip do tour. Se o arquivo não existir, o componente cai automaticamente no fallback (ícone/letra). O enquadramento do rosto é controlado por `objectPosition` no componente `AluAvatar`.
 
 ### Como testar
 

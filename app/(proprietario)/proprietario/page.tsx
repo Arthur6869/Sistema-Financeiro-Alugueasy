@@ -311,7 +311,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
             <h1 className="pg-greeting">Olá, {primeiroNome}</h1>
             <p className="pg-greeting-sub">Resumo dos seus imóveis em <strong>{labelPeriodo}</strong></p>
           </div>
-          <div className="pg-period" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <div className="pg-period" data-tour="periodo" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {mes > 0 && <SyncButton mes={mes} ano={ano} />}
               <MonthYearFilter mes={mes} ano={ano} />
@@ -340,7 +340,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
             )}
           </div>
         ) : (
-        <div className="kpi-grid">
+        <div className="kpi-grid" data-tour="kpis">
           <div className="kpi-card k-navy">
             <div className="kpi-top">
               <div className="kpi-icon" style={{ background: '#e6f1fb' }}><TrendingUp size={14} color="#0c447c" /></div>
@@ -375,7 +375,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
             <div className="kpi-foot">Margem de {kpis.margem.toFixed(0)}% no período</div>
           </div>
 
-          <div className="kpi-card k-amber k-repasse">
+          <div className="kpi-card k-amber k-repasse" data-tour="repasse">
             <div className="kpi-top">
               <div className="kpi-icon" style={{ background: '#f0fdf4' }}><Wallet size={14} color="#166534" /></div>
               <span className="kpi-label" title="Lucro do mês menos a taxa de gestão AlugEasy">Seu repasse</span>
@@ -387,7 +387,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         )}
 
         {/* Evolução antes das reservas: usuário entende a tendência antes dos detalhes */}
-        <div className="panel">
+        <div className="panel" data-tour="evolucao">
           <div className="panel-head">
             <div>
               <div className="panel-title"><BarChart2 size={16} color="#193660" /> Evolução dos últimos 6 meses</div>
@@ -414,6 +414,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
 
         {/* Painel de ocupação por imóvel — grade de dias + cards de reservas */}
         {aptIds.length > 0 && (
+          <div data-tour="ocupacao">
           <OccupancyPanel
             apartamentos={apartamentos.map(a => ({
               id: a.id,
@@ -426,9 +427,10 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
             nomeMes={nomeMes}
             sincronizado={mesSincronizado}
           />
+          </div>
         )}
 
-        <div className="panel" style={{ paddingBottom: 18 }}>
+        <div className="panel" data-tour="atalhos" style={{ paddingBottom: 18 }}>
           <div className="panel-head">
             <div className="panel-title">Acesso rápido</div>
           </div>
