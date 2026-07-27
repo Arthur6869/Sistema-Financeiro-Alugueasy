@@ -191,6 +191,12 @@ const TOURS: Record<string, TourConfig> = {
           'A evolução do valor recebido mês a mês. Passe o mouse (ou o dedo) sobre as barras para ver o valor exato de cada mês.',
       },
       {
+        target: '[data-tour="his-imovel"]',
+        titulo: 'Desempenho por imóvel 🏠',
+        texto:
+          'Aqui a análise é individual: escolha um dos seus imóveis para comparar faturamento (azul) e custos (vermelho) mês a mês — a linha verde mostra o lucro. Em cima, os totais dos últimos 12 meses do imóvel selecionado.',
+      },
+      {
         target: '[data-tour="his-tabela"]',
         titulo: 'Resumo detalhado',
         texto:

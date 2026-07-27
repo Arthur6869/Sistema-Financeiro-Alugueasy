@@ -1,14 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { TrendingUp, Calendar } from 'lucide-react'
+import { TrendingUp, Calendar, Building2 } from 'lucide-react'
 import { MESES, MESES_ABREV } from '@/lib/constants'
 import { HistoricoChart } from '@/components/proprietario/historico-chart'
 import { HistoricoLinhaClicavel } from '@/components/proprietario/historico-linha-clicavel'
+import { DesempenhoImovelChart } from '@/components/proprietario/desempenho-imovel-chart'
 
 type ApartamentoVinculo = {
   id: string
+  numero: string
   taxa_repasse: number | null
   tipo_repasse: 'lucro' | 'faturamento' | null
+  empreendimentos: { nome: string } | null
 }
 
 function calcularRepasse(
@@ -36,7 +39,7 @@ export default async function ProprietarioHistoricoPage() {
 
   const { data: vinculos } = await supabase
     .from('proprietario_apartamentos')
-    .select('apartamentos(id, taxa_repasse, tipo_repasse)')
+    .select('apartamentos(id, numero, taxa_repasse, tipo_repasse, empreendimentos(nome))')
     .eq('proprietario_id', user.id)
     .eq('ativo', true)
 
@@ -61,12 +64,14 @@ export default async function ProprietarioHistoricoPage() {
       const df = new Date(a, m, 0).toISOString().slice(0, 10)
 
       const [{ data: fat }, { data: cus }] = await Promise.all([
-        supabase.from('diarias').select('valor').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
-        supabase.from('custos_proprietario').select('valor').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
+        supabase.from('diarias').select('apartamento_id, valor').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
+        supabase.from('custos_proprietario').select('apartamento_id, valor').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
       ])
 
-      const faturamento = (fat ?? []).reduce((s, r) => s + (r.valor ?? 0), 0)
-      const custos = (cus ?? []).reduce((s, r) => s + (r.valor ?? 0), 0)
+      const fatRows = (fat ?? []) as { apartamento_id: string; valor: number | null }[]
+      const cusRows = (cus ?? []) as { apartamento_id: string; valor: number | null }[]
+      const faturamento = fatRows.reduce((s, r) => s + (r.valor ?? 0), 0)
+      const custos = cusRows.reduce((s, r) => s + (r.valor ?? 0), 0)
       const lucro = faturamento - custos
       const taxaRepasse = apartamentos[0]?.taxa_repasse ?? 0
       const tipoRepasse = apartamentos[0]?.tipo_repasse ?? 'lucro'
@@ -76,12 +81,28 @@ export default async function ProprietarioHistoricoPage() {
       const isAtual = m === mesAtual && a === anoAtual
       const semDados = faturamento === 0 && custos === 0
 
-      return { m, a, faturamento, custos: semDados ? null : custos, lucro, repasse, valorProprietario, semDados, isAtual }
+      return { m, a, faturamento, custos: semDados ? null : custos, lucro, repasse, valorProprietario, semDados, isAtual, fatRows, cusRows }
     })
   )
 
   const chartLabels = dados.map(d => `${MESES_ABREV[d.m - 1]}/${String(d.a).slice(2)}`)
   const chartValores = dados.map(d => d.semDados ? null : d.valorProprietario)
+
+  // Série mensal individual de cada imóvel — alimenta o painel "Desempenho por imóvel"
+  const porImovel = apartamentos.map(apt => ({
+    id: apt.id,
+    nome: apt.empreendimentos?.nome ? `${apt.empreendimentos.nome} · ${apt.numero}` : `Apto ${apt.numero}`,
+    meses: dados.map(d => {
+      const faturamento = d.fatRows.filter(r => r.apartamento_id === apt.id).reduce((s, r) => s + (r.valor ?? 0), 0)
+      const custos = d.cusRows.filter(r => r.apartamento_id === apt.id).reduce((s, r) => s + (r.valor ?? 0), 0)
+      return {
+        label: `${MESES_ABREV[d.m - 1]}/${String(d.a).slice(2)}`,
+        faturamento,
+        custos,
+        lucro: faturamento - custos,
+      }
+    }),
+  }))
 
   return (
     <>
@@ -140,6 +161,19 @@ export default async function ProprietarioHistoricoPage() {
           </div>
           <HistoricoChart labels={chartLabels} valores={chartValores} />
         </div>
+
+        {/* Desempenho individual: faturamento × custos + lucro de cada imóvel */}
+        {porImovel.length > 0 && (
+          <div className="panel" data-tour="his-imovel">
+            <div className="panel-head">
+              <div>
+                <div className="panel-title"><Building2 size={16} color="#193660" /> Desempenho por imóvel</div>
+                <div className="panel-sub">Faturamento × custos de cada imóvel, mês a mês</div>
+              </div>
+            </div>
+            <DesempenhoImovelChart imoveis={porImovel} />
+          </div>
+        )}
 
         <div className="panel" data-tour="his-tabela">
           <div className="panel-head">

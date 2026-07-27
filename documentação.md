@@ -1226,6 +1226,7 @@ UNIQUE: `(proprietario_id, apartamento_id)`
 | `CadastrarProprietarioModal` | `components/modals/cadastrar-proprietario-modal.tsx` | Client |
 | `GerenciarProprietarioModal` | `components/modals/gerenciar-proprietario-modal.tsx` | Client |
 | `AssistenteAlugEasy` ("Alu") | `components/proprietario/assistente-alugueasy.tsx` | Client |
+| `DesempenhoImovelChart` | `components/proprietario/desempenho-imovel-chart.tsx` | Client (Recharts) — faturamento × custos + lucro por imóvel no Histórico, com seletor e totais 12m |
 
 ### APIs criadas/atualizadas
 
@@ -1258,7 +1259,7 @@ Assistente 100% client-side montada no layout do portal (`app/(proprietario)/lay
 1. **Tour guiado por página (encadeado)** — cada página do portal tem seu próprio tour, definido no mapa `TOURS` do componente (chave = pathname). No último passo de cada página, um botão "Continuar" leva à próxima via `?tour=1` (Início → Extrato → Histórico). Alvos por página, marcados com `data-tour`:
    - `/proprietario`: `periodo`, `kpis`, `repasse`, `evolucao`, `ocupacao`, `atalhos`, `navegacao`/`navegacao-mobile`
    - `/proprietario/extrato`: `ext-periodo`, `ext-card-head`, `ext-faturamento`, `ext-custos`, `ext-lucro`, `ext-taxa`, `ext-repasse`, `ext-pdf` (marcados apenas no 1º cartão de apartamento)
-   - `/proprietario/historico`: `his-grafico`, `his-tabela`
+   - `/proprietario/historico`: `his-grafico`, `his-imovel`, `his-tabela`
    Passos cujo alvo não existe na tela (ex.: mês sem dados) são pulados automaticamente. Em páginas sem tour próprio, iniciar o tour navega para `/proprietario?tour=1`.
 2. **Ajuda rápida** — painel estilo chat com respostas prontas (indicadores, cálculo do repasse, troca de mês, linhas do Extrato, página Histórico, Administração × Sublocação, download do PDF, painel de ocupação, tempo real, contato).
 
