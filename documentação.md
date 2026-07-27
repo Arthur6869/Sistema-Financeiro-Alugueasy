@@ -1267,7 +1267,7 @@ Assistente 100% client-side montada no layout do portal (`app/(proprietario)/lay
 
 **Manutenção:** ao criar uma nova seção no dashboard, adicionar `data-tour="..."` no elemento e um passo em `TOUR_STEPS`; novas dúvidas frequentes entram no array `FAQS` do componente.
 
-**Avatar:** a arte oficial da ALU (mascote) deve ficar em `public/alu-avatar.png` — usada no botão flutuante, no cabeçalho do painel e no tooltip do tour. Se o arquivo não existir, o componente cai automaticamente no fallback (ícone/letra). O enquadramento do rosto é controlado por `objectPosition` no componente `AluAvatar`.
+**Avatar:** `public/alu-avatar.png` (256×256, recorte do rosto) — usado no botão flutuante, no cabeçalho do painel e no tooltip do tour. Se o arquivo não existir, o componente cai automaticamente no fallback (ícone/letra). A arte completa da mascote (com textos de apresentação) está em `public/alu-apresentacao.png`.
 
 ### Como testar
 

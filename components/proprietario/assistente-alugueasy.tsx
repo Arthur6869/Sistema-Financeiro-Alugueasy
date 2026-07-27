@@ -31,7 +31,7 @@ function AluAvatar({ size, fallback }: { size: number; fallback: React.ReactNode
       onError={() => setErro(true)}
       style={{
         width: size, height: size, borderRadius: '50%',
-        objectFit: 'cover', objectPosition: '18% 15%',
+        objectFit: 'cover', objectPosition: 'center',
         display: 'block', background: '#0f1a2e',
       }}
     />
