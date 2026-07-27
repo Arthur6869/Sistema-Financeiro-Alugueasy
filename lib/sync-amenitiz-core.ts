@@ -36,9 +36,10 @@ const TRANSFERENCIAS_ANUNCIO: Array<{
   inicioNovoImovel: string // 'YYYY-MM-DD' — primeiro check-in do imóvel novo
   antigo: { empNome: string; aptNum: string } | null
 }> = [
-  // "Link Noroeste - 204": até 28/05/2026 o anúncio era de outro imóvel
-  // (confirmado pelo usuário em 07/07/2026); LINK 204 começou em 29/05/2026.
-  { empNome: 'LINK', aptNum: '204', inicioNovoImovel: '2026-05-29', antigo: null },
+  // "Link Noroeste - 204": até 28/05/2026 o anúncio era o BRISAS A115 (a aba
+  // Cobranças das reservas antigas mostra "Brisas do Lago A115"; imóvel antigo
+  // identificado pelo usuário em 27/07/2026). LINK 204 começou em 29/05/2026.
+  { empNome: 'LINK', aptNum: '204', inicioNovoImovel: '2026-05-29', antigo: { empNome: 'BRISAS', aptNum: 'A115' } },
   // "LINK Noroeste - 104": até 02/05/2026 o anúncio era o BRISAS B119 (a aba
   // Cobranças das reservas antigas mostra "Brisas do Lago - B119"; confirmado
   // pelo usuário em 27/07/2026). LINK 104 começou em 03/05/2026.
