@@ -131,7 +131,7 @@ export default async function ProprietarioHistoricoPage() {
           <p className="pg-greeting-sub">Últimos 12 meses — toque no mês para ver o extrato completo</p>
         </div>
 
-        <div className="panel">
+        <div className="panel" data-tour="his-grafico">
           <div className="panel-head">
             <div>
               <div className="panel-title"><TrendingUp size={16} color="#193660" /> Repasse mensal</div>
@@ -141,7 +141,7 @@ export default async function ProprietarioHistoricoPage() {
           <HistoricoChart labels={chartLabels} valores={chartValores} />
         </div>
 
-        <div className="panel">
+        <div className="panel" data-tour="his-tabela">
           <div className="panel-head">
             <div className="panel-title"><Calendar size={16} color="#193660" /> Resumo mensal</div>
           </div>

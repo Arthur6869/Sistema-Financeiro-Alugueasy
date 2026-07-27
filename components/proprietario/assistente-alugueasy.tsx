@@ -45,60 +45,165 @@ type TourStep = {
   texto: string
 }
 
-const TOUR_STEPS: TourStep[] = [
-  {
-    titulo: 'Bem-vindo ao seu portal! 👋',
-    texto:
-      'Eu sou a ALU, sua assistente AlugEasy. Em poucos passos vou te mostrar onde encontrar cada informação do seu imóvel. Use "Próximo" e "Voltar" no seu ritmo.',
+type TourConfig = {
+  steps: TourStep[]
+  /** Página seguinte do tour encadeado — oferecida no último passo. */
+  proxima?: { rota: string; label: string }
+}
+
+const TOURS: Record<string, TourConfig> = {
+  /* ───────── Início (dashboard) ───────── */
+  '/proprietario': {
+    proxima: { rota: '/proprietario/extrato', label: 'Continuar: Extrato' },
+    steps: [
+      {
+        titulo: 'Bem-vindo ao seu portal! 👋',
+        texto:
+          'Eu sou a ALU, sua assistente AlugEasy. Em poucos passos vou te mostrar onde encontrar cada informação do seu imóvel. Use "Próximo" e "Voltar" no seu ritmo.',
+      },
+      {
+        target: '[data-tour="periodo"]',
+        titulo: 'Filtro de período',
+        texto:
+          'Aqui você escolhe o mês e o ano que quer consultar. O botão de sincronizar atualiza as reservas na hora. O período escolhido acompanha você em todas as abas.',
+      },
+      {
+        target: '[data-tour="kpis"]',
+        titulo: 'Seus indicadores',
+        texto:
+          'O resumo financeiro do período: faturamento das hospedagens, custos do imóvel e lucro líquido. No mês atual, os valores sobem ao vivo conforme novas reservas chegam.',
+      },
+      {
+        target: '[data-tour="repasse"]',
+        titulo: 'Seu repasse 💰',
+        texto:
+          'O número mais importante do painel: o valor líquido que você recebe no mês, já com a taxa de gestão da AlugEasy descontada.',
+      },
+      {
+        target: '[data-tour="evolucao"]',
+        titulo: 'Evolução dos últimos 6 meses',
+        texto:
+          'Este gráfico compara faturamento e repasse mês a mês, para você acompanhar a tendência dos seus imóveis ao longo do tempo.',
+      },
+      {
+        target: '[data-tour="ocupacao"]',
+        titulo: 'Mapa de ocupação',
+        texto:
+          'Veja os dias ocupados de cada imóvel no mês e o detalhe de cada reserva: plataforma (Airbnb, Booking...), hóspede, datas e valor líquido.',
+      },
+      {
+        target: '[data-tour="atalhos"]',
+        titulo: 'Acesso rápido',
+        texto:
+          'Atalhos para o extrato completo do mês, o download do PDF de prestação de contas e o histórico dos últimos 12 meses.',
+      },
+      {
+        target: '[data-tour="navegacao"], [data-tour="navegacao-mobile"]',
+        titulo: 'Navegação',
+        texto:
+          'Use o menu para alternar entre Início, Extrato e Histórico. O período selecionado acompanha você entre as abas.',
+      },
+      {
+        titulo: 'Início concluído! ✅',
+        texto:
+          'Você já conhece o painel principal. Quer continuar o tour na página de Extrato, onde fica a prestação de contas detalhada de cada apartamento?',
+      },
+    ],
   },
-  {
-    target: '[data-tour="periodo"]',
-    titulo: 'Filtro de período',
-    texto:
-      'Aqui você escolhe o mês e o ano que quer consultar. O botão de sincronizar atualiza as reservas na hora. O período escolhido acompanha você em todas as abas.',
+
+  /* ───────── Extrato ───────── */
+  '/proprietario/extrato': {
+    proxima: { rota: '/proprietario/historico', label: 'Continuar: Histórico' },
+    steps: [
+      {
+        titulo: 'Extrato — prestação de contas 📄',
+        texto:
+          'Esta página é o demonstrativo completo do período: cada apartamento tem um cartão com faturamento, custos detalhados, lucro e o cálculo do seu repasse.',
+      },
+      {
+        target: '[data-tour="ext-periodo"]',
+        titulo: 'Escolha o período',
+        texto:
+          'Selecione o mês e o ano do extrato. Escolhendo "Todos os meses", você vê o acumulado do ano inteiro.',
+      },
+      {
+        target: '[data-tour="ext-card-head"]',
+        titulo: 'Identificação do imóvel',
+        texto:
+          'Cada cartão mostra o apartamento, o empreendimento e o modelo de contrato do imóvel: Administração ou Sublocação.',
+      },
+      {
+        target: '[data-tour="ext-faturamento"]',
+        titulo: 'Faturamento',
+        texto:
+          'O total de receita gerada pelas hospedagens deste imóvel no período selecionado.',
+      },
+      {
+        target: '[data-tour="ext-custos"]',
+        titulo: 'Custos detalhados',
+        texto:
+          'O total de despesas do período. Logo abaixo, cada linha com "↳" mostra uma categoria: limpeza, manutenção, insumos e outras. Se ainda não houver custos lançados, aparece um aviso e os valores ficam como estimativa.',
+      },
+      {
+        target: '[data-tour="ext-lucro"]',
+        titulo: 'Lucro',
+        texto:
+          'Faturamento menos os custos do período — o resultado do imóvel antes da taxa de gestão.',
+      },
+      {
+        target: '[data-tour="ext-taxa"]',
+        titulo: 'Taxa AlugEasy',
+        texto:
+          'O percentual de gestão previsto no seu contrato. A própria linha mostra a taxa e sobre o que ela é aplicada: lucro ou faturamento.',
+      },
+      {
+        target: '[data-tour="ext-repasse"]',
+        titulo: 'Seu repasse 💰',
+        texto:
+          'O valor final que fica com você no período, depois de todos os descontos. Se os custos ainda não foram lançados, aparece o selo "Estimado" — o valor pode ser ajustado depois.',
+      },
+      {
+        target: '[data-tour="ext-pdf"]',
+        titulo: 'Baixar PDF',
+        texto:
+          'Gera a prestação de contas oficial do mês em PDF — pronta para enviar ao contador ou guardar no seu arquivo pessoal.',
+      },
+      {
+        titulo: 'Extrato concluído! ✅',
+        texto:
+          'Agora só falta o Histórico, onde você acompanha a evolução dos seus imóveis nos últimos 12 meses. Vamos lá?',
+      },
+    ],
   },
-  {
-    target: '[data-tour="kpis"]',
-    titulo: 'Seus indicadores',
-    texto:
-      'O resumo financeiro do período: faturamento das hospedagens, custos do imóvel e lucro líquido. No mês atual, os valores sobem ao vivo conforme novas reservas chegam.',
+
+  /* ───────── Histórico ───────── */
+  '/proprietario/historico': {
+    steps: [
+      {
+        titulo: 'Histórico — últimos 12 meses 📅',
+        texto:
+          'Aqui você acompanha a evolução dos seus imóveis: quanto faturou, gastou e recebeu em cada um dos últimos 12 meses.',
+      },
+      {
+        target: '[data-tour="his-grafico"]',
+        titulo: 'Gráfico de repasse',
+        texto:
+          'A evolução do valor recebido mês a mês. Passe o mouse (ou o dedo) sobre as barras para ver o valor exato de cada mês.',
+      },
+      {
+        target: '[data-tour="his-tabela"]',
+        titulo: 'Resumo mensal',
+        texto:
+          'Cada linha é um mês: faturamento, custos, lucro, taxa AlugEasy e "Seu valor". O selo "Em andamento" marca o mês atual e "Sem dados" indica períodos sem lançamentos. As linhas com dados são clicáveis — toque em um mês para abrir o extrato completo daquele período.',
+      },
+      {
+        titulo: 'Tour completo! 🎉',
+        texto:
+          'Você conheceu tudo: Início, Extrato e Histórico. Se precisar de mim, é só tocar no botão com a minha foto no canto da tela. Boa gestão! 🏠',
+      },
+    ],
   },
-  {
-    target: '[data-tour="repasse"]',
-    titulo: 'Seu repasse 💰',
-    texto:
-      'O número mais importante do painel: o valor líquido que você recebe no mês, já com a taxa de gestão da AlugEasy descontada.',
-  },
-  {
-    target: '[data-tour="evolucao"]',
-    titulo: 'Evolução dos últimos 6 meses',
-    texto:
-      'Este gráfico compara faturamento e repasse mês a mês, para você acompanhar a tendência dos seus imóveis ao longo do tempo.',
-  },
-  {
-    target: '[data-tour="ocupacao"]',
-    titulo: 'Mapa de ocupação',
-    texto:
-      'Veja os dias ocupados de cada imóvel no mês e o detalhe de cada reserva: plataforma (Airbnb, Booking...), hóspede, datas e valor líquido.',
-  },
-  {
-    target: '[data-tour="atalhos"]',
-    titulo: 'Acesso rápido',
-    texto:
-      'Atalhos para o extrato completo do mês, o download do PDF de prestação de contas e o histórico dos últimos 12 meses.',
-  },
-  {
-    target: '[data-tour="navegacao"], [data-tour="navegacao-mobile"]',
-    titulo: 'Navegação',
-    texto:
-      'Use o menu para alternar entre Início, Extrato e Histórico. Na aba Extrato você encontra o botão "Baixar PDF" de cada apartamento.',
-  },
-  {
-    titulo: 'Prontinho! 🏠',
-    texto:
-      'Agora é com você. Se precisar de mim, é só tocar no botão verde no canto da tela — estou sempre por aqui para responder suas dúvidas.',
-  },
-]
+}
 
 type Faq = { id: string; pergunta: string; resposta: string[] }
 
@@ -135,6 +240,33 @@ const FAQS: Faq[] = [
     resposta: [
       'Abra a aba Extrato, escolha o mês desejado e toque em "Baixar PDF" no cartão do apartamento.',
       'O arquivo é a prestação de contas completa do mês — pronto para o contador ou para o seu arquivo pessoal.',
+    ],
+  },
+  {
+    id: 'extrato-linhas',
+    pergunta: 'O que significa cada linha do Extrato?',
+    resposta: [
+      '• Faturamento — receita das hospedagens do imóvel no período.',
+      '• Custos — total de despesas; as linhas com "↳" detalham cada categoria (limpeza, manutenção, insumos...).',
+      '• Lucro — faturamento menos os custos.',
+      '• Taxa AlugEasy — o percentual de gestão do seu contrato, aplicado sobre o lucro ou o faturamento.',
+      '• Seu repasse — o valor final que fica com você. Quando os custos ainda não foram lançados, ele aparece como "Estimado".',
+    ],
+  },
+  {
+    id: 'historico-pagina',
+    pergunta: 'Como uso a página Histórico?',
+    resposta: [
+      'A página Histórico mostra a evolução dos últimos 12 meses: um gráfico com o repasse mês a mês e uma tabela com faturamento, custos, lucro e "Seu valor" de cada mês.',
+      'As linhas com dados são clicáveis — toque em um mês para abrir o extrato completo daquele período. O selo "Em andamento" marca o mês atual.',
+    ],
+  },
+  {
+    id: 'gestao-modelo',
+    pergunta: 'O que é Administração e Sublocação?',
+    resposta: [
+      'É o modelo de contrato do seu imóvel com a AlugEasy — ele aparece no cartão de cada apartamento na aba Extrato.',
+      'O modelo define como a taxa de gestão é aplicada no cálculo do seu repasse, conforme o seu contrato.',
     ],
   },
   {
@@ -198,6 +330,7 @@ function AssistenteInner() {
   const [msgs, setMsgs] = useState<Msg[]>([MSG_BOAS_VINDAS])
   const [tourAtivo, setTourAtivo] = useState(false)
   const [passos, setPassos] = useState<TourStep[]>([])
+  const [proximaRota, setProximaRota] = useState<{ rota: string; label: string } | null>(null)
   const [passoIdx, setPassoIdx] = useState(0)
   const [rect, setRect] = useState<Rect | null>(null)
   const msgsRef = useRef<HTMLDivElement>(null)
@@ -215,29 +348,36 @@ function AssistenteInner() {
   }, [noDashboard])
 
   const iniciarTour = useCallback(() => {
-    if (!noDashboard) {
-      // O tour acontece no dashboard — navega e retoma via ?tour=1
+    const config = TOURS[pathname]
+    if (!config) {
+      // Página sem tour próprio — leva para o Início e retoma via ?tour=1
       setAberto(false)
       router.push('/proprietario?tour=1')
       return
     }
-    const disponiveis = TOUR_STEPS.filter(s => !s.target || encontrarAlvo(s.target))
+    const disponiveis = config.steps.filter(s => !s.target || encontrarAlvo(s.target))
     setPassos(disponiveis)
+    setProximaRota(config.proxima ?? null)
     setPassoIdx(0)
     setAberto(false)
     setTourAtivo(true)
-  }, [noDashboard, router])
+  }, [pathname, router])
 
-  /* ── Chegou com ?tour=1 (veio de outra aba): inicia e limpa a URL ── */
+  /* ── Trocou de página: libera novo auto-início ── */
   useEffect(() => {
-    if (!noDashboard || searchParams.get('tour') !== '1') return
+    tourAutoIniciado.current = false
+  }, [pathname])
+
+  /* ── Chegou com ?tour=1 (tour encadeado): inicia e limpa a URL ── */
+  useEffect(() => {
+    if (!TOURS[pathname] || searchParams.get('tour') !== '1') return
     if (tourAutoIniciado.current) return
     tourAutoIniciado.current = true
-    router.replace('/proprietario')
+    router.replace(pathname)
     // pequeno delay para a página assentar antes de medir os alvos
     const t = setTimeout(iniciarTour, 400)
     return () => clearTimeout(t)
-  }, [noDashboard, searchParams, router, iniciarTour])
+  }, [pathname, searchParams, router, iniciarTour])
 
   /* ── Mede e acompanha o alvo do passo atual ── */
   useEffect(() => {
@@ -276,6 +416,14 @@ function AssistenteInner() {
       }])
       setAberto(true)
     }
+  }
+
+  /** Encerra o tour desta página e continua na próxima do encadeamento. */
+  function continuarTour(rota: string) {
+    setTourAtivo(false)
+    setRect(null)
+    localStorage.setItem('alu_tour_visto', '1')
+    router.push(`${rota}?tour=1`)
   }
 
   function perguntar(faq: Faq) {
@@ -434,7 +582,7 @@ function AssistenteInner() {
         }
         .alu-tt-titulo { font-size: 15.5px; font-weight: 700; color: #0f1a2e; margin-bottom: 6px; }
         .alu-tt-texto { font-size: 13px; color: #5a6a82; line-height: 1.6; margin-bottom: 14px; }
-        .alu-tt-foot { display: flex; align-items: center; gap: 8px; }
+        .alu-tt-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .alu-tt-progresso { font-size: 11px; color: #94a3b8; margin-right: auto; }
         .alu-tt-btn {
           font-family: inherit; font-size: 12.5px; font-weight: 600;
@@ -544,9 +692,21 @@ function AssistenteInner() {
                 </button>
               )}
               {ultimo ? (
-                <button className="alu-tt-btn pri" onClick={() => encerrarTour(true)}>
-                  Concluir
-                </button>
+                proximaRota ? (
+                  <>
+                    <button className="alu-tt-btn sec" onClick={() => encerrarTour(true)}>
+                      Concluir
+                    </button>
+                    <button className="alu-tt-btn pri" onClick={() => continuarTour(proximaRota.rota)}>
+                      {proximaRota.label}
+                      <ChevronRight size={13} />
+                    </button>
+                  </>
+                ) : (
+                  <button className="alu-tt-btn pri" onClick={() => encerrarTour(true)}>
+                    Concluir
+                  </button>
+                )
               ) : (
                 <button className="alu-tt-btn pri" onClick={() => setPassoIdx(i => i + 1)}>
                   Próximo

@@ -207,7 +207,7 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
             <h1 className="pg-greeting">Extrato — {labelPeriodo}</h1>
             <p className="pg-greeting-sub">Demonstrativo completo de faturamento, custos e repasse</p>
           </div>
-          <div className="pg-period">
+          <div className="pg-period" data-tour="ext-periodo">
             <MonthYearFilter mes={mes} ano={ano} />
           </div>
         </div>
@@ -219,10 +219,10 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
           </div>
         ) : (
           <>
-            {metricas.map(({ apt, faturamento, totalCustosDisplay, semCustos, lucro, repasse, valorFinal, taxaRepasse, tipoRepasse, custosPorCategoria }) => (
+            {metricas.map(({ apt, faturamento, totalCustosDisplay, semCustos, lucro, repasse, valorFinal, taxaRepasse, tipoRepasse, custosPorCategoria }, idx) => (
               <div className="apt-card" key={apt.id}>
-                {/* Cabeçalho */}
-                <div className="apt-head">
+                {/* Cabeçalho — data-tour apenas no 1º cartão (alvos do tour da ALU) */}
+                <div className="apt-head" data-tour={idx === 0 ? 'ext-card-head' : undefined}>
                   <span className="apt-name">
                     Apto {apt.numero}{apt.empreendimentos?.nome ? ` — ${apt.empreendimentos.nome}` : ''}
                   </span>
@@ -235,13 +235,13 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
                 <div className="apt-body">
 
                   {/* Faturamento */}
-                  <div className="apt-row">
+                  <div className="apt-row" data-tour={idx === 0 ? 'ext-faturamento' : undefined}>
                     <span className="apt-row-label">Faturamento</span>
                     <span className="apt-row-val">R$ {formatBRL(faturamento)}</span>
                   </div>
 
                   {/* Custos — total + breakdown por categoria (todos os lançamentos da planilha) */}
-                  <div className="apt-row">
+                  <div className="apt-row" data-tour={idx === 0 ? 'ext-custos' : undefined}>
                     <span className="apt-row-label">Custos</span>
                     {semCustos
                       ? <span className="apt-row-val muted">Não disponível</span>
@@ -272,13 +272,13 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
                   )}
 
                   {/* Lucro */}
-                  <div className="apt-row">
+                  <div className="apt-row" data-tour={idx === 0 ? 'ext-lucro' : undefined}>
                     <span className="apt-row-label">Lucro</span>
                     <span className="apt-row-val" style={{ color: '#166534' }}>R$ {formatBRL(lucro)}</span>
                   </div>
 
                   {/* Taxa AlugEasy */}
-                  <div className="apt-row" style={{ borderBottom: 'none' }}>
+                  <div className="apt-row" data-tour={idx === 0 ? 'ext-taxa' : undefined} style={{ borderBottom: 'none' }}>
                     <span className="apt-row-label">
                       Taxa AlugEasy ({taxaRepasse}% sobre {tipoRepasse === 'lucro' ? 'lucro' : 'faturamento'})
                     </span>
@@ -289,7 +289,7 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
 
                 {/* Rodapé: SEU REPASSE + Baixar PDF */}
                 <div className="apt-foot">
-                  <div className="apt-foot-left">
+                  <div className="apt-foot-left" data-tour={idx === 0 ? 'ext-repasse' : undefined}>
                     <span className="apt-foot-label">
                       Seu repasse
                       {semCustos && (
@@ -306,6 +306,7 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn-pdf"
+                      data-tour={idx === 0 ? 'ext-pdf' : undefined}
                     >
                       <Download size={14} />
                       Baixar PDF

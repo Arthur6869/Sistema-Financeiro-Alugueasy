@@ -1255,9 +1255,12 @@ Assistente 100% client-side montada no layout do portal (`app/(proprietario)/lay
 
 **Funções:**
 
-1. **Tour guiado** — destaca em sequência os elementos do dashboard marcados com `data-tour`:
-   `periodo` (filtro mês/ano + sync), `kpis`, `repasse`, `evolucao` (gráfico 6 meses), `ocupacao`, `atalhos` e `navegacao`/`navegacao-mobile` (menu desktop/bottom nav). Passos cujo alvo não existe na tela (ex.: mês sem dados) são pulados automaticamente. Fora do dashboard, iniciar o tour navega para `/proprietario?tour=1` e o tour começa sozinho.
-2. **Ajuda rápida** — painel estilo chat com respostas prontas (indicadores, cálculo do repasse, troca de mês, download do PDF no Extrato, painel de ocupação, tempo real, contato).
+1. **Tour guiado por página (encadeado)** — cada página do portal tem seu próprio tour, definido no mapa `TOURS` do componente (chave = pathname). No último passo de cada página, um botão "Continuar" leva à próxima via `?tour=1` (Início → Extrato → Histórico). Alvos por página, marcados com `data-tour`:
+   - `/proprietario`: `periodo`, `kpis`, `repasse`, `evolucao`, `ocupacao`, `atalhos`, `navegacao`/`navegacao-mobile`
+   - `/proprietario/extrato`: `ext-periodo`, `ext-card-head`, `ext-faturamento`, `ext-custos`, `ext-lucro`, `ext-taxa`, `ext-repasse`, `ext-pdf` (marcados apenas no 1º cartão de apartamento)
+   - `/proprietario/historico`: `his-grafico`, `his-tabela`
+   Passos cujo alvo não existe na tela (ex.: mês sem dados) são pulados automaticamente. Em páginas sem tour próprio, iniciar o tour navega para `/proprietario?tour=1`.
+2. **Ajuda rápida** — painel estilo chat com respostas prontas (indicadores, cálculo do repasse, troca de mês, linhas do Extrato, página Histórico, Administração × Sublocação, download do PDF, painel de ocupação, tempo real, contato).
 
 **Comportamento:**
 
@@ -1265,9 +1268,9 @@ Assistente 100% client-side montada no layout do portal (`app/(proprietario)/lay
 - Abre sozinha na **primeira visita** ao `/proprietario` (flag `alu_bemvindo_visto` no localStorage; `alu_tour_visto` marca tour concluído/pulado)
 - Durante o tour a página fica bloqueada por overlay (z-index 99–110) e o alvo recebe spotlight com borda verde
 
-**Manutenção:** ao criar uma nova seção no dashboard, adicionar `data-tour="..."` no elemento e um passo em `TOUR_STEPS`; novas dúvidas frequentes entram no array `FAQS` do componente.
+**Manutenção:** ao criar uma nova seção em qualquer página do portal, adicionar `data-tour="..."` no elemento e um passo no tour daquela rota em `TOURS`; novas dúvidas frequentes entram no array `FAQS` do componente.
 
-**Avatar:** `public/alu-avatar.png` (256×256, recorte do rosto) — usado no botão flutuante, no cabeçalho do painel e no tooltip do tour. Se o arquivo não existir, o componente cai automaticamente no fallback (ícone/letra). A arte completa da mascote (com textos de apresentação) está em `public/alu-apresentacao.png`.
+**Avatar:** `public/alu-avatar.png` (256×256, recorte do rosto) — usado no botão flutuante, no cabeçalho do painel e no tooltip do tour. Se o arquivo não existir, o componente cai automaticamente no fallback (ícone/letra). A arte completa da mascote (com textos de apresentação) está em `public/alu-apresentacao.png` e é exibida na página `/proprietario/bem-vindo` (painel direito em telas largas, no lugar do antigo mockup CSS) junto com um cartão "Conheça a ALU".
 
 ### Como testar
 

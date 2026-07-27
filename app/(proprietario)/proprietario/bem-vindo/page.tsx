@@ -328,6 +328,29 @@ export default async function BemVindoPage() {
           height: 1px; background: #f1f2f5; margin: 24px 0 0;
         }
 
+        /* ──────── ALU: arte de apresentação + cartão de boas-vindas ──────── */
+
+        .bv-mockup.bv-alu-art {
+          padding: 0; overflow: hidden;
+          background: #0d1c3f; border: none; opacity: 1;
+        }
+        .bv-mockup.bv-alu-art img {
+          width: 100%; height: auto; display: block;
+        }
+
+        .bv-alu-row {
+          display: flex; gap: 12px; align-items: center;
+          margin-top: 20px; background: #f0fdf4;
+          border: 1px solid #d1f0db; border-radius: 12px;
+          padding: 12px 14px;
+        }
+        .bv-alu-img {
+          width: 42px; height: 42px; border-radius: 50%;
+          object-fit: cover; flex-shrink: 0;
+        }
+        .bv-alu-title { font-size: 12.5px; font-weight: 700; color: #0f1a2e; }
+        .bv-alu-desc { font-size: 11px; color: #5a6a82; line-height: 1.5; margin-top: 1px; }
+
         /* ──────── RESPONSIVO: telas médias (sem espaço para mockup) ──────── */
         @media (max-width: 1100px) {
           .bv-mockup { display: none; }
@@ -474,6 +497,18 @@ export default async function BemVindoPage() {
               </svg>
             </Link>
 
+            {/* Apresentação da ALU — assistente virtual do portal */}
+            <div className="bv-alu-row">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/alu-avatar.png" alt="ALU — assistente virtual AlugEasy" className="bv-alu-img" />
+              <div>
+                <div className="bv-alu-title">Conheça a ALU, sua assistente</div>
+                <div className="bv-alu-desc">
+                  Ela te guia pelo portal no primeiro acesso e responde suas dúvidas a qualquer momento.
+                </div>
+              </div>
+            </div>
+
             <div className="bv-sep" />
 
             {/* Preview das 3 funcionalidades principais */}
@@ -521,39 +556,10 @@ export default async function BemVindoPage() {
 
           </div>
 
-            {/* ── Mockup do dashboard (visível apenas em telas largas) ── */}
-            <div className="bv-mockup">
-              <div className="bv-mock-header">
-                <span className="bv-mock-label">Pré-visualização</span>
-                <span className="bv-mock-badge">Julho 2026</span>
-              </div>
-              <div className="bv-mock-kpis">
-                <div className="bv-mock-kpi">
-                  <div className="bv-mock-kpi-label">Faturamento</div>
-                  <div className="bv-mock-kpi-val dim">R$ ——</div>
-                </div>
-                <div className="bv-mock-kpi">
-                  <div className="bv-mock-kpi-label">Custos</div>
-                  <div className="bv-mock-kpi-val dim">R$ ——</div>
-                </div>
-                <div className="bv-mock-kpi">
-                  <div className="bv-mock-kpi-label">Lucro líquido</div>
-                  <div className="bv-mock-kpi-val dim">R$ ——</div>
-                </div>
-                <div className="bv-mock-kpi" style={{ background: '#f0fdf4', borderColor: '#d1f0db' }}>
-                  <div className="bv-mock-kpi-label" style={{ color: '#166534' }}>Seu repasse</div>
-                  <div className="bv-mock-kpi-val green">R$ ——</div>
-                </div>
-              </div>
-              <div className="bv-mock-chart-label">Evolução — últimos 6 meses</div>
-              <div className="bv-mock-bars">
-                <div className="bv-mock-bar" style={{ height: '34%' }} />
-                <div className="bv-mock-bar" style={{ height: '52%' }} />
-                <div className="bv-mock-bar" style={{ height: '40%' }} />
-                <div className="bv-mock-bar" style={{ height: '67%' }} />
-                <div className="bv-mock-bar" style={{ height: '48%' }} />
-                <div className="bv-mock-bar hl" style={{ height: '76%' }} />
-              </div>
+            {/* ── Arte de apresentação da ALU (visível apenas em telas largas) ── */}
+            <div className="bv-mockup bv-alu-art">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/alu-apresentacao.png" alt="ALU — assistente virtual AlugEasy: consulte resultados por mês, visualize extratos completos e acompanhe o histórico" />
             </div>
 
           </div>{/* /bv-right-inner */}
