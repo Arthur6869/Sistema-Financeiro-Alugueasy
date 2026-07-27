@@ -1,4 +1,5 @@
 import { CalendarDays } from 'lucide-react'
+import { getTaxasPlataforma } from '@/lib/amenitiz'
 
 type Reserva = {
   booking_id: string
@@ -60,6 +61,10 @@ function dNum(d: string | null): number | null {
 
 function fBRL(v: number): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function fPct(v: number): string {
+  return `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
 }
 
 const MES_ABR = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
@@ -157,6 +162,15 @@ export function OccupancyPanel({ apartamentos, reservas, mes, ano, nomeMes, sinc
           ['FATURAMENTO', `R$ ${fBRL(fatApt)}`, '#0f1a2e'],
         ]
 
+        // Taxas de plataforma do apartamento (Booking varia por empreendimento;
+        // Airbnb respeita a vigência do período exibido — 0% até mai/2026)
+        const taxas = getTaxasPlataforma(apt.empreendimento ?? '', apt.numero, { mes, ano })
+        const taxasItens: { key: string; nome: string; pct: number }[] = [
+          { key: 'booking',   nome: 'Booking',  pct: taxas.booking },
+          { key: 'airbnb',    nome: 'Airbnb',   pct: taxas.airbnb },
+          { key: 'alugueasy', nome: 'AlugEasy', pct: taxas.alugueasy },
+        ]
+
         return (
           <div key={apt.id} style={{ borderTop: aptIdx > 0 ? '8px solid #f4f5f7' : undefined }}>
 
@@ -178,6 +192,25 @@ export function OccupancyPanel({ apartamentos, reservas, mes, ano, nomeMes, sinc
                     <div style={{ fontSize: 14, fontWeight: 700, color: col }}>{val}</div>
                   </div>
                 ))}
+                {/* Taxas de plataforma — badge por plataforma com a cor da legenda */}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 3 }}>TAXAS</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {taxasItens.map(t => {
+                      const c = PLATS[t.key] ?? DEFAULT_PLAT
+                      return (
+                        <span
+                          key={t.key}
+                          title={`Taxa ${c.label}: ${fPct(t.pct)}`}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, border: `1px solid ${c.border}`, color: c.text, borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}
+                        >
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.accent, display: 'inline-block' }} />
+                          {t.nome} {fPct(t.pct)}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 

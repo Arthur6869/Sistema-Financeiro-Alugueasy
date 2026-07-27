@@ -64,6 +64,24 @@ const TAXA_BOOKING_ESPECIFICO: Record<string, number> = {
 const TAXA_AIRBNB = 0.1821
 
 /**
+ * Taxas de plataforma vigentes para um apartamento — para exibição no portal.
+ * `ref` (mes/ano do período visualizado) aplica a vigência histórica:
+ * Airbnb era 0% até mai/2026 (18,21% a partir de jun/2026). mes <= 0 = ano
+ * inteiro (usa a taxa vigente do ano).
+ */
+export function getTaxasPlataforma(
+  empNome: string,
+  aptNumero: string | number,
+  ref?: { mes: number; ano: number }
+): { booking: number; airbnb: number; alugueasy: number } {
+  const emp = (empNome ?? '').toUpperCase().trim()
+  const apt = String(aptNumero ?? '').trim().toUpperCase()
+  const booking = TAXA_BOOKING_ESPECIFICO[`${emp}::${apt}`] ?? TAXA_BOOKING[emp] ?? 0.13
+  const airbnbVigente = !ref || ref.ano > 2026 || (ref.ano === 2026 && (ref.mes >= 6 || ref.mes <= 0))
+  return { booking, airbnb: airbnbVigente ? TAXA_AIRBNB : 0, alugueasy: 0.10 }
+}
+
+/**
  * Extrai o nome do empreendimento do campo individual_room_name.
  * Ex: "Brisas do Lago - Apartamento de 1 Quarto com Vista" → "BRISAS DO LAGO"
  * Ex: "Essence - Studio 204"                               → "ESSENCE"
