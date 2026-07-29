@@ -44,6 +44,16 @@ const TRANSFERENCIAS_ANUNCIO: Array<{
   // Cobranças das reservas antigas mostra "Brisas do Lago - B119"; confirmado
   // pelo usuário em 27/07/2026). LINK 104 começou em 03/05/2026.
   { empNome: 'LINK', aptNum: '104', inicioNovoImovel: '2026-05-03', antigo: { empNome: 'BRISAS', aptNum: 'B119' } },
+  // "Asa Sul 415 - 104" / quarto "SQS 414" (room e4a90e7d): até 12/03/2026 o
+  // anúncio era o "Park Sul Essence - 204" (a aba Cobranças das reservas
+  // antigas mostra "Park Sul Essence - 204"; confirmado pelo usuário em
+  // 29/07/2026 com prints do calendário). O ASA SUL 104 começou em 16/05/2026 —
+  // entre 12/03 e 16/05 o anúncio não teve reserva nenhuma. Este quarto resolve
+  // por amenitiz_room_id (o nome "SQS 414" não casa com nenhum prefixo do
+  // AMENITIZ_EMP_MAP), então aptNum aqui é a chave 'room:<8 primeiros chars>'.
+  // ESSENCE 204 não existe no cadastro → antigo: null (reservas antigas ficam
+  // com apartamento_id nulo, fora de qualquer portal e das diárias).
+  { empNome: 'ASA SUL', aptNum: 'room:e4a90e7d', inicioNovoImovel: '2026-05-16', antigo: null },
 ]
 
 // Unidades que a Amenitiz anuncia separadas mas que no sistema são UM único
