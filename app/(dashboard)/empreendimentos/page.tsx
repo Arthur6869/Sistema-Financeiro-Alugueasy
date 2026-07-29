@@ -228,7 +228,9 @@ export default async function EmpreendimentosPage({
     .eq('id', user.id)
     .single()
 
-  const role = profile?.role ?? 'analista'
+  // FAIL-CLOSED: na dúvida, papel de menor privilégio (admin = somente leitura),
+  // nunca 'analista' (que habilita escrita). O middleware/layout já barram não-internos.
+  const role = profile?.role ?? 'admin'
 
   const { emp: empId, apt: aptId, mes: mesParam, ano: anoParam, view } = await searchParams
   const now = new Date()

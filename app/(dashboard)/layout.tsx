@@ -20,11 +20,15 @@ export default async function DashboardLayout({
     .eq('id', user.id)
     .single()
 
-  const role = profile?.role ?? 'analista'
+  // FAIL-CLOSED: só admin/analista/proprietario têm acesso. Qualquer outro papel
+  // (ou profile ausente — ex.: auto-cadastro) é barrado. O middleware já bloqueia,
+  // isto é defesa em profundidade caso a rota seja atingida direto.
+  const role = profile?.role
   const fullName = profile?.full_name ?? user.email ?? 'Usuário'
   const email = user.email ?? ''
 
   if (role === 'proprietario') redirect('/proprietario')
+  if (role !== 'admin' && role !== 'analista') redirect('/login?erro=sem_acesso')
 
   return (
     <div className="flex min-h-screen bg-gray-50">
