@@ -58,6 +58,86 @@ const APELIDOS_APARTAMENTO: Record<string, string> = {
   'METROPOLITAN::1701A': '1701 - 1701A',
 }
 
+// Ajustes manuais de valor líquido definidos pela gestão (booking_id → valor
+// fixo em R$). Aplicados em TODO sync: o upsert reescreve valor_liquido com o
+// valor daqui, então o ajuste sobrevive aos crons de 5 min e diário — UPDATE
+// direto no banco era revertido no ciclo seguinte (aconteceu com a reserva
+// 3765951988, ajustada via script em jul/2026 e desfeita pelo sync).
+// afetaDiarias: se true, o valor ajustado também substitui o original na
+// agregação de diárias da competência do check-in; se false, a diária mantém o
+// valor da API (ex.: prestação do mês do check-in já entregue).
+// Aplicação imediata (sem esperar o cron): scripts/ajuste-faturamento-portal-jun2026.ts.
+const AJUSTES_VALOR_LIQUIDO: Record<string, { valor: number; afetaDiarias: boolean }> = {
+  // marlene cunha, EASY 117 (11/05→11/06/2026): NÃO ajustar. A reserva ficou em
+  // 18.414,00 para a fração de junho exibir 5.940,00 (×10/31), mas maio detém 21
+  // das 31 noites e o painel de ocupação de maio inflava para 12.474,00 —
+  // divergindo do faturamento de 6.137,99 fechado com o cliente. Os dois meses
+  // são mutuamente exclusivos nesta reserva: maio certo exige o valor da API
+  // (6.137,98 → mai 4.157,99 / jun 1.980,00), junho certo exigiria 18.414,00.
+  // Decisão da gestão em 28/07/2026: maio prevalece.
+  // Faturamento de junho/2026 definido pela gestão em 28/07/2026 — a diária de
+  // junho (KPI do portal/prestação) E o painel de ocupação de junho fecham nos
+  // totais abaixo. Reservas que cruzam a virada foram zeradas com o valor
+  // movido para a reserva de calibração (só junho) — efeito aceito pela gestão:
+  // a fração de julho delas sai da ocupação de julho (cards R$ 0,00).
+  //
+  // ATIVO APENAS O ASA SUL 104 (decisão de 29/07/2026): o pedido do dia foi
+  // fechar junho da proprietária desse imóvel em R$ 6.643,14. Os outros cinco
+  // alvos de 28/07 seguem comentados — descomentar move o KPI e o painel de
+  // outros proprietários, então exige decisão explícita da gestão.
+  // '1180749274': { valor: 5583.60, afetaDiarias: true }, // LINK 104 calibração → jun 7.887,62
+  // '8999278194': { valor: 0,       afetaDiarias: true }, // LINK 104 crosser jun→jul zerado
+  // '3806962788': { valor: 455.65,  afetaDiarias: true }, // ATHOS 910   → jun 6.897,47
+  // '6210120260': { valor: 973.59,  afetaDiarias: true }, // FUSION 722 calibração → jun 5.716,12
+  // '8394481973': { valor: 0,       afetaDiarias: true }, // FUSION 722 crosser jun→jul zerado
+  // '516241750':  { valor: 298.75,  afetaDiarias: true }, // FUSION 1415 → jun 5.714,65
+  // '7872803089': { valor: 464.28,  afetaDiarias: true }, // FUSION 1501 → jun 5.582,60
+  '4806953104': { valor: 0,       afetaDiarias: true }, // ASA SUL 104 → jun 6.643,14
+  '1269962843': { valor: 0,       afetaDiarias: true }, // ASA SUL 104 (idem)
+  '2706349721': { valor: 1882.62, afetaDiarias: true }, // ASA SUL 104 calibração
+  '3766741104': { valor: 0,       afetaDiarias: true }, // ASA SUL 104 crosser jun→jul zerado
+  // Check-in em MAIO: afetaDiarias false preserva a diária de maio (prestação
+  // entregue); some apenas dos painéis de ocupação de maio/junho.
+  '5607150631': { valor: 0,       afetaDiarias: false }, // ASA SUL 104 crosser mai→jun zerado
+  // Sub-centavo: a soma decimal de junho dava exatamente x,145 (fronteira de
+  // arredondamento); valores redondos tiram a soma da fronteira sem mudar a
+  // exibição individual (R$ 413,04 / R$ 426,94 permanecem).
+  '8546214963': { valor: 413.04,  afetaDiarias: true }, // ASA SUL 104
+  '6672564913': { valor: 426.94,  afetaDiarias: true }, // ASA SUL 104
+}
+
+// Faturamento mensal fechado pela gestão (fonte: planilha de prestação de
+// contas). Sobrescreve o valor da diária do período — que é o KPI "Faturamento"
+// do portal em mês fechado (Histórico e Rentabilidade) e a base do repasse.
+// Reaplicado em todo sync completo, então sobrevive ao cron das 05:00 (a janela
+// móvel cobre o mês corrente + 2 anteriores e regenera as diárias do zero).
+//
+// Quando usar em vez de AJUSTES_VALOR_LIQUIDO: a diária soma o valor INTEGRAL
+// da reserva na competência do check-in, sem ratear noites. Um mês que recebe a
+// fração de uma reserva iniciada no mês anterior nunca fecha no total da
+// planilha ajustando reservas individuais — só um alvo direto resolve.
+//
+// Limitação aceita: não altera amenitiz_reservas, então o painel de reservas
+// (que rateia por noites) pode não somar exatamente este total.
+//
+// Chave: 'EMPREENDIMENTO::numero::mes/ano'.
+// Aplicação imediata (sem esperar o cron): scripts/ajuste-faturamento-mensal.ts.
+// Sem alvos ativos por ora (decisão de 29/07/2026): o mecanismo fica pronto,
+// mas os alvos do EASY 117 seguem comentados para não mover o KPI do Leonardo
+// junto com o ajuste do ASA SUL 104 — descomentar exige decisão da gestão.
+const FATURAMENTO_MENSAL: Record<string, number> = {
+  // EASY 117 (Leonardo) — planilha de maio/2026: 594,00 (3 de 5 noites da
+  // reserva 29/04→04/05) + 1.386,00 (04/05→11/05) + 4.157,99 (21 de 31 noites
+  // da reserva 11/05→11/06). A diária fechava em 7.523,98 porque somava a
+  // reserva de maio→junho integral e ignorava a fração vinda de abril.
+  // 'EASY::117::5/2026': 6137.99,
+  // EASY 117 (Leonardo) — junho/2026 fechado pela gestão. Junho não tinha linha
+  // de diária (KPI exibia R$ 0,00): a única reserva do mês é a 3765951988, que
+  // tem check-in em maio, e a agregação só conta reservas com check-in no
+  // próprio mês. Sem um alvo direto, junho fica zerado para sempre.
+  // 'EASY::117::6/2026': 5940.00,
+}
+
 function parseNomeQuarto(roomName: string): { dbEmpNome: string; aptNumero: string } | null {
   if (!roomName) return null
   const parts = roomName.trim().split(' - ')
@@ -244,6 +324,12 @@ export async function runAmenitizSync(
 
     const { valorLiquido, taxaAplicada, plataformaNormalizada } = calcularValorLiquido(valorBruto, r.source, empNomeDoRoom, aptNumRoom)
 
+    // Ajuste manual da gestão: força o valor líquido gravado na reserva; com
+    // afetaDiarias o valor ajustado também entra na agregação de diárias.
+    const ajusteManual = AJUSTES_VALOR_LIQUIDO[String(r.booking_id)]
+    const valorLiquidoReserva = ajusteManual ? ajusteManual.valor : valorLiquido
+    const valorLiquidoDiaria  = ajusteManual?.afetaDiarias ? ajusteManual.valor : valorLiquido
+
     const nomeHospede = [`${r.booker.first_name} ${r.booker.last_name}`.trim(), r.booker.phone?.trim() ? `— ${r.booker.phone.trim()}` : ''].filter(Boolean).join(' ')
 
     // Resolver aptInfo ANTES do upsert para incluir apartamento_id como FK real
@@ -270,7 +356,7 @@ export async function runAmenitizSync(
       status: r.status, source: r.source, plataforma_normalizada: plataformaNormalizada,
       checkin: r.checkin, checkout: r.checkout,
       individual_room_number: aptNumRoom, individual_room_name: roomName,
-      valor_bruto: valorBruto, taxa_aplicada: taxaAplicada, valor_liquido: valorLiquido,
+      valor_bruto: valorBruto, taxa_aplicada: taxaAplicada, valor_liquido: valorLiquidoReserva,
       nome_hospede: nomeHospede, email_hospede: r.booker.email, phone_hospede: r.booker.phone,
       mes_competencia: mesCompetencia, ano_competencia: anoCompetencia, raw_data: r,
     }
@@ -307,11 +393,11 @@ export async function runAmenitizSync(
       porAptId[key] = { aptId: aptInfo.id, empNome: aptInfo.empNome, aptNum: aptNumRoom, tipoGestao: aptInfo.tipoGestao, totalBruto: 0, totalLiquido: 0, countReservas: 0 }
     }
     porAptId[key].totalBruto   += valorBruto
-    porAptId[key].totalLiquido += valorLiquido
+    porAptId[key].totalLiquido += valorLiquidoDiaria
     porAptId[key].countReservas++
     totalReservas++
     totalBruto   += valorBruto
-    totalLiquido += valorLiquido
+    totalLiquido += valorLiquidoDiaria
   }
 
   // Backfill seguro: remove dos lotes os booking_ids já existentes, preservando
@@ -365,6 +451,22 @@ export async function runAmenitizSync(
       data:           dataInicio,
       tipo_gestao:    d.tipoGestao,
     }))
+
+    // Alvo da gestão sobrescreve o total agregado. Aplicado aqui (e não na
+    // agregação por reserva) para valer também quando o mês não tem nenhuma
+    // reserva com check-in no período — caso em que não existe linha em
+    // porAptId e a diária simplesmente não seria gravada.
+    for (const [chave, valor] of Object.entries(FATURAMENTO_MENSAL)) {
+      const [empNome, aptNum, competencia] = chave.split('::')
+      if (competencia !== `${mes}/${ano}`) continue
+      // Fora do empFiltro deste run (ou apartamento inexistente): as diárias
+      // dele não foram deletadas acima, então não há o que sobrescrever.
+      const info = lookupApt(aptMapCompleto, empNome, aptNum)
+      if (!info) continue
+      const existente = diariasParaInserir.find(d => d.apartamento_id === info.id)
+      if (existente) existente.valor = valor
+      else diariasParaInserir.push({ apartamento_id: info.id, valor, data: dataInicio, tipo_gestao: info.tipoGestao })
+    }
 
     if (diariasParaInserir.length > 0) {
       const { error } = await supabase.from('diarias').insert(diariasParaInserir)
