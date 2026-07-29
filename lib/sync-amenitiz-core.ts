@@ -106,9 +106,15 @@ const AJUSTES_VALOR_LIQUIDO: Record<string, { valor: number; afetaDiarias: boole
   '1269962843': { valor: 0,       afetaDiarias: true }, // ASA SUL 104 (idem)
   '2706349721': { valor: 1882.62, afetaDiarias: true }, // ASA SUL 104 calibração
   '3766741104': { valor: 0,       afetaDiarias: true }, // ASA SUL 104 crosser jun→jul zerado
-  // Check-in em MAIO: afetaDiarias false preserva a diária de maio (prestação
-  // entregue); some apenas dos painéis de ocupação de maio/junho.
-  '5607150631': { valor: 0,       afetaDiarias: false }, // ASA SUL 104 crosser mai→jun zerado
+  // Faturamento de MAIO/2026 do ASA SUL 104 fechado pela gestão em 29/07/2026:
+  // R$ 3.806,42 no KPI e no painel. Maio só conta reservas a partir de 16/05
+  // (ver TRANSFERENCIAS_ANUNCIO); as ativas somavam 1.890,00, então a diferença
+  // vai para a reserva de calibração, que fica contida dentro de maio.
+  '8734719794': { valor: 2994.41, afetaDiarias: true },  // ASA SUL 104 calibração → mai 3.806,42
+  // Check-in em MAIO, checkout em junho. afetaDiarias passou a true em
+  // 29/07/2026: enquanto era false, a diária de maio somava esta reserva pelo
+  // valor da API (675,00) e maio fechava 4.481,42 em vez do alvo.
+  '5607150631': { valor: 0,       afetaDiarias: true },  // ASA SUL 104 crosser mai→jun zerado
   // Sub-centavo: a soma decimal de junho dava exatamente x,145 (fronteira de
   // arredondamento); valores redondos tiram a soma da fronteira sem mudar a
   // exibição individual (R$ 413,04 / R$ 426,94 permanecem).
