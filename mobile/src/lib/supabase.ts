@@ -1,7 +1,7 @@
 import 'react-native-url-polyfill/auto'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupportedStorage } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
-import { AppState } from 'react-native'
+import { AppState, Platform } from 'react-native'
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
@@ -14,7 +14,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 }
 
 /**
- * Armazenamento da sessão no aparelho.
+ * Armazenamento da sessão no aparelho (só Android/iOS).
  *
  * O SecureStore guarda no Keychain (iOS) / Keystore (Android) — criptografado
  * pelo sistema operacional e inacessível a outros apps. É o lugar certo para o
@@ -28,7 +28,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
  */
 const TAMANHO_PEDACO = 1800
 
-const SecureStoreAdapter = {
+const SecureStoreAdapter: SupportedStorage = {
   async getItem(chave: string): Promise<string | null> {
     const qtd = await SecureStore.getItemAsync(`${chave}__n`)
     if (!qtd) {
@@ -46,7 +46,7 @@ const SecureStoreAdapter = {
   },
 
   async setItem(chave: string, valor: string): Promise<void> {
-    await this.removeItem(chave)
+    await SecureStoreAdapter.removeItem(chave)
 
     const pedacos: string[] = []
     for (let i = 0; i < valor.length; i += TAMANHO_PEDACO) {
@@ -71,14 +71,47 @@ const SecureStoreAdapter = {
   },
 }
 
+/**
+ * Só existe memória enquanto o processo vive. Usado na renderização de servidor
+ * do expo-router (`expo start --web` monta a página em Node): ali não há nem
+ * SecureStore — que é código nativo — nem `localStorage`, e tentar usar
+ * qualquer um dos dois derruba o servidor antes de a página aparecer.
+ */
+function armazenamentoEmMemoria(): SupportedStorage {
+  const mapa = new Map<string, string>()
+  return {
+    getItem: (k) => mapa.get(k) ?? null,
+    setItem: (k, v) => { mapa.set(k, v) },
+    removeItem: (k) => { mapa.delete(k) },
+  }
+}
+
+const ehWeb = Platform.OS === 'web'
+const temNavegador = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+
+/**
+ * Escolha do armazenamento por ambiente:
+ *   celular  -> SecureStore fatiado (criptografado pelo sistema)
+ *   web      -> localStorage padrão do supabase-js
+ *   servidor -> memória, e sem persistir sessão
+ *
+ * A versão web serve para desenvolvimento e para testar quando o Expo Go do
+ * aparelho está desatualizado. Em produção o app roda nativo.
+ */
+const armazenamento: SupportedStorage = ehWeb
+  ? (temNavegador ? window.localStorage : armazenamentoEmMemoria())
+  : SecureStoreAdapter
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: SecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
+    storage: armazenamento,
+    // Sem navegador (renderização em Node) não há onde persistir nem faz
+    // sentido tentar renovar token: a página é montada e descartada.
+    autoRefreshToken: !ehWeb || temNavegador,
+    persistSession: !ehWeb || temNavegador,
     // Só faz sentido na web, onde o token volta na URL depois de um OAuth.
     // Em app nativo isso precisa ficar desligado.
-    detectSessionInUrl: false,
+    detectSessionInUrl: ehWeb && temNavegador,
   },
 })
 
@@ -87,8 +120,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
  * sistema operacional congela esses timers — e ao voltar, a sessão pode já ter
  * expirado sem que nada tenha tentado renovar. Religar o refresh no retorno
  * evita que o usuário seja deslogado do nada ao reabrir o app.
+ *
+ * Só em celular: na web não existe ciclo de vida de app em segundo plano, e no
+ * servidor não existe AppState nenhum.
  */
-AppState.addEventListener('change', (estado) => {
-  if (estado === 'active') supabase.auth.startAutoRefresh()
-  else supabase.auth.stopAutoRefresh()
-})
+if (!ehWeb) {
+  AppState.addEventListener('change', (estado) => {
+    if (estado === 'active') supabase.auth.startAutoRefresh()
+    else supabase.auth.stopAutoRefresh()
+  })
+}
