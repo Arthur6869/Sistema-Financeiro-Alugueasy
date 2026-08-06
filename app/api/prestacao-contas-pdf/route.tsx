@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessaoApi } from '@/lib/supabase/api-client'
+import { cabecalhosCors, respostaPreflight } from '@/lib/cors'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { pdf } from '@react-pdf/renderer'
 import { PrestacaoContasPdf } from '@/components/pdf/prestacao-contas-pdf'
@@ -13,7 +14,19 @@ function slugify(v: string) {
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
+// O navegador dispara um preflight antes de um GET que leva header Authorization.
+// Sem esta resposta, a versão web do app nem chega a fazer o download.
+export async function OPTIONS(request: NextRequest) {
+  return respostaPreflight(request)
+}
+
 export async function GET(request: NextRequest) {
+  // Toda resposta — inclusive as de erro — precisa dos headers de CORS, senão o
+  // navegador bloqueia a leitura e o app só vê "erro de rede", sem o motivo.
+  const cors = cabecalhosCors(request)
+  const erro = (mensagem: string, status: number) =>
+    NextResponse.json({ error: mensagem }, { status, headers: cors })
+
   try {
     const { searchParams } = new URL(request.url)
     const apartamentoId = searchParams.get('apartamento_id')
@@ -21,19 +34,19 @@ export async function GET(request: NextRequest) {
     const ano = parseInt(searchParams.get('ano') || '')
 
     if (!apartamentoId || !mes || !ano)
-      return NextResponse.json({ error: 'apartamento_id, mes e ano são obrigatórios' }, { status: 400 })
+      return erro('apartamento_id, mes e ano são obrigatórios', 400)
 
     // Auth via sessão de cookie (web) ou Authorization: Bearer (app mobile)
     const { supabase, userId, role, ativo } = await getSessaoApi(request)
     if (!userId)
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+      return erro('Não autenticado', 401)
 
     // Verificar ownership: proprietário só acessa seus próprios apartamentos
     if (role === 'proprietario') {
       // Conta suspensa não baixa prestação de contas. O proxy.ts checa `ativo`,
       // mas o matcher exclui /api — e um app mobile nunca passa pelo proxy.
       if (!ativo)
-        return NextResponse.json({ error: 'Conta desativada' }, { status: 403 })
+        return erro('Conta desativada', 403)
 
       const { count } = await supabase
         .from('proprietario_apartamentos')
@@ -42,9 +55,9 @@ export async function GET(request: NextRequest) {
         .eq('apartamento_id', apartamentoId)
         .eq('ativo', true)
       if (!count || count === 0)
-        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        return erro('Acesso negado', 403)
     } else if (!role || !['admin', 'analista'].includes(role)) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+      return erro('Acesso negado', 403)
     }
 
     // All data via admin client (bypasses RLS — autorização já verificada acima)
@@ -78,7 +91,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (aptErr || !aptRaw)
-      return NextResponse.json({ error: 'Apartamento não encontrado' }, { status: 404 })
+      return erro('Apartamento não encontrado', 404)
 
     const apt = aptRaw as unknown as AptRow
 
@@ -296,10 +309,11 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${fileName}"`,
+        ...cabecalhosCors(request),
       },
     })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Erro ao gerar o PDF'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return erro(msg, 500)
   }
 }

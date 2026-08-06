@@ -44,7 +44,17 @@ export async function baixarPrestacaoContas(
       URL.revokeObjectURL(link.href)
       return { erro: null }
     } catch (e) {
-      return { erro: e instanceof Error ? e.message : 'Falha ao baixar o PDF.' }
+      // Um fetch cross-origin bloqueado pelo navegador chega aqui como
+      // "Failed to fetch", sem status nem corpo — a mensagem crua não diz nada.
+      // No aplicativo nativo isso não acontece: CORS é regra de navegador.
+      const bruto = e instanceof Error ? e.message : ''
+      if (/failed to fetch|networkerror|load failed/i.test(bruto)) {
+        return {
+          erro: 'O navegador bloqueou o download (CORS). No celular funciona normalmente — '
+            + 'na versão web, é preciso que o site esteja publicado com a liberação de origem.',
+        }
+      }
+      return { erro: bruto || 'Falha ao baixar o PDF.' }
     }
   }
 
