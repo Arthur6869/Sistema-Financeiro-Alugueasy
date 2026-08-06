@@ -11,6 +11,7 @@ import { CORES, FONTES, moeda, MESES, MESES_ABREV } from '@/constants/tema'
 import { KpiCard, KpiRepasseHero } from '@/components/kpi-card'
 import { Painel, Vazio, GraficoEvolucao } from '@/components/painel'
 import { BottomNav } from '@/components/bottom-nav'
+import { PainelOcupacao, type ReservaOcupacao, type AptoOcupacao } from '@/components/ocupacao'
 // Mesma função que gera os números do portal e do PDF de prestação de contas.
 // Não é uma cópia: o Metro resolve `@sistema` para a pasta lib/ do sistema web
 // (ver metro.config.js). Se a regra de repasse mudar lá, o app acompanha.
@@ -40,6 +41,9 @@ export default function Proprietario() {
   const [kpis, setKpis] = useState<KPIsResult | null>(null)
   const [imoveis, setImoveis] = useState<LinhaImovel[]>([])
   const [historico, setHistorico] = useState<PontoHistorico[]>([])
+  const [reservasPainel, setReservasPainel] = useState<ReservaOcupacao[]>([])
+  const [aptosPainel, setAptosPainel] = useState<AptoOcupacao[]>([])
+  const [mesSincronizado, setMesSincronizado] = useState(false)
   const [semDados, setSemDados] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [atualizando, setAtualizando] = useState(false)
@@ -99,8 +103,9 @@ export default function Proprietario() {
         supabase.from('custos_proprietario').select('apartamento_id, valor, tipo_gestao')
           .in('apartamento_id', aptIds).eq('mes', mes).eq('ano', ano),
         supabase.from('amenitiz_reservas')
-          .select('apartamento_id, checkin, checkout, valor_liquido, status')
-          .in('apartamento_id', aptIds).lte('checkin', dataFim).gte('checkout', dataInicio),
+          .select('booking_id, apartamento_id, checkin, checkout, valor_liquido, status, plataforma_normalizada, nome_hospede')
+          .in('apartamento_id', aptIds).lte('checkin', dataFim).gte('checkout', dataInicio)
+          .order('checkin', { ascending: true }),
       ])
       if (diariasRes.error) throw diariasRes.error
       if (reservasRes.error) throw reservasRes.error
@@ -113,6 +118,8 @@ export default function Proprietario() {
 
       const reservas = (reservasRes.data ?? []).flatMap(r => {
         let valor = r.valor_liquido
+        let checkin = r.checkin
+        let checkout = r.checkout
         if (r.checkin && r.checkout && r.valor_liquido != null) {
           const ci = new Date(r.checkin + 'T00:00:00').getTime()
           const co = new Date(r.checkout + 'T00:00:00').getTime()
@@ -121,10 +128,32 @@ export default function Proprietario() {
           if (noitesNoMes <= 0) return []
           if (noitesTotais > 0 && noitesNoMes < noitesTotais) {
             valor = (noitesNoMes / noitesTotais) * r.valor_liquido
+            // Recorta as datas ao mês para a grade de ocupação não vazar
+            if (ci < primeiroDiaMs) checkin = dataInicio
+            if (co > proximoMesMs) checkout = dataFim
           }
         }
-        return [{ ...r, valor_liquido: valor }]
+        return [{ ...r, checkin, checkout, valor_liquido: valor }]
       })
+
+      // Painel de ocupação: só reservas ativas, com datas já recortadas ao mês.
+      setReservasPainel(reservas
+        .filter(r => !['cancelled', 'canceled', 'no_show'].includes(String(r.status ?? '').toLowerCase()))
+        .map(r => ({
+          booking_id: r.booking_id ?? '',
+          apartamento_id: r.apartamento_id ?? '',
+          checkin: r.checkin,
+          checkout: r.checkout,
+          plataforma_normalizada: r.plataforma_normalizada,
+          valor_liquido: r.valor_liquido,
+          nome_hospede: r.nome_hospede,
+        })))
+      setAptosPainel(apartamentos.map(a => ({
+        id: a.id, numero: a.numero, empreendimento: a.empreendimento,
+      })))
+
+      const { data: sincronizado } = await supabase.rpc('periodo_sincronizado', { p_mes: mes, p_ano: ano })
+      setMesSincronizado(sincronizado === true)
 
       const diarias = diariasRes.data ?? []
       const custos = custosRes.data ?? []
@@ -281,6 +310,15 @@ export default function Proprietario() {
               icone="↗"
               corIconeFundo={CORES.iconeLucroFundo}
               estilo={{ marginBottom: 16 }}
+            />
+
+            <PainelOcupacao
+              apartamentos={aptosPainel}
+              reservas={reservasPainel}
+              mes={mes}
+              ano={ano}
+              nomeMes={MESES[mes - 1]}
+              sincronizado={mesSincronizado}
             />
 
             <Painel titulo="Evolução dos últimos 6 meses" subtitulo="Faturamento e repasse mês a mês">
