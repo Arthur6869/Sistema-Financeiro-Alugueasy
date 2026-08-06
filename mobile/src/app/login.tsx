@@ -5,7 +5,7 @@ import {
 } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useAuth } from '@/lib/auth'
-import { CORES } from '@/constants/tema'
+import { CORES, FONTES } from '@/constants/tema'
 
 /**
  * Login único para equipe e proprietário.
@@ -112,24 +112,24 @@ export default function Login() {
 const estilos = StyleSheet.create({
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   cabecalho: { alignItems: 'center', marginBottom: 32 },
-  marca: { color: CORES.branco, fontSize: 34, fontWeight: '700', letterSpacing: 0.5 },
-  subtitulo: { color: '#c6d3e6', fontSize: 14, marginTop: 8, textAlign: 'center' },
-  cartao: { backgroundColor: CORES.branco, borderRadius: 20, padding: 24 },
-  rotulo: { fontSize: 12.5, fontWeight: '600', color: CORES.textoFraco, marginBottom: 6 },
+  marca: { color: CORES.branco, fontSize: 36, fontFamily: FONTES.serifada, letterSpacing: 0.5 },
+  subtitulo: { color: '#c6d3e6', fontSize: 13.5, fontFamily: FONTES.regular, marginTop: 8, textAlign: 'center' },
+  cartao: { backgroundColor: CORES.branco, borderRadius: 18, padding: 24, borderWidth: 1, borderColor: CORES.borda },
+  rotulo: { fontSize: 10.5, fontFamily: FONTES.bold, letterSpacing: 0.6, textTransform: 'uppercase', color: CORES.textoApagado, marginBottom: 7 },
   campo: {
     borderWidth: 1, borderColor: CORES.borda, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: CORES.texto,
+    paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: CORES.texto, fontFamily: FONTES.regular,
     backgroundColor: '#fbfcfd',
   },
   caixaErro: {
     marginTop: 16, backgroundColor: '#fdf2f2', borderWidth: 1,
     borderColor: '#f7d4d6', borderRadius: 10, padding: 12,
   },
-  textoErro: { color: CORES.vermelho, fontSize: 13, lineHeight: 18 },
+  textoErro: { color: CORES.vermelho, fontSize: 13, fontFamily: FONTES.regular, lineHeight: 18 },
   botao: {
     marginTop: 22, backgroundColor: CORES.azul, borderRadius: 12,
     paddingVertical: 15, alignItems: 'center', justifyContent: 'center',
   },
-  textoBotao: { color: CORES.branco, fontSize: 15.5, fontWeight: '700' },
-  ajuda: { marginTop: 18, fontSize: 12, color: CORES.textoApagado, textAlign: 'center', lineHeight: 17 },
+  textoBotao: { color: CORES.branco, fontSize: 15, fontFamily: FONTES.bold },
+  ajuda: { marginTop: 18, fontSize: 12, fontFamily: FONTES.regular, color: CORES.textoApagado, textAlign: 'center', lineHeight: 17 },
 })

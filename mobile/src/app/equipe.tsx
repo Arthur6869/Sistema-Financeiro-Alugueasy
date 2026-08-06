@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
-  RefreshControl, Pressable, SafeAreaView,
+  RefreshControl, Pressable,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { supabase } from '@/lib/supabase'
 import { useAuth, ehEquipe } from '@/lib/auth'
-import { CORES, moeda, MESES } from '@/constants/tema'
+import { CORES, FONTES, moeda, MESES } from '@/constants/tema'
+import { KpiCard } from '@/components/kpi-card'
+import { Painel, Vazio } from '@/components/painel'
 
 /**
- * Painel da equipe interna.
+ * Painel da equipe interna, no mesmo visual do dashboard web.
  *
  * Analista e admin leem tudo; a diferença entre eles é escrita, e o app hoje só
  * lê. Quando entrar edição, lembrar que `admin` é somente leitura por desenho —
@@ -17,6 +20,7 @@ import { CORES, moeda, MESES } from '@/constants/tema'
  */
 export default function Equipe() {
   const { perfil, carregando: carregandoAuth, sair } = useAuth()
+  const insets = useSafeAreaInsets()
 
   const hoje = new Date()
   const [mes, setMes] = useState(hoje.getMonth() + 1)
@@ -44,7 +48,6 @@ export default function Equipe() {
         supabase.from('amenitiz_reservas').select('id', { count: 'exact', head: true })
           .gte('checkin', inicio).lte('checkin', fim),
       ])
-
       if (aptsRes.error) throw aptsRes.error
       if (diariasRes.error) throw diariasRes.error
 
@@ -84,39 +87,26 @@ export default function Equipe() {
   }, [perfil, buscar])
 
   function mudarMes(delta: number) {
-    let m = mes + delta
-    let a = ano
+    let m = mes + delta, a = ano
     if (m < 1) { m = 12; a -= 1 }
     if (m > 12) { m = 1; a += 1 }
     setMes(m); setAno(a)
   }
 
-  return (
-    <SafeAreaView style={estilos.tela}>
-      <View style={estilos.cabecalho}>
-        <View style={{ flex: 1 }}>
-          <Text style={estilos.ola}>
-            {perfil?.full_name} · {perfil?.role === 'admin' ? 'Admin (leitura)' : 'Analista'}
-          </Text>
-          <Text style={estilos.marca}>Painel AlugEasy</Text>
-        </View>
-        <Pressable onPress={() => sair().then(() => router.replace('/login'))} hitSlop={10}>
-          <Text style={estilos.sair}>Sair</Text>
-        </Pressable>
-      </View>
+  const periodo = `${MESES[mes - 1]} ${ano}`
+  const totalEmp = porEmpreendimento.reduce((s, x) => s + x.valor, 0)
 
-      <View style={estilos.seletorMes}>
-        <Pressable onPress={() => mudarMes(-1)} hitSlop={12} style={estilos.seta}>
-          <Text style={estilos.setaTexto}>‹</Text>
-        </Pressable>
-        <Text style={estilos.mesTexto}>{MESES[mes - 1]} {ano}</Text>
-        <Pressable onPress={() => mudarMes(1)} hitSlop={12} style={estilos.seta}>
-          <Text style={estilos.setaTexto}>›</Text>
+  return (
+    <View style={e.tela}>
+      <View style={[e.barraTopo, { paddingTop: insets.top + 12 }]}>
+        <Text style={e.marca}>AlugEasy</Text>
+        <Pressable onPress={() => sair().then(() => router.replace('/login'))} hitSlop={10}>
+          <Text style={e.sair}>Sair</Text>
         </Pressable>
       </View>
 
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 40 }}
         refreshControl={
           <RefreshControl
             refreshing={atualizando}
@@ -125,89 +115,136 @@ export default function Equipe() {
           />
         }
       >
+        <View style={e.saudacaoBloco}>
+          <Text style={e.saudacao}>Painel de gestão</Text>
+          <Text style={e.saudacaoSub}>
+            {perfil?.full_name} · {perfil?.role === 'admin' ? 'Admin (somente leitura)' : 'Analista'}
+          </Text>
+        </View>
+
+        <View style={e.seletor}>
+          <Pressable onPress={() => mudarMes(-1)} hitSlop={12} style={e.seta}>
+            <Text style={e.setaTexto}>‹</Text>
+          </Pressable>
+          <Text style={e.periodoTexto}>{periodo}</Text>
+          <Pressable onPress={() => mudarMes(1)} hitSlop={12} style={e.seta}>
+            <Text style={e.setaTexto}>›</Text>
+          </Pressable>
+        </View>
+
         {carregando ? (
           <ActivityIndicator color={CORES.azul} style={{ marginTop: 48 }} />
         ) : erro !== '' ? (
-          <View style={estilos.caixaErro}><Text style={estilos.textoErro}>{erro}</Text></View>
+          <View style={e.caixaErro}><Text style={e.textoErro}>{erro}</Text></View>
         ) : (
           <>
-            <View style={estilos.faturamentoCartao}>
-              <Text style={estilos.rotuloGrande}>Faturamento do mês</Text>
-              <Text style={estilos.valorGrande}>{moeda(kpis.faturamento)}</Text>
+            <KpiCard
+              rotulo="Faturamento do mês"
+              valor={moeda(kpis.faturamento)}
+              rodape={periodo}
+              corBarra={CORES.barraFaturamento}
+              icone="↗"
+              corIconeFundo={CORES.iconeFaturamentoFundo}
+              estilo={{ marginBottom: 14 }}
+            />
+
+            <View style={e.grade}>
+              <KpiCard
+                rotulo="Diárias"
+                valor={String(kpis.diarias)}
+                rodape="lançadas no mês"
+                corBarra={CORES.barraLucro}
+                icone="▤"
+                corIconeFundo={CORES.iconeLucroFundo}
+                estilo={e.meia}
+              />
+              <KpiCard
+                rotulo="Reservas"
+                valor={String(kpis.reservas)}
+                rodape="check-in no mês"
+                corBarra={CORES.barraRepasse}
+                icone="◈"
+                corIconeFundo={CORES.iconeRepasseFundo}
+                estilo={e.meia}
+              />
             </View>
 
-            <View style={estilos.grade}>
-              <Kpi rotulo="Diárias" valor={String(kpis.diarias)} />
-              <Kpi rotulo="Reservas" valor={String(kpis.reservas)} />
-              <Kpi rotulo="Imóveis" valor={String(kpis.imoveis)} />
-            </View>
+            <KpiCard
+              rotulo="Imóveis cadastrados"
+              valor={String(kpis.imoveis)}
+              rodape="na carteira"
+              corBarra={CORES.barraCustos}
+              icone="⌂"
+              corIconeFundo={CORES.iconeCustosFundo}
+              estilo={{ marginBottom: 16 }}
+            />
 
-            <Text style={estilos.tituloSecao}>Por empreendimento</Text>
-            {porEmpreendimento.length === 0 ? (
-              <View style={estilos.vazio}>
-                <Text style={estilos.textoVazio}>Nenhuma diária lançada neste mês.</Text>
-              </View>
-            ) : porEmpreendimento.map(e => (
-              <View key={e.nome} style={estilos.linha}>
-                <Text style={estilos.nomeLinha} numberOfLines={1}>{e.nome}</Text>
-                <Text style={estilos.valorLinha}>{moeda(e.valor)}</Text>
-              </View>
-            ))}
+            <Painel titulo="Por empreendimento" subtitulo="Faturamento do período">
+              {porEmpreendimento.length === 0 ? (
+                <Vazio
+                  titulo="Nenhuma diária no período"
+                  descricao="Não há diárias lançadas para este mês ainda."
+                />
+              ) : porEmpreendimento.map((x, i) => (
+                <View key={x.nome} style={[e.linha, i === porEmpreendimento.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={e.linhaNome} numberOfLines={1}>{x.nome}</Text>
+                    <View style={e.trilho}>
+                      <View style={[e.preenchimento, { width: `${totalEmp > 0 ? (x.valor / totalEmp) * 100 : 0}%` }]} />
+                    </View>
+                  </View>
+                  <Text style={e.linhaValor}>{moeda(x.valor)}</Text>
+                </View>
+              ))}
+            </Painel>
+
+            <Text style={e.rodapePagina}>Puxe a tela para baixo para atualizar</Text>
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
-  )
-}
-
-function Kpi({ rotulo, valor }: { rotulo: string; valor: string }) {
-  return (
-    <View style={estilos.kpi}>
-      <Text style={estilos.kpiValor}>{valor}</Text>
-      <Text style={estilos.kpiRotulo}>{rotulo}</Text>
     </View>
   )
 }
 
-const estilos = StyleSheet.create({
+const e = StyleSheet.create({
   tela: { flex: 1, backgroundColor: CORES.fundo },
-  cabecalho: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: CORES.azul, paddingHorizontal: 20, paddingVertical: 16,
+  barraTopo: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: CORES.branco, paddingHorizontal: 20, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: CORES.borda,
   },
-  ola: { color: '#c6d3e6', fontSize: 12.5 },
-  marca: { color: CORES.branco, fontSize: 20, fontWeight: '700' },
-  sair: { color: '#c6d3e6', fontSize: 13.5, fontWeight: '600' },
-  seletorMes: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 20, backgroundColor: CORES.branco,
-    borderBottomWidth: 1, borderBottomColor: CORES.borda, paddingVertical: 12,
+  marca: { fontFamily: FONTES.bold, fontSize: 18, color: CORES.azul },
+  sair: { fontFamily: FONTES.media, fontSize: 13.5, color: CORES.textoFraco },
+
+  saudacaoBloco: { marginBottom: 18 },
+  saudacao: { fontFamily: FONTES.serifada, fontSize: 28, color: CORES.texto, marginBottom: 4 },
+  saudacaoSub: { fontFamily: FONTES.regular, fontSize: 13, color: CORES.textoFraco },
+
+  seletor: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18,
+    backgroundColor: CORES.branco, borderWidth: 1, borderColor: CORES.borda,
+    borderRadius: 9, paddingVertical: 9, marginBottom: 20,
   },
   seta: { paddingHorizontal: 10 },
-  setaTexto: { fontSize: 26, color: CORES.azul, lineHeight: 30 },
-  mesTexto: { fontSize: 15.5, fontWeight: '700', color: CORES.texto, minWidth: 150, textAlign: 'center' },
-  faturamentoCartao: { backgroundColor: CORES.azul, borderRadius: 16, padding: 20, marginBottom: 12 },
-  rotuloGrande: { color: '#c6d3e6', fontSize: 12, marginBottom: 6 },
-  valorGrande: { color: CORES.branco, fontSize: 26, fontWeight: '700' },
-  grade: { flexDirection: 'row', gap: 10, marginBottom: 22 },
-  kpi: {
-    flex: 1, backgroundColor: CORES.branco, borderRadius: 14,
-    paddingVertical: 16, alignItems: 'center',
-    borderWidth: 1, borderColor: CORES.borda,
-  },
-  kpiValor: { fontSize: 19, fontWeight: '700', color: CORES.texto },
-  kpiRotulo: { fontSize: 11.5, color: CORES.textoApagado, marginTop: 3 },
-  tituloSecao: { fontSize: 13, fontWeight: '700', color: CORES.textoFraco, marginBottom: 10, letterSpacing: 0.3 },
+  setaTexto: { fontSize: 22, color: CORES.azul, lineHeight: 26 },
+  periodoTexto: { fontFamily: FONTES.media, fontSize: 13, color: CORES.texto, minWidth: 130, textAlign: 'center' },
+
+  grade: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  meia: { flex: 1 },
+
   linha: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    gap: 12, backgroundColor: CORES.branco, borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 14, marginBottom: 8,
-    borderWidth: 1, borderColor: CORES.borda,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: CORES.borda,
   },
-  nomeLinha: { flex: 1, fontSize: 14, color: CORES.texto, fontWeight: '500' },
-  valorLinha: { fontSize: 14.5, fontWeight: '700', color: CORES.texto },
-  vazio: { backgroundColor: CORES.branco, borderRadius: 14, padding: 24, alignItems: 'center' },
-  textoVazio: { color: CORES.textoApagado, fontSize: 13.5 },
+  linhaNome: { fontFamily: FONTES.media, fontSize: 13.5, color: CORES.texto },
+  trilho: { height: 5, backgroundColor: CORES.areia, borderRadius: 100, marginTop: 7, overflow: 'hidden' },
+  preenchimento: { height: '100%', backgroundColor: CORES.azul, borderRadius: 100 },
+  linhaValor: { fontFamily: FONTES.bold, fontSize: 13.5, color: CORES.texto },
+
   caixaErro: { backgroundColor: '#fdf2f2', borderRadius: 12, padding: 16, marginTop: 20 },
-  textoErro: { color: CORES.vermelho, fontSize: 13, lineHeight: 19 },
+  textoErro: { fontFamily: FONTES.regular, color: CORES.vermelho, fontSize: 13, lineHeight: 19 },
+  rodapePagina: {
+    fontFamily: FONTES.regular, textAlign: 'center',
+    color: CORES.textoApagado, fontSize: 11.5, marginTop: 6,
+  },
 })
