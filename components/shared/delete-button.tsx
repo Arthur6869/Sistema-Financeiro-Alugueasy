@@ -23,11 +23,22 @@ export function DeleteButton({ table, id, label }: DeleteButtonProps) {
   async function handleDelete() {
     setLoading(true)
     setError('')
-    const { error: err } = await supabase.from(table).delete().eq('id', id)
+    // `.select()` devolve as linhas removidas. Sem ele não dá para distinguir
+    // "excluiu" de "a RLS não deixou": quando uma policy bloqueia um DELETE, o
+    // PostgreSQL não levanta erro — ele apenas não casa a linha, e a resposta
+    // volta com sucesso e zero linhas. Sem esta checagem, um admin (que é
+    // somente leitura por desenho) via "Excluído com sucesso" e nada acontecia.
+    const { data, error: err } = await supabase.from(table).delete().eq('id', id).select()
     setLoading(false)
     if (err) {
       setError(err.message)
       toast.error(err.message)
+      return
+    }
+    if (!data || data.length === 0) {
+      const msg = 'Você não tem permissão para excluir este registro.'
+      setError(msg)
+      toast.error(msg)
       return
     }
     setConfirm(false)

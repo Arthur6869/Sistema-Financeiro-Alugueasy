@@ -171,21 +171,32 @@ CREATE POLICY "restr_presenca_papel_valido" ON public.user_presence
 -- pessoa com a chave publicável (que é pública por design) conseguia chamá-las
 -- sem sessão nenhuma.
 -- =============================================================================
+-- Varre TODAS as funções do schema public, não uma lista fixa de nomes: o dump
+-- de 06/08/2026 mostrou 7 funções chamáveis por anon, incluindo `get_my_role`,
+-- que não estava em nenhuma lista. Uma função nova criada amanhã nasceria aberta
+-- do mesmo jeito, então o critério aqui é "tudo que existe no public".
+--
+-- Funções de trigger não recebem GRANT: o PostgreSQL não checa EXECUTE ao
+-- disparar um trigger (a permissão é verificada na criação), então revogar não
+-- quebra handle_new_user, impedir_escalonamento_role nem set_updated_at_presence.
 DO $$
 DECLARE f record;
 BEGIN
   FOR f IN
-    SELECT p.oid::regprocedure AS assinatura
+    SELECT p.oid::regprocedure AS assinatura,
+           (p.prorettype = 'pg_catalog.trigger'::regtype) AS eh_trigger
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public'
-      AND p.proname IN ('is_interno', 'is_proprietario_ativo',
-                        'periodo_sincronizado', 'ultimo_ingest_timestamp')
+    WHERE n.nspname = 'public' AND p.prokind = 'f'
   LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon', f.assinatura);
-    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated, service_role', f.assinatura);
-    RAISE NOTICE 'execute de % restrito a authenticated', f.assinatura;
+    IF NOT f.eh_trigger THEN
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated, service_role', f.assinatura);
+    END IF;
+    RAISE NOTICE 'execute de % restrito (trigger=%)', f.assinatura, f.eh_trigger;
   END LOOP;
 END $$;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon, PUBLIC;
 
 
 -- =============================================================================

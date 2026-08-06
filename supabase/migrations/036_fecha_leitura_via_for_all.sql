@@ -60,6 +60,13 @@ BEGIN
     -- Remove a policy FOR ALL que concedia SELECT irrestrito de tabela
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_write_authenticated', t);
 
+    -- E também as <tabela>_select_all, que a 023 dizia ter removido mas que
+    -- continuam de pé em empreendimentos e importacoes (confirmado no dump de
+    -- pg_policy em 06/08/2026). Sem este DROP, derrubar só a _write_authenticated
+    -- não fecharia nada nessas duas tabelas: a _select_all as manteria abertas
+    -- com USING (auth.role() = 'authenticated'), que não olha o papel.
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_select_all', t);
+
     -- Recria a escrita, agora por comando e só para interno.
     -- (A 035 já tem a restritiva equivalente; esta é a permissiva que habilita
     --  a operação — sem uma permissiva, nem o analista escreveria.)
