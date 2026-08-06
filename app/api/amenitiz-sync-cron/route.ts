@@ -1,16 +1,13 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { runAmenitizSync } from '@/lib/sync-amenitiz-core'
+import { temSegredoDeCron } from '@/lib/internal-key'
 
 // Autentica a chamada: aceita Authorization: Bearer <CRON_SECRET> (Vercel Cron)
 // OU x-alugueasy-internal-key (MCP / chamada manual interna).
+// Comparação em tempo constante e fail-closed — ver lib/internal-key.ts.
 function autenticado(request: NextRequest): boolean {
-  const auth = request.headers.get('authorization')
-  const xInternal = request.headers.get('x-alugueasy-internal-key')
-  const cronSecret = process.env.CRON_SECRET
-  const internalKey = process.env.ALUGUEASY_INTERNAL_API_KEY
-  return (!!cronSecret && auth === `Bearer ${cronSecret}`)
-      || (!!internalKey && xInternal === internalKey)
+  return temSegredoDeCron(request)
 }
 
 // Permite a rota rodar até 60s (o sync completo de 3 meses leva ~30-45s).

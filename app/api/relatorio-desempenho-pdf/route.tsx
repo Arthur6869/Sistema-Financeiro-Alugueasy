@@ -31,6 +31,16 @@ async function gerarRelatorioPdf(request: NextRequest): Promise<Response> {
     if (authErr || !user)
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
+    // Este relatório consolida a carteira INTEIRA (faturamento, custos, nome do
+    // proprietário e taxa de repasse de todos os imóveis) e é montado com o
+    // admin client, que ignora a RLS. Sem esta checagem, qualquer sessão válida
+    // — inclusive a de um proprietário — baixaria os números de todo mundo.
+    // A página que consome (/relatorio-desempenho) já é exclusiva de internos.
+    const { data: profile } = await supabase
+      .from('profiles').select('role').eq('id', user.id).single()
+    if (!profile || !['admin', 'analista'].includes(profile.role))
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+
     const admin = createAdminClient()
 
     const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`

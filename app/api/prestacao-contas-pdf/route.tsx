@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getSessaoApi } from '@/lib/supabase/api-client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { pdf } from '@react-pdf/renderer'
 import { PrestacaoContasPdf } from '@/components/pdf/prestacao-contas-pdf'
@@ -23,26 +23,27 @@ export async function GET(request: NextRequest) {
     if (!apartamentoId || !mes || !ano)
       return NextResponse.json({ error: 'apartamento_id, mes e ano são obrigatórios' }, { status: 400 })
 
-    // Auth via user session
-    const supabase = await createClient()
-    const { data: { user }, error: authErr } = await supabase.auth.getUser()
-    if (authErr || !user)
+    // Auth via sessão de cookie (web) ou Authorization: Bearer (app mobile)
+    const { supabase, userId, role, ativo } = await getSessaoApi(request)
+    if (!userId)
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     // Verificar ownership: proprietário só acessa seus próprios apartamentos
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
+    if (role === 'proprietario') {
+      // Conta suspensa não baixa prestação de contas. O proxy.ts checa `ativo`,
+      // mas o matcher exclui /api — e um app mobile nunca passa pelo proxy.
+      if (!ativo)
+        return NextResponse.json({ error: 'Conta desativada' }, { status: 403 })
 
-    if (profile?.role === 'proprietario') {
       const { count } = await supabase
         .from('proprietario_apartamentos')
         .select('*', { count: 'exact', head: true })
-        .eq('proprietario_id', user.id)
+        .eq('proprietario_id', userId)
         .eq('apartamento_id', apartamentoId)
         .eq('ativo', true)
       if (!count || count === 0)
         return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-    } else if (!profile || !['admin', 'analista'].includes(profile.role)) {
+    } else if (!role || !['admin', 'analista'].includes(role)) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 

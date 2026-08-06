@@ -31,13 +31,15 @@
       "Bash(xargs grep -l \"notFound\\\\|error\\\\|Error\")",
       "Bash(git rm *)",
       "PowerShell(npx tsc --noEmit 2>&1)",
-      "Bash(export SUPABASE_ACCESS_TOKEN=\"sbp_fb2de6688c7af2d379ccf29bd6327a4f99629cd2\")",
-      "Bash(curl -s -H 'Authorization: Bearer sbp_fb2de6688c7af2d379ccf29bd6327a4f99629cd2' https://api.supabase.com/v1/projects)",
       "Bash(python -c \"import json,sys; ps=json.load\\(sys.stdin\\); [print\\(p['id'], p['name'], p['region'], p['status']\\) for p in ps]\")",
-      "Bash(curl -s -X POST -H 'Authorization: Bearer sbp_fb2de6688c7af2d379ccf29bd6327a4f99629cd2' -H 'Content-Type: application/json' https://api.supabase.com/v1/projects/rlkmljeatapayiroggrp/database/query -d '{\"query\": \"SELECT categoria, count\\(*\\) as qtd, sum\\(valor\\)::numeric\\(12,2\\) as total FROM custos GROUP BY categoria ORDER BY count\\(*\\) DESC\"}')",
       "PowerShell(npx -y skills add anthropic/skills/skill-creator)",
       "PowerShell(npx -y skills add anthropics/skills/skill-creator -y)",
-      "PowerShell(gh api repos/anthropics/skills/contents --jq \".[].name\")"
+      "PowerShell(gh api repos/anthropics/skills/contents --jq \".[].name\")",
+      "Bash(node \"C:\\\\Users\\\\arthu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-arthu-OneDrive-Documentos-Sistema-Financeiro-Alugueasy\\\\becb506f-c9d0-4a9c-8ba0-259fa155c591\\\\scratchpad\\\\audita-proprietarios.mjs\")",
+      "Bash(node \"C:\\\\Users\\\\arthu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-arthu-OneDrive-Documentos-Sistema-Financeiro-Alugueasy\\\\becb506f-c9d0-4a9c-8ba0-259fa155c591\\\\scratchpad\\\\audita-casos.mjs\")",
+      "Bash(node \"C:\\\\Users\\\\arthu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-arthu-OneDrive-Documentos-Sistema-Financeiro-Alugueasy\\\\becb506f-c9d0-4a9c-8ba0-259fa155c591\\\\scratchpad\\\\testa-parser-asasul.mjs\")",
+      "Bash(npx eslint *)",
+      "PowerShell(npx tsc --noEmit 2>&1 | Select-Object -First 10; $key = \\(\\(Get-Content .env.local\\) | Where-Object { $_ -match '^ALUGUEASY_INTERNAL_API_KEY=' }\\) -replace '^ALUGUEASY_INTERNAL_API_KEY=',''; $scratch = \"C:\\\\Users\\\\arthu\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-arthu-OneDrive-Documentos-Sistema-Financeiro-Alugueasy\\\\c127748d-8414-4fa2-89f8-33c12619a07b\\\\scratchpad\"; foreach \\($t in @\\('adm','sub'\\)\\) { try { Invoke-WebRequest -Uri \"http://localhost:3000/api/exportar-diarias-xlsx?mes=6&ano=2026&tipo=$t\" -Headers @{ 'x-alugueasy-internal-key' = $key } -OutFile \"$scratch\\\\conferencia_$t.xlsx\" -UseBasicParsing -TimeoutSec 120; Write-Output \"$t OK: $\\(\\(Get-Item \"$scratch\\\\conferencia_$t.xlsx\"\\).Length\\) bytes\" } catch { Write-Output \"$t ERRO: $\\($_.Exception.Message\\)\" } })"
     ],
     "additionalDirectories": [
       "\\tmp"
@@ -64,7 +66,7 @@
         "--read-only"
       ],
       "env": {
-        "SUPABASE_ACCESS_TOKEN": "sbp_39569e328fb931fa1292f65c0d18391462a3d0c1"
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
       }
     }
   }

@@ -34,10 +34,21 @@ function getObsidianConfig() {
   }
 }
 
+// Arquivos que nunca podem sair do servidor por esta rota. `includeFiles` é
+// controlado pelo chamador, e o destino é um host externo (OBSIDIAN_API_BASE) —
+// sem esta lista, um pedido de `.env.local` exfiltra a SUPABASE_SERVICE_ROLE_KEY.
+// O bloqueio de `..` sozinho não resolvia: os segredos estão DENTRO do cwd.
+const EXTENSOES_PERMITIDAS = ['.md', '.txt', '.sql']
+const NOMES_BLOQUEADOS = /(^|\/)(\.env|\.git|node_modules|\.next|\.vercel|\.claude)(\/|$|\.)/i
+
 function sanitizeRelativePath(value: string): string | null {
   const normalized = value.replace(/\\/g, '/').replace(/^\/+/, '')
   if (!normalized) return null
   if (normalized.includes('..')) return null
+  // Caminho absoluto ou unidade do Windows escaparia do cwd no path.join
+  if (/^[a-zA-Z]:/.test(normalized)) return null
+  if (NOMES_BLOQUEADOS.test(normalized)) return null
+  if (!EXTENSOES_PERMITIDAS.some(ext => normalized.toLowerCase().endsWith(ext))) return null
   return normalized
 }
 

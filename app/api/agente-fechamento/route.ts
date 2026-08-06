@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { temChaveInterna } from '@/lib/internal-key'
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { runAmenitizSync } from '@/lib/sync-amenitiz-core'
@@ -9,8 +10,7 @@ type CustoEmpNomeRow = {
 }
 
 async function autenticar(request: NextRequest): Promise<boolean> {
-  const internalKey = request.headers.get('x-alugueasy-internal-key')
-  if (internalKey && internalKey === process.env.ALUGUEASY_INTERNAL_API_KEY) {
+  if (temChaveInterna(request)) {
     return true
   }
   const { createClient } = await import('@/lib/supabase/server')

@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { temChaveInterna } from '@/lib/internal-key'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getAuthContext(request: NextRequest) {
-  const internalKey = request.headers.get('x-alugueasy-internal-key')
-  const isInternal = !!internalKey && internalKey === process.env.ALUGUEASY_INTERNAL_API_KEY
+  // Comparação em tempo constante e fail-closed — ver lib/internal-key.ts.
+  const isInternal = temChaveInterna(request)
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

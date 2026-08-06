@@ -1,10 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAnalista } from '@/lib/api-auth'
+import { temChaveInterna } from '@/lib/internal-key'
 import { NextRequest, NextResponse } from 'next/server'
 
+// Comparação em tempo constante e fail-closed — ver lib/internal-key.ts.
 function acceptsInternalKey(request: NextRequest): boolean {
-  const key = request.headers.get('x-alugueasy-internal-key')
-  return !!(key && key === process.env.ALUGUEASY_INTERNAL_API_KEY)
+  return temChaveInterna(request)
 }
 
 export async function PATCH(

@@ -32,11 +32,15 @@ export default async function ProprietarioLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name')
+    .select('role, full_name, ativo')
     .eq('id', user.id)
     .single()
 
   if (profile?.role !== 'proprietario') redirect('/')
+  // Conta suspensa. Antes isso só era verificado no proxy.ts — e o proxy não
+  // cobre /api nem existe para um cliente mobile falando direto com o Supabase.
+  // A trava definitiva é a RLS (migration 037); esta aqui é a de superfície.
+  if (profile.ativo === false) redirect('/login-proprietario?erro=conta_desativada')
 
   const primeiroNome = profile?.full_name?.split(' ')[0] ?? ''
   const iniciais = (profile?.full_name ?? '')

@@ -3,10 +3,20 @@ import { requireAnalista } from '@/lib/api-auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/custos-operacionais?mes=5&ano=2026
+//
+// Só interno. Este número é o driver de custo operacional da empresa (volume de
+// diárias do mês) — não é dado de proprietário. Antes bastava estar autenticado,
+// e como a policy da tabela era `auth.role() = 'authenticated'`, qualquer conta
+// emitida — inclusive uma recém-criada em 'pendente' — conseguia lê-lo.
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role').eq('id', user.id).single()
+  if (!profile || !['admin', 'analista'].includes(profile.role))
+    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const mes = parseInt(searchParams.get('mes') || '0')

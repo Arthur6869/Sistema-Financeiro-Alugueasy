@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { temChaveInterna } from '@/lib/internal-key'
 import { NextRequest, NextResponse } from 'next/server'
 
 async function getAuthContext() {
@@ -11,11 +12,9 @@ async function getAuthContext() {
   return { user, role: profile?.role ?? null }
 }
 
+// Comparação em tempo constante e fail-closed — ver lib/internal-key.ts.
 function isAuthorized(req: NextRequest, role: string | null): boolean {
-  if (role === 'analista') return true
-  const internalKey = process.env.ALUGUEASY_INTERNAL_API_KEY
-  if (internalKey && req.headers.get('x-alugueasy-internal-key') === internalKey) return true
-  return false
+  return role === 'analista' || temChaveInterna(req)
 }
 
 export async function PATCH(

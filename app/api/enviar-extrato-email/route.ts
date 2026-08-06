@@ -1,14 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { enviarExtratoProprietario } from '@/lib/enviar-extrato-core'
+import { temChaveInterna } from '@/lib/internal-key'
 
 export async function POST(request: NextRequest) {
-  const internalKey = request.headers.get('x-alugueasy-internal-key')
-  const validInternalKey = process.env.ALUGUEASY_INTERNAL_API_KEY
-
   let autorizado = false
 
-  if (internalKey && validInternalKey && internalKey === validInternalKey) {
+  if (temChaveInterna(request)) {
     autorizado = true
   } else {
     const supabase = await createClient()
