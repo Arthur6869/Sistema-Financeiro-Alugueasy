@@ -12,6 +12,8 @@ import { KpiCard, KpiRepasseHero } from '@/components/kpi-card'
 import { Painel, Vazio, GraficoEvolucao } from '@/components/painel'
 import { BottomNav } from '@/components/bottom-nav'
 import { PainelOcupacao, type ReservaOcupacao, type AptoOcupacao } from '@/components/ocupacao'
+import { SyncButton, BadgeAtualizacao } from '@/components/sync-button'
+import { RealtimeReservas } from '@/components/realtime-reservas'
 // Mesma função que gera os números do portal e do PDF de prestação de contas.
 // Não é uma cópia: o Metro resolve `@sistema` para a pasta lib/ do sistema web
 // (ver metro.config.js). Se a regra de repasse mudar lá, o app acompanha.
@@ -44,6 +46,7 @@ export default function Proprietario() {
   const [reservasPainel, setReservasPainel] = useState<ReservaOcupacao[]>([])
   const [aptosPainel, setAptosPainel] = useState<AptoOcupacao[]>([])
   const [mesSincronizado, setMesSincronizado] = useState(false)
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null)
   const [semDados, setSemDados] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [atualizando, setAtualizando] = useState(false)
@@ -56,7 +59,10 @@ export default function Proprietario() {
   const buscar = useCallback(async () => {
     setErro('')
     try {
-      const ehMesCorrente = mes === hoje.getMonth() + 1 && ano === hoje.getFullYear()
+      // Data nova a cada busca, em vez de depender do `hoje` do primeiro render:
+      // o app pode ficar aberto atravessando a virada do mês.
+      const agora = new Date()
+      const ehMesCorrente = mes === agora.getMonth() + 1 && ano === agora.getFullYear()
 
       // A RLS limita tudo aos imóveis deste proprietário — sem filtro por id aqui.
       const { data: vinculos, error: erroVinculos } = await supabase
@@ -152,8 +158,14 @@ export default function Proprietario() {
         id: a.id, numero: a.numero, empreendimento: a.empreendimento,
       })))
 
-      const { data: sincronizado } = await supabase.rpc('periodo_sincronizado', { p_mes: mes, p_ano: ano })
+      const [{ data: sincronizado }, { data: ultimoIngest }] = await Promise.all([
+        supabase.rpc('periodo_sincronizado', { p_mes: mes, p_ano: ano }),
+        // Leitura via SECURITY DEFINER: o proprietário não acessa ingest_status
+        // diretamente (a tabela é restrita a interno pela RLS).
+        supabase.rpc('ultimo_ingest_timestamp'),
+      ])
       setMesSincronizado(sincronizado === true)
+      setAtualizadoEm(ultimoIngest ? new Date(ultimoIngest as string) : null)
 
       const diarias = diariasRes.data ?? []
       const custos = custosRes.data ?? []
@@ -260,6 +272,17 @@ export default function Proprietario() {
             <Text style={e.setaTexto}>›</Text>
           </Pressable>
         </View>
+
+        <View style={e.linhaSync}>
+          <SyncButton mes={mes} ano={ano} aoConcluir={buscar} />
+          <BadgeAtualizacao em={atualizadoEm} />
+        </View>
+
+        {/* Reservas que chegaram enquanto a tela está aberta */}
+        <RealtimeReservas
+          apartamentoIds={aptosPainel.map(a => a.id)}
+          aoAtualizar={() => { setAtualizadoEm(new Date()); buscar() }}
+        />
 
         {carregando ? (
           <ActivityIndicator color={CORES.azul} style={{ marginTop: 48 }} />
@@ -386,6 +409,11 @@ const e = StyleSheet.create({
   seta: { paddingHorizontal: 10 },
   setaTexto: { fontSize: 22, color: CORES.azul, lineHeight: 26 },
   periodoTexto: { fontFamily: FONTES.media, fontSize: 13, color: CORES.texto, minWidth: 130, textAlign: 'center' },
+
+  linhaSync: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexWrap: 'wrap', gap: 10, marginBottom: 18,
+  },
 
   grade: { flexDirection: 'row', gap: 12, marginTop: 14, marginBottom: 14 },
   meia: { flex: 1 },

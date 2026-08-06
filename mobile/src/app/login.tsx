@@ -23,11 +23,14 @@ export default function Login() {
   const [erro, setErro] = useState('')
   const [enviando, setEnviando] = useState(false)
 
-  useEffect(() => {
-    if (erroUrl === 'sem_acesso') {
-      setErro('Sua conta ainda não tem acesso liberado. Fale com a AlugEasy.')
-    }
-  }, [erroUrl])
+  // Derivado, não guardado em estado: o aviso de "sem acesso" vem da própria
+  // rota, então não há o que sincronizar — um efeito aqui só causaria um render
+  // extra a cada montagem.
+  const erroExibido = erro !== ''
+    ? erro
+    : erroUrl === 'sem_acesso'
+      ? 'Sua conta ainda não tem acesso liberado. Fale com a AlugEasy.'
+      : ''
 
   // Login feito em outra tela ou sessão restaurada: a raiz decide o destino.
   useEffect(() => {
@@ -41,7 +44,10 @@ export default function Login() {
     const { erro: falha } = await entrar(email, senha)
     setEnviando(false)
     if (falha) { setErro(falha); return }
-    router.replace('/')
+    // `entrou=1` sinaliza login recém-feito: a raiz manda o proprietário para as
+    // boas-vindas, como o site faz. Sessão restaurada (app reaberto) vai direto
+    // ao portal, sem repetir a tela.
+    router.replace('/?entrou=1')
   }
 
   return (
@@ -83,9 +89,9 @@ export default function Login() {
             returnKeyType="go"
           />
 
-          {erro !== '' && (
+          {erroExibido !== '' && (
             <View style={estilos.caixaErro}>
-              <Text style={estilos.textoErro}>{erro}</Text>
+              <Text style={estilos.textoErro}>{erroExibido}</Text>
             </View>
           )}
 

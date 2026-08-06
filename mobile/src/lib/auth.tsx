@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
@@ -33,7 +33,14 @@ const Ctx = createContext<AuthContexto | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [perfil, setPerfil] = useState<Perfil | null>(null)
-  const [carregando, setCarregando] = useState(true)
+  const [sessaoResolvida, setSessaoResolvida] = useState(false)
+  // Guarda de qual usuário o perfil em memória pertence. Serve para saber se o
+  // perfil já foi buscado sem precisar de um `setCarregando(true)` dentro do
+  // efeito — que dispara render em cascata.
+  const [perfilDe, setPerfilDe] = useState<string | null>(null)
+
+  const carregando = !sessaoResolvida
+    || (!!session?.user && perfilDe !== session.user.id)
 
   useEffect(() => {
     let ativo = true
@@ -42,31 +49,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       if (!ativo) return
       setSession(data.session)
-      if (!data.session) setCarregando(false)
+      setSessaoResolvida(true)
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
       if (!ativo) return
       setSession(novaSessao)
-      if (!novaSessao) {
-        setPerfil(null)
-        setCarregando(false)
-      }
+      setSessaoResolvida(true)
+      if (!novaSessao) { setPerfil(null); setPerfilDe(null) }
     })
 
     return () => { ativo = false; sub.subscription.unsubscribe() }
   }, [])
 
   useEffect(() => {
-    if (!session?.user) return
+    const uid = session?.user?.id
+    if (!uid || perfilDe === uid) return
 
     let ativo = true
-    setCarregando(true)
 
     supabase
       .from('profiles')
       .select('id, full_name, role, ativo')
-      .eq('id', session.user.id)
+      .eq('id', uid)
       .single()
       .then(({ data, error }) => {
         if (!ativo) return
@@ -74,11 +79,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Nunca assumir um papel padrão aqui — foi exatamente um padrão
         // implícito de 'analista' que causou o incidente de julho.
         setPerfil(error || !data ? null : (data as Perfil))
-        setCarregando(false)
+        setPerfilDe(uid)
       })
 
     return () => { ativo = false }
-  }, [session])
+  }, [session, perfilDe])
 
   async function entrar(email: string, senha: string) {
     const { error } = await supabase.auth.signInWithPassword({
@@ -95,10 +100,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { erro: generico }
   }
 
-  async function sair() {
+  // Estável entre renders: as telas usam `sair` dentro de efeitos, e uma
+  // referência nova a cada render faria o efeito rodar em loop.
+  const sair = useCallback(async () => {
     await supabase.auth.signOut()
     setPerfil(null)
-  }
+    setPerfilDe(null)
+  }, [])
 
   return (
     <Ctx.Provider value={{ session, perfil, carregando, entrar, sair }}>

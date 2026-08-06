@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useAuth, ehEquipe, ehProprietarioAtivo } from '@/lib/auth'
-import { CORES } from '@/constants/tema'
+import { CORES, FONTES } from '@/constants/tema'
 
 /**
  * Porta de entrada do app. Decide para onde mandar o usuário conforme o papel.
@@ -13,18 +13,22 @@ import { CORES } from '@/constants/tema'
  */
 export default function Entrada() {
   const { session, perfil, carregando, sair } = useAuth()
+  const { entrou } = useLocalSearchParams<{ entrou?: string }>()
 
   useEffect(() => {
     if (carregando) return
 
     if (!session) { router.replace('/login'); return }
     if (ehEquipe(perfil)) { router.replace('/equipe'); return }
-    if (ehProprietarioAtivo(perfil)) { router.replace('/proprietario'); return }
+    if (ehProprietarioAtivo(perfil)) {
+      router.replace(entrou === '1' ? '/bem-vindo' : '/proprietario')
+      return
+    }
 
     // Sessão válida, mas sem acesso: conta pendente, suspensa ou sem perfil.
     // Encerra a sessão para não deixar um token útil circulando no aparelho.
     sair().finally(() => router.replace('/login?erro=sem_acesso'))
-  }, [carregando, session, perfil])
+  }, [carregando, session, perfil, entrou, sair])
 
   return (
     <View style={estilos.container}>
@@ -36,5 +40,5 @@ export default function Entrada() {
 
 const estilos = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: CORES.azul },
-  marca: { color: CORES.branco, fontSize: 30, fontWeight: '700', letterSpacing: 0.5 },
+  marca: { color: CORES.branco, fontSize: 32, fontFamily: FONTES.serifada, letterSpacing: 0.5 },
 })

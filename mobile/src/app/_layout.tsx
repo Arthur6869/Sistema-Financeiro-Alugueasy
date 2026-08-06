@@ -35,6 +35,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="login" />
+          <Stack.Screen name="bem-vindo" />
           <Stack.Screen name="proprietario" />
           <Stack.Screen name="rentabilidade" />
           <Stack.Screen name="historico" />
