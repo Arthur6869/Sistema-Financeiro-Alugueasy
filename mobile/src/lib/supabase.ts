@@ -130,3 +130,16 @@ if (!ehWeb) {
     else supabase.auth.stopAutoRefresh()
   })
 }
+
+/**
+ * Reapresenta o token ao Realtime sempre que ele muda.
+ *
+ * O WebSocket do Realtime autentica UMA vez, na conexão. Quando o app volta do
+ * segundo plano e o token é renovado, a socket continua apresentando o token
+ * antigo — a RLS passa a rejeitar os eventos e o painel simplesmente para de
+ * atualizar, sem erro visível. É a forma mais comum de "o Realtime funcionava e
+ * de repente parou" em aplicativo nativo.
+ */
+supabase.auth.onAuthStateChange((_evento, sessao) => {
+  supabase.realtime.setAuth(sessao?.access_token ?? null)
+})

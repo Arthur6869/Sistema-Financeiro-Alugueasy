@@ -45,6 +45,12 @@ export function RealtimeReservas({
   const timerRefresh = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const chave = apartamentoIds.join(',')
 
+  // O canal é criado uma vez e sua closure congela o `aoAtualizar` daquele
+  // render. Sem este ref, trocar de mês na tela deixaria o Realtime recarregando
+  // o mês ANTIGO: a reserva nova chegava e o painel não mudava.
+  const aoAtualizarRef = useRef(aoAtualizar)
+  useEffect(() => { aoAtualizarRef.current = aoAtualizar })
+
   useEffect(() => {
     if (!apartamentoIds.length) return
 
@@ -76,7 +82,7 @@ export function RealtimeReservas({
 
           // Agrupa uma rajada de eventos numa única recarga.
           clearTimeout(timerRefresh.current)
-          timerRefresh.current = setTimeout(aoAtualizar, 1500)
+          timerRefresh.current = setTimeout(() => aoAtualizarRef.current(), 1500)
         },
       )
       .subscribe((status) => {
