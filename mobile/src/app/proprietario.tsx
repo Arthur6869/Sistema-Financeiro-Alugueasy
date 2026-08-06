@@ -10,6 +10,7 @@ import { useAuth, ehProprietarioAtivo } from '@/lib/auth'
 import { CORES, FONTES, moeda, MESES, MESES_ABREV } from '@/constants/tema'
 import { KpiCard, KpiRepasseHero } from '@/components/kpi-card'
 import { Painel, Vazio, GraficoEvolucao } from '@/components/painel'
+import { BottomNav } from '@/components/bottom-nav'
 // Mesma função que gera os números do portal e do PDF de prestação de contas.
 // Não é uma cópia: o Metro resolve `@sistema` para a pasta lib/ do sistema web
 // (ver metro.config.js). Se a regra de repasse mudar lá, o app acompanha.
@@ -203,7 +204,7 @@ export default function Proprietario() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
             refreshing={atualizando}
@@ -318,6 +319,8 @@ export default function Proprietario() {
           </>
         )}
       </ScrollView>
+
+      <BottomNav />
     </View>
   )
 }

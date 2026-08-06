@@ -36,6 +36,8 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="login" />
           <Stack.Screen name="proprietario" />
+          <Stack.Screen name="rentabilidade" />
+          <Stack.Screen name="historico" />
           <Stack.Screen name="equipe" />
         </Stack>
       </AuthProvider>
