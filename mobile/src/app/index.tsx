@@ -19,7 +19,9 @@ export default function Entrada() {
     if (carregando) return
 
     if (!session) { router.replace('/login'); return }
-    if (ehEquipe(perfil)) { router.replace('/equipe'); return }
+    // `as never` porque os tipos de rota do expo-router são gerados pelo dev
+    // server; sem ele rodar, as rotas novas ainda não existem para o TypeScript.
+    if (ehEquipe(perfil)) { router.replace('/equipe' as never); return }
     if (ehProprietarioAtivo(perfil)) {
       router.replace(entrou === '1' ? '/bem-vindo' : '/proprietario')
       return

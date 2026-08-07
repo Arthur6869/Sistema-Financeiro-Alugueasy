@@ -42,6 +42,17 @@ export default function RootLayout() {
             <Stack.Screen name="rentabilidade" />
             <Stack.Screen name="historico" />
             <Stack.Screen name="equipe" />
+          <Stack.Screen name="equipe/mais" />
+          <Stack.Screen name="equipe/custos" />
+          <Stack.Screen name="equipe/diarias" />
+          <Stack.Screen name="equipe/reservas" />
+          <Stack.Screen name="equipe/empreendimentos" />
+          <Stack.Screen name="equipe/custos-operacionais" />
+          <Stack.Screen name="equipe/manual" />
+          <Stack.Screen name="equipe/relatorio" />
+          <Stack.Screen name="equipe/desempenho" />
+          <Stack.Screen name="equipe/prestacao-contas" />
+          <Stack.Screen name="equipe/usuarios" />
           </Stack>
         </AluProvider>
       </AuthProvider>
