@@ -74,7 +74,9 @@ WHERE pubname = 'supabase_realtime' AND schemaname = 'public'
 ORDER BY tablename;
 
 -- V2. REPLICA IDENTITY de importacoes deve ser 'f' (full)
-SELECT 'V2: importacoes replica identity = ' || relreplident AS estado
+-- O cast é obrigatório: relreplident é do tipo "char" e o Postgres não escolhe
+-- sozinho qual operador || usar contra um literal de texto.
+SELECT 'V2: importacoes replica identity = ' || relreplident::text AS estado
 FROM pg_class WHERE oid = 'public.importacoes'::regclass;
 
 -- V3. A leitura continua restrita a interno (esperado: 1 linha, com is_interno)
