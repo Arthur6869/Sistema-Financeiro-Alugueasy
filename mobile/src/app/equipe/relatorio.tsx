@@ -4,6 +4,7 @@ import {
 } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '@/lib/supabase'
+import { useAtualizarAoFocar } from '@/lib/usar-atualizacao'
 import { useAuth, ehEquipe } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES_ABREV } from '@/constants/tema'
 import { EquipeTopo } from '@/components/equipe-nav'
@@ -86,6 +87,10 @@ export default function Relatorio() {
   useEffect(() => {
     if (ehEquipe(perfil)) { setCarregando(true); buscar() }
   }, [perfil, buscar])
+
+  // Planilha importada no sistema web não dispara Realtime — só amenitiz_reservas
+  // é publicada. Rebuscar ao voltar para a tela cobre esse caso.
+  useAtualizarAoFocar(buscar, ehEquipe(perfil))
 
   const maxValor = Math.max(...meses.map(m => Math.max(m.faturamento, m.custos)), 1)
   const totalCategorias = categorias.reduce((s, c) => s + c.total, 0)

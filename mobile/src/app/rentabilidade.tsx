@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { supabase } from '@/lib/supabase'
+import { useAtualizarAoFocar } from '@/lib/usar-atualizacao'
 import { useAuth, ehProprietarioAtivo } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES } from '@/constants/tema'
 import { BottomNav } from '@/components/bottom-nav'
@@ -158,6 +159,10 @@ export default function Rentabilidade() {
   useEffect(() => {
     if (ehProprietarioAtivo(perfil)) { setCarregando(true); buscar() }
   }, [perfil, buscar])
+
+  // Planilha importada no sistema web não dispara Realtime — só amenitiz_reservas
+  // é publicada. Rebuscar ao voltar para a tela cobre esse caso.
+  useAtualizarAoFocar(buscar, ehProprietarioAtivo(perfil))
 
   useEffect(() => {
     registrarRolagem(y => scrollRef.current?.scrollTo({ y: Math.max(0, y - 140), animated: true }))

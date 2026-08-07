@@ -6,6 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { supabase } from '@/lib/supabase'
+import { useAtualizarAoFocar } from '@/lib/usar-atualizacao'
 import { useAuth, ehProprietarioAtivo } from '@/lib/auth'
 import { CORES, FONTES, moeda, MESES, MESES_ABREV } from '@/constants/tema'
 import { KpiCard, KpiRepasseHero } from '@/components/kpi-card'
@@ -225,6 +226,10 @@ export default function Proprietario() {
   useEffect(() => {
     if (ehProprietarioAtivo(perfil)) { setCarregando(true); buscar() }
   }, [perfil, buscar])
+
+  // Planilha importada no sistema web não dispara Realtime — só amenitiz_reservas
+  // é publicada. Rebuscar ao voltar para a tela cobre esse caso.
+  useAtualizarAoFocar(buscar, ehProprietarioAtivo(perfil))
 
   useEffect(() => {
     // Permite que a ALU role a tela até o elemento que está explicando.
