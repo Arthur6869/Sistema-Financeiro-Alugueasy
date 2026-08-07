@@ -9,6 +9,7 @@ import { useAuth, ehEquipe } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES_ABREV } from '@/constants/tema'
 import { EquipeTopo } from '@/components/equipe-nav'
 import { Painel, Vazio } from '@/components/painel'
+import { AvisoImportacao } from '@/components/aviso-importacao'
 import { LinhaRegistro } from '@/components/tabela'
 
 type Mes = { label: string; mes: number; ano: number; faturamento: number; custos: number; lucro: number }
@@ -107,6 +108,8 @@ export default function Relatorio() {
         }
       >
         <Text style={e.subtitulo}>Visão consolidada dos últimos 6 meses</Text>
+
+        <AvisoImportacao aoImportar={buscar} />
 
         {carregando ? (
           <ActivityIndicator color={CORES.azul} style={{ marginTop: 48 }} />

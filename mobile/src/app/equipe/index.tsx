@@ -9,6 +9,7 @@ import { useAuth, ehEquipe } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES } from '@/constants/tema'
 import { EquipeNav, EquipeTopo } from '@/components/equipe-nav'
 import { FiltroPeriodo } from '@/components/filtro-periodo'
+import { AvisoImportacao } from '@/components/aviso-importacao'
 import { KpiCard } from '@/components/kpi-card'
 import { Painel, Vazio } from '@/components/painel'
 import { LinhaRegistro } from '@/components/tabela'
@@ -201,6 +202,8 @@ export default function PainelEquipe() {
         </View>
 
         <FiltroPeriodo mes={mes} ano={ano} aoMudar={mudarMes} />
+
+        <AvisoImportacao aoImportar={buscar} />
 
         {carregando ? (
           <ActivityIndicator color={CORES.azul} style={{ marginTop: 48 }} />

@@ -9,6 +9,7 @@ import { useAuth, ehEquipe } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES } from '@/constants/tema'
 import { EquipeTopo } from '@/components/equipe-nav'
 import { FiltroPeriodo } from '@/components/filtro-periodo'
+import { AvisoImportacao } from '@/components/aviso-importacao'
 import { Painel, Vazio } from '@/components/painel'
 import { Resumo } from '@/components/tabela'
 import { baixarPrestacaoContas } from '@/lib/baixar-pdf'
@@ -132,6 +133,8 @@ export default function PrestacaoContas() {
         <Text style={e.subtitulo}>Extrato por imóvel de {MESES[mes - 1]} {ano}</Text>
 
         <FiltroPeriodo mes={mes} ano={ano} aoMudar={mudarMes} />
+
+        <AvisoImportacao aoImportar={buscar} />
 
         <Resumo itens={[
           { rotulo: 'Faturamento', valor: `R$ ${formatBRL(totalFat)}` },

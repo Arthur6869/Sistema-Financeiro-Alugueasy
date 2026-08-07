@@ -10,6 +10,7 @@ import { useAuth, ehEquipe } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES } from '@/constants/tema'
 import { EquipeNav, EquipeTopo } from '@/components/equipe-nav'
 import { FiltroPeriodo } from '@/components/filtro-periodo'
+import { AvisoImportacao } from '@/components/aviso-importacao'
 import { LinhaRegistro, Resumo } from '@/components/tabela'
 import { EditarValorModal } from '@/components/editar-valor-modal'
 import { Painel, Vazio } from '@/components/painel'
@@ -136,6 +137,8 @@ export default function Diarias() {
         }
       >
         <FiltroPeriodo mes={mes} ano={ano} aoMudar={mudarMes} />
+
+        <AvisoImportacao aoImportar={buscar} />
 
         <Resumo itens={[
           { rotulo: 'Registros', valor: String(filtradas.length) },
