@@ -6,6 +6,7 @@ import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold
 import { InstrumentSerif_400Regular } from '@expo-google-fonts/instrument-serif'
 import { View, ActivityIndicator } from 'react-native'
 import { AuthProvider } from '@/lib/auth'
+import { AluProvider } from '@/components/alu'
 import { CORES } from '@/constants/tema'
 
 export default function RootLayout() {
@@ -31,16 +32,18 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="light" />
-        <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="bem-vindo" />
-          <Stack.Screen name="proprietario" />
-          <Stack.Screen name="rentabilidade" />
-          <Stack.Screen name="historico" />
-          <Stack.Screen name="equipe" />
-        </Stack>
+        <AluProvider>
+          <StatusBar style="light" />
+          <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="login" />
+            <Stack.Screen name="bem-vindo" />
+            <Stack.Screen name="proprietario" />
+            <Stack.Screen name="rentabilidade" />
+            <Stack.Screen name="historico" />
+            <Stack.Screen name="equipe" />
+          </Stack>
+        </AluProvider>
       </AuthProvider>
     </SafeAreaProvider>
   )

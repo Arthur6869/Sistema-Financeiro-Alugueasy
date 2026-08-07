@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, Pressable,
 } from 'react-native'
@@ -9,6 +9,7 @@ import { useAuth, ehProprietarioAtivo } from '@/lib/auth'
 import { CORES, FONTES, moeda, MESES, MESES_ABREV } from '@/constants/tema'
 import { BottomNav } from '@/components/bottom-nav'
 import { Painel } from '@/components/painel'
+import { AlvoAlu, useAlu } from '@/components/alu'
 
 type MesLinha = {
   mes: number
@@ -31,6 +32,8 @@ type SerieImovel = {
 export default function Historico() {
   const { perfil, carregando: carregandoAuth } = useAuth()
   const insets = useSafeAreaInsets()
+  const { registrarRolagem } = useAlu()
+  const scrollRef = useRef<ScrollView>(null)
 
   const [linhas, setLinhas] = useState<MesLinha[]>([])
   const [porImovel, setPorImovel] = useState<SerieImovel[]>([])
@@ -153,6 +156,10 @@ export default function Historico() {
     if (ehProprietarioAtivo(perfil)) { setCarregando(true); buscar() }
   }, [perfil, buscar])
 
+  useEffect(() => {
+    registrarRolagem(y => scrollRef.current?.scrollTo({ y: Math.max(0, y - 140), animated: true }))
+  }, [registrarRolagem])
+
   const temRepasse = linhas.some(l => !l.semDados && l.valorProprietario > 0)
   const maxRepasse = Math.max(...linhas.map(l => Math.max(l.valorProprietario, 0)), 1)
 
@@ -176,6 +183,7 @@ export default function Historico() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
@@ -198,6 +206,7 @@ export default function Historico() {
           <View style={e.caixaErro}><Text style={e.textoErro}>{erro}</Text></View>
         ) : (
           <>
+            <AlvoAlu id="his-grafico">
             <Painel titulo="Carteira mensal" subtitulo="Evolução do valor recebido mês a mês">
               {!temRepasse ? (
                 <View style={e.vazioGrafico}>
@@ -220,8 +229,10 @@ export default function Historico() {
                 </View>
               )}
             </Painel>
+            </AlvoAlu>
 
             {porImovel.length > 0 && imovel && (
+              <AlvoAlu id="his-imovel">
               <Painel
                 titulo="Desempenho por imóvel"
                 subtitulo="Faturamento × custos de cada imóvel, mês a mês"
@@ -267,8 +278,10 @@ export default function Historico() {
                   <GraficoImovel meses={imovel.meses} />
                 )}
               </Painel>
+              </AlvoAlu>
             )}
 
+            <AlvoAlu id="his-tabela">
             <Painel titulo="Resumo detalhado">
               <View style={e.tabelaCabecalho}>
                 <Text style={[e.th, { flex: 1.3 }]}>Mês</Text>
@@ -307,6 +320,7 @@ export default function Historico() {
                 )
               })}
             </Painel>
+            </AlvoAlu>
           </>
         )}
       </ScrollView>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, Pressable,
 } from 'react-native'
@@ -9,6 +9,7 @@ import { useAuth, ehProprietarioAtivo } from '@/lib/auth'
 import { CORES, FONTES, formatBRL, MESES } from '@/constants/tema'
 import { BottomNav } from '@/components/bottom-nav'
 import { ExtratoCard, type CustoCategoria } from '@/components/extrato-card'
+import { AlvoAlu, useAlu } from '@/components/alu'
 
 type Apartamento = {
   id: string
@@ -42,6 +43,8 @@ function calcularRepasse(
 export default function Rentabilidade() {
   const { perfil, carregando: carregandoAuth } = useAuth()
   const insets = useSafeAreaInsets()
+  const { registrarRolagem } = useAlu()
+  const scrollRef = useRef<ScrollView>(null)
 
   // O Histórico navega para cá com o mês escolhido na tabela.
   const params = useLocalSearchParams<{ mes?: string; ano?: string }>()
@@ -156,6 +159,10 @@ export default function Rentabilidade() {
     if (ehProprietarioAtivo(perfil)) { setCarregando(true); buscar() }
   }, [perfil, buscar])
 
+  useEffect(() => {
+    registrarRolagem(y => scrollRef.current?.scrollTo({ y: Math.max(0, y - 140), animated: true }))
+  }, [registrarRolagem])
+
   function mudarMes(delta: number) {
     let m = mes + delta, a = ano
     if (m < 1) { m = 12; a -= 1 }
@@ -180,6 +187,7 @@ export default function Rentabilidade() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
@@ -194,6 +202,7 @@ export default function Rentabilidade() {
           <Text style={e.saudacaoSub}>Demonstrativo completo de faturamento, custos e repasse</Text>
         </View>
 
+        <AlvoAlu id="ext-periodo">
         <View style={e.seletor}>
           <Pressable onPress={() => mudarMes(-1)} hitSlop={12} style={e.seta}>
             <Text style={e.setaTexto}>‹</Text>
@@ -203,6 +212,7 @@ export default function Rentabilidade() {
             <Text style={e.setaTexto}>›</Text>
           </Pressable>
         </View>
+        </AlvoAlu>
 
         {carregando ? (
           <ActivityIndicator color={CORES.azul} style={{ marginTop: 48 }} />
@@ -215,7 +225,8 @@ export default function Rentabilidade() {
           </View>
         ) : (
           <>
-            <View style={e.resumo}>
+            <AlvoAlu id="ext-total" style={{ marginBottom: 18 }}>
+            <View style={[e.resumo, { marginBottom: 0 }]}>
               <Text style={e.resumoRotulo}>Total a receber em {periodo}</Text>
               <Text style={e.resumoValor}>R$ {formatBRL(totalGeral.valorFinal)}</Text>
               <View style={e.resumoLinha}>
@@ -223,10 +234,12 @@ export default function Rentabilidade() {
                 <Text style={e.resumoDetalhe}>Custos R$ {formatBRL(totalGeral.custos)}</Text>
               </View>
             </View>
+            </AlvoAlu>
 
-            {linhas.map(l => (
+            {linhas.map((l, iLinha) => (
               <ExtratoCard
                 key={l.apt.id}
+                marcarTour={iLinha === 0}
                 aptId={l.apt.id}
                 numero={l.apt.numero}
                 empreendimento={l.apt.empreendimento}

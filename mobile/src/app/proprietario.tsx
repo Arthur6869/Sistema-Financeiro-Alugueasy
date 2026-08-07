@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
   RefreshControl, Pressable,
@@ -14,6 +14,7 @@ import { BottomNav } from '@/components/bottom-nav'
 import { PainelOcupacao, type ReservaOcupacao, type AptoOcupacao } from '@/components/ocupacao'
 import { SyncButton, BadgeAtualizacao } from '@/components/sync-button'
 import { RealtimeReservas } from '@/components/realtime-reservas'
+import { AlvoAlu, useAlu } from '@/components/alu'
 // Mesma função que gera os números do portal e do PDF de prestação de contas.
 // Não é uma cópia: o Metro resolve `@sistema` para a pasta lib/ do sistema web
 // (ver metro.config.js). Se a regra de repasse mudar lá, o app acompanha.
@@ -35,6 +36,8 @@ type PontoHistorico = { label: string; faturamento: number; repasse: number }
 export default function Proprietario() {
   const { perfil, carregando: carregandoAuth, sair } = useAuth()
   const insets = useSafeAreaInsets()
+  const { registrarRolagem } = useAlu()
+  const scrollRef = useRef<ScrollView>(null)
 
   const hoje = new Date()
   const [mes, setMes] = useState(hoje.getMonth() + 1)
@@ -223,6 +226,11 @@ export default function Proprietario() {
     if (ehProprietarioAtivo(perfil)) { setCarregando(true); buscar() }
   }, [perfil, buscar])
 
+  useEffect(() => {
+    // Permite que a ALU role a tela até o elemento que está explicando.
+    registrarRolagem(y => scrollRef.current?.scrollTo({ y: Math.max(0, y - 140), animated: true }))
+  }, [registrarRolagem])
+
   function mudarMes(delta: number) {
     let m = mes + delta, a = ano
     if (m < 1) { m = 12; a -= 1 }
@@ -245,6 +253,7 @@ export default function Proprietario() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
@@ -263,6 +272,7 @@ export default function Proprietario() {
         </View>
 
         {/* Seletor de período */}
+        <AlvoAlu id="periodo">
         <View style={e.seletor}>
           <Pressable onPress={() => mudarMes(-1)} hitSlop={12} style={e.seta}>
             <Text style={e.setaTexto}>‹</Text>
@@ -272,6 +282,7 @@ export default function Proprietario() {
             <Text style={e.setaTexto}>›</Text>
           </Pressable>
         </View>
+        </AlvoAlu>
 
         <View style={e.linhaSync}>
           <SyncButton mes={mes} ano={ano} aoConcluir={buscar} />
@@ -298,11 +309,14 @@ export default function Proprietario() {
         ) : (
           <>
             {/* Repasse em destaque — no portal isso é o hero de mobile */}
-            <KpiRepasseHero
-              valor={moeda(kpis.valorLiquidoProprietario)}
-              rodape="Valor líquido ao proprietário"
-            />
+            <AlvoAlu id="repasse">
+              <KpiRepasseHero
+                valor={moeda(kpis.valorLiquidoProprietario)}
+                rodape="Valor líquido ao proprietário"
+              />
+            </AlvoAlu>
 
+            <AlvoAlu id="kpis">
             <View style={e.grade}>
               <KpiCard
                 rotulo="Faturamento"
@@ -334,7 +348,9 @@ export default function Proprietario() {
               corIconeFundo={CORES.iconeLucroFundo}
               estilo={{ marginBottom: 16 }}
             />
+            </AlvoAlu>
 
+            <AlvoAlu id="ocupacao">
             <PainelOcupacao
               apartamentos={aptosPainel}
               reservas={reservasPainel}
@@ -343,7 +359,9 @@ export default function Proprietario() {
               nomeMes={MESES[mes - 1]}
               sincronizado={mesSincronizado}
             />
+            </AlvoAlu>
 
+            <AlvoAlu id="evolucao">
             <Painel titulo="Evolução dos últimos 6 meses" subtitulo="Faturamento e repasse mês a mês">
               {mesesComDados >= 2 ? (
                 <GraficoEvolucao dados={historico} />
@@ -354,6 +372,7 @@ export default function Proprietario() {
                 />
               )}
             </Painel>
+            </AlvoAlu>
 
             <Painel
               titulo={imoveis.length === 1 ? 'Seu imóvel' : `Seus imóveis (${imoveis.length})`}
@@ -381,7 +400,9 @@ export default function Proprietario() {
         )}
       </ScrollView>
 
-      <BottomNav />
+      <AlvoAlu id="navegacao">
+        <BottomNav />
+      </AlvoAlu>
     </View>
   )
 }

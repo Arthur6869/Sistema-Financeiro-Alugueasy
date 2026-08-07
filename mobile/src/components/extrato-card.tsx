@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native'
 import { CORES, FONTES, formatBRL } from '@/constants/tema'
 import { baixarPrestacaoContas } from '@/lib/baixar-pdf'
+import { AlvoAlu } from '@/components/alu'
 
 export type CustoCategoria = { categoria: string; valor: number }
 
@@ -21,6 +22,8 @@ export type ExtratoCardProps = {
   semCustos: boolean
   mes: number
   ano: number
+  /** Só o primeiro cartão vira alvo do tour — senão a ALU acharia vários. */
+  marcarTour?: boolean
 }
 
 /**
@@ -45,7 +48,7 @@ export function ExtratoCard(p: ExtratoCardProps) {
     if (erro) setErroPdf(erro)
   }
 
-  return (
+  const conteudo = (
     <View style={e.cartao}>
       <View style={e.cabecalho}>
         <Text style={e.nome} numberOfLines={2}>
@@ -109,6 +112,7 @@ export function ExtratoCard(p: ExtratoCardProps) {
       </View>
 
       <View style={e.rodape}>
+        <Marcar ativo={p.marcarTour} id="ext-repasse">
         <View style={e.rodapeEsquerda}>
           <View style={e.rodapeRotuloLinha}>
             <Text style={e.rodapeRotulo}>SEU REPASSE</Text>
@@ -120,7 +124,9 @@ export function ExtratoCard(p: ExtratoCardProps) {
           </View>
           <Text style={e.rodapeValor}>R$ {formatBRL(p.valorFinal)}</Text>
         </View>
+        </Marcar>
 
+        <Marcar ativo={p.marcarTour} id="ext-pdf">
         <Pressable
           style={({ pressed }) => [e.botaoPdf, (pressed || baixando) && { backgroundColor: '#0f2647' }]}
           onPress={baixar}
@@ -130,6 +136,7 @@ export function ExtratoCard(p: ExtratoCardProps) {
             ? <ActivityIndicator size="small" color={CORES.branco} />
             : <Text style={e.botaoPdfTexto}>↓  Baixar PDF</Text>}
         </Pressable>
+        </Marcar>
       </View>
 
       {erroPdf !== '' && (
@@ -137,6 +144,13 @@ export function ExtratoCard(p: ExtratoCardProps) {
       )}
     </View>
   )
+
+  return p.marcarTour ? <AlvoAlu id="ext-card">{conteudo}</AlvoAlu> : conteudo
+}
+
+/** Embrulha em AlvoAlu apenas quando este é o cartão escolhido para o tour. */
+function Marcar({ ativo, id, children }: { ativo?: boolean; id: string; children: ReactNode }) {
+  return ativo ? <AlvoAlu id={id}>{children}</AlvoAlu> : <>{children}</>
 }
 
 const e = StyleSheet.create({
