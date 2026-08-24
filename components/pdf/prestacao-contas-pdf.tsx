@@ -1,597 +1,748 @@
 /**
- * AlugEasy - Prestacao de Contas PDF v2.0
- * Design System: Premium Financial Report
- * Renderer: @react-pdf/renderer
+ * AlugEasy — Prestação de Contas (modelo oficial do gerador de planilhas)
+ *
+ * Réplica fiel do PDF `Prestacao_<EMPREENDIMENTO>_Apt-<N>_<Mes>-<Ano>.pdf`:
+ * mesma paleta, mesma ordem de seções e mesmo visual. Os dados vêm do banco
+ * do sistema financeiro via `app/api/prestacao-contas-pdf/route.tsx`.
+ *
+ * Renderer: @react-pdf/renderer com Helvetica nativa (a mesma família de
+ * fontes do gerador original em pdfmake).
  */
 
-import {
-  Document, Page, View, Text, Image, StyleSheet,
-  Svg, Rect, Line, Circle, Path,
-} from '@react-pdf/renderer'
+import { Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer'
+import { MESES } from '@/lib/constants'
 
-const COLOR = {
-  azulEscuro: '#193660',
-  azulPrimario: '#1E4A7A',
-  azulClaro: '#EBF2FB',
-  azulXClaro: '#F4F8FD',
-  azulAccent: '#2563EB',
-  verde: '#16A34A',
-  verdeBg: '#F0FDF4',
-  verdeBorda: '#BBF7D0',
-  verdeLight: '#DCFCE7',
-  vermelho: '#DC2626',
-  vermelhoBg: '#FEF2F2',
-  vermelhoBorda: '#FECACA',
-  amarelo: '#D97706',
-  amareloBg: '#FFFBEB',
-  amareloBorda: '#FDE68A',
+// Sem hifenização: rótulos como "PROPRIETÁRIO" não podem quebrar no meio.
+Font.registerHyphenationCallback(word => [word])
+
+// ── Paleta do modelo (hex exatos) ────────────────────────────────────────────
+const COR = {
+  marinho: '#1F3864',
+  verde: '#00B050',
+  vermelho: '#C00000',
+  cinza: '#6b7280',
+  azulClaro: '#EBF3FB',      // fundo de linhas de TOTAL
+  borda: '#d5dbe6',
+  zebra: '#f5f8fc',
+  boxBg: '#fafbfd',
+  verdeBg: '#f0faf4',
+  verdeBorda: '#bfe3cc',
+  vermelhoBg: '#fdecec',
+  texto: '#1c2333',
+  headerSub: '#c3c9d4',
+  headerMeta: '#8f9bb3',
+  vago: '#ececf0',
+  vagoNum: '#9aa1ad',
   branco: '#FFFFFF',
-  cinzaBg: '#F8FAFC',
-  cinzaClaro: '#F1F5F9',
-  cinzaMed: '#CBD5E1',
-  cinzaBorda: '#E2E8F0',
-  cinzaTexto: '#64748B',
-  cinzaDark: '#475569',
-  texto: '#0F172A',
-  textoDark: '#1E293B',
 } as const
 
-const FONT = {
-  regular: 'Helvetica',
-  bold: 'Helvetica-Bold',
-  oblique: 'Helvetica-Oblique',
+export type CanalKey = 'booking' | 'airbnb' | 'alugueasy'
+
+const CANAL_LABEL: Record<CanalKey, string> = {
+  booking: 'Booking', airbnb: 'Airbnb', alugueasy: 'Alugueasy',
+}
+const CANAL_COR: Record<CanalKey, string> = {
+  booking: '#0070C0', airbnb: '#FF6B35', alugueasy: '#00B050',
 }
 
-const CHART_COLORS = [
-  '#2563EB',
-  '#16A34A',
-  '#D97706',
-  '#DC2626',
-  '#7C3AED',
-  '#0891B2',
-  '#DB2777',
-  '#475569',
-]
+const BOLD = 'Helvetica-Bold'
+const ITALICO = 'Helvetica-Oblique'
 
+// ── Formatação pt-BR ─────────────────────────────────────────────────────────
 const BRL = (valor: number) => {
-  const sign = valor < 0 ? '-' : ''
-  const fixed = Math.abs(valor || 0).toFixed(2)
-  const [int, dec] = fixed.split('.')
-  const groups: string[] = []
-  for (let i = int.length; i > 0; i -= 3) groups.unshift(int.slice(Math.max(0, i - 3), i))
-  return `${sign}R$ ${groups.join('.')},${dec}`
+  const sinal = valor < 0 ? '-' : ''
+  const [int, dec] = Math.abs(valor || 0).toFixed(2).split('.')
+  const grupos: string[] = []
+  for (let i = int.length; i > 0; i -= 3) grupos.unshift(int.slice(Math.max(0, i - 3), i))
+  return `${sinal}R$ ${grupos.join('.')},${dec}`
+}
+const pct1 = (v: number) => `${v.toFixed(1).replace('.', ',')}%`
+const num1 = (v: number) => v.toFixed(1).replace('.', ',')
+const dd = (dia: number) => String(dia).padStart(2, '0')
+const dataBr = (iso: string) => {
+  const [a, m, d] = iso.split('-')
+  return d && m && a ? `${d}/${m}/${a}` : iso
+}
+// 15 → "15%" · 12.5 → "12,5%"
+const taxaFmt = (t: number) => Number.isInteger(t) ? `${t}%` : pct1(t)
+
+// ── Tipos de dados (montados pela rota) ──────────────────────────────────────
+export interface CanalResumo {
+  canal: CanalKey
+  reservas: number
+  noites: number
+  receita: number               // líquida no mês (com rateio)
+  taxaEfetivaPct: number | null // null = sem valor bruto conhecido no canal
 }
 
-const pct = (v: number | undefined, showSign = false) => {
-  if (v === undefined || Number.isNaN(v)) return '-'
-  const sign = showSign && v > 0 ? '+' : ''
-  return `${sign}${v.toFixed(1).replace('.', ',')}%`
+export interface ReservaLinha {
+  hospede: string               // já anonimizado (LGPD) pela rota
+  checkin: string               // YYYY-MM-DD, clipado ao mês
+  checkout: string
+  noites: number                // noites dentro do mês
+  canal: CanalKey
+  valor: number                 // líquido proporcional às noites no mês
+  cruzaMes: boolean
 }
 
-const tendencia = (atual: number, anterior: number) => {
-  if (atual > anterior) return '▲'
-  if (atual < anterior) return '▼'
-  return '■'
-}
+export interface CustoLinha { categoria: string; recorrente: boolean; valor: number }
 
-const corTendencia = (t: string) => {
-  if (t === '▲') return COLOR.verde
-  if (t === '▼') return COLOR.vermelho
-  return COLOR.cinzaTexto
-}
-
-const calcMedia = (arr: number[]) => {
-  if (!arr.length) return 0
-  return arr.reduce((s, v) => s + v, 0) / arr.length
+export interface ProximoMesResumo {
+  mes: number
+  ano: number
+  noites: number
+  diasDoMes: number
+  reservas: number
+  receitaPrevista: number
 }
 
 export interface PrestacaoContasPdfProps {
   logoBase64: string
   empreendimento: string
   apartamento: string
-  mesNome: string
-  ano: string
+  mes: number
+  ano: number
   nomeProprietario: string
-  modeloContrato: string
-  taxaRepasse: number
-  tipoRepasse: string
-  receitaTotal: number
+  contratoLabel: string         // 'Administração' | 'Sublocação'
+  taxaRepasse: number           // percentual (15 = 15%)
+  tipoRepasse: string           // 'lucro' | 'faturamento'
+  documento: string             // PC-ADM-202607-APT117
+  emitidoEm: string             // DD/MM/AAAA
+  geradoEm: string              // DD/MM/AAAA HH:mm
+
+  receita: number
   custosTotal: number
-  lucroLiquido: number
-  valorRepasse: number
-  valorLiquidoProprietario: number
-  receitaAdm: number
-  receitaSub: number
-  custosAdm: number
-  custosSub: number
-  custosDetalhados: Array<{ categoria: string; tipoGestao: string; valor: number }>
-  numReservas: number
-  totalDiarias: number
-  taxaOcupacao?: number
-  valorMedioDiaria: number
-  mediaDiariasPorReserva: number
-  usandoDiarias: boolean
-  reservas: Array<{
-    checkin: string
-    checkout: string
-    nome_hospede: string | null
-    plataforma: string | null
-    valor_liquido: number
-    noites: number
-  }>
-  historicoMeses: Array<{ label: string; faturamento: number; custos: number; lucro: number }>
-  porPlataforma: Array<{ plataforma: string; valor: number; percentual: number }>
+  lucro: number
+  repasse: number
+  valorProprietario: number
+
+  numReservas: number | null    // null = mês sem reservas Amenitiz (só diárias)
+  noites: number                // noites ocupadas dentro do mês
+  mediaNoitesReserva: number | null
+
+  ocupacaoDias: Array<CanalKey | null>  // índice 0 = dia 1 do mês
+
+  receitaBruta: number          // 0 = seção "do bruto ao líquido" omitida
+  taxasPlataforma: number
+  ajusteManual: number          // residual que fecha na receita líquida
+
+  canais: CanalResumo[]
+  reservas: ReservaLinha[]
+  custos: CustoLinha[]
+  mediaCustosHistorica: number | null
+
+  proximoMes: ProximoMesResumo | null
 }
 
+// ── Estilos ──────────────────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  page: { padding: 34, fontFamily: FONT.regular, fontSize: 9, color: COLOR.texto, backgroundColor: COLOR.branco },
-  coverHeader: { margin: -34, marginBottom: 24, padding: 34, height: 170, backgroundColor: COLOR.azulEscuro, flexDirection: 'row', justifyContent: 'space-between' },
-  coverHeaderLeft: { width: '68%' },
-  coverLogo: { width: 94, height: 32, objectFit: 'contain', marginBottom: 22 },
-  coverTitle: { fontFamily: FONT.bold, fontSize: 31, color: COLOR.branco, lineHeight: 1.1 },
-  coverSub: { marginTop: 8, color: COLOR.azulClaro, fontSize: 11 },
-  coverBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 3, backgroundColor: COLOR.azulAccent },
-  coverBadgeText: { color: COLOR.branco, fontFamily: FONT.bold, fontSize: 9 },
-  coverStripe: { height: 6, marginHorizontal: -34, marginTop: -24, marginBottom: 20, backgroundColor: COLOR.azulAccent },
-  pageHeader: { marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: COLOR.cinzaBorda, flexDirection: 'row', justifyContent: 'space-between' },
-  pageHeaderLeft: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  pageHeaderLogo: { width: 58, height: 20, objectFit: 'contain' },
-  pageHeaderTitle: { fontFamily: FONT.bold, fontSize: 12, color: COLOR.azulEscuro },
-  pageHeaderSub: { fontSize: 8, color: COLOR.cinzaTexto, marginTop: 2 },
-  pageHeaderRight: { alignItems: 'flex-end' },
-  pageHeaderBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3, backgroundColor: COLOR.azulClaro },
-  pageHeaderBadgeText: { fontFamily: FONT.bold, color: COLOR.azulPrimario, fontSize: 8 },
-  pageHeaderPag: { marginTop: 5, color: COLOR.cinzaTexto, fontSize: 8 },
-  infoStrip: { flexDirection: 'row', borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, backgroundColor: COLOR.cinzaBg, marginBottom: 14 },
-  infoStripItem: { flex: 1, padding: 10 },
-  infoStripItemBorder: { flex: 1, padding: 10, borderLeftWidth: 1, borderLeftColor: COLOR.cinzaBorda },
-  infoStripLabel: { color: COLOR.cinzaTexto, fontSize: 7, textTransform: 'uppercase', marginBottom: 4 },
-  infoStripValue: { color: COLOR.textoDark, fontFamily: FONT.bold, fontSize: 10 },
-  heroCard: { backgroundColor: COLOR.azulEscuro, borderRadius: 7, padding: 20, marginBottom: 14 },
-  heroLabel: { color: COLOR.azulClaro, fontSize: 8, textTransform: 'uppercase' },
-  heroValue: { color: COLOR.branco, fontFamily: FONT.bold, fontSize: 32, marginTop: 7 },
-  heroSub: { color: COLOR.azulClaro, marginTop: 6, fontSize: 10 },
-  heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  heroRight: { alignItems: 'flex-end' },
-  heroBadge: { backgroundColor: COLOR.branco, borderRadius: 3, paddingHorizontal: 8, paddingVertical: 5, marginBottom: 12 },
-  heroBadgeText: { fontFamily: FONT.bold, color: COLOR.azulEscuro, fontSize: 8 },
-  heroMetaLabel: { color: COLOR.azulClaro, fontSize: 7, textAlign: 'right' },
-  heroMetaValue: { color: COLOR.branco, fontFamily: FONT.bold, fontSize: 13, marginTop: 3 },
-  kpiGrid: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  kpiCard: { flex: 1, borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, padding: 11, backgroundColor: COLOR.branco },
-  kpiCardGreen: { flex: 1, borderWidth: 1, borderColor: COLOR.verdeBorda, borderRadius: 6, padding: 11, backgroundColor: COLOR.verdeBg },
-  kpiCardRed: { flex: 1, borderWidth: 1, borderColor: COLOR.vermelhoBorda, borderRadius: 6, padding: 11, backgroundColor: COLOR.vermelhoBg },
-  kpiLabel: { color: COLOR.cinzaTexto, fontSize: 7, textTransform: 'uppercase', marginBottom: 5 },
-  kpiValue: { color: COLOR.textoDark, fontFamily: FONT.bold, fontSize: 15 },
-  kpiValueGreen: { color: COLOR.verde, fontFamily: FONT.bold, fontSize: 15 },
-  kpiValueRed: { color: COLOR.vermelho, fontFamily: FONT.bold, fontSize: 15 },
-  kpiSub: { color: COLOR.cinzaTexto, fontSize: 8, marginTop: 4 },
-  kpiTrend: { fontFamily: FONT.bold, fontSize: 10, marginTop: 5 },
-  kpiBar: { height: 4, borderRadius: 2, backgroundColor: COLOR.cinzaClaro, marginTop: 9 },
-  kpiBarFill: { height: 4, borderRadius: 2, backgroundColor: COLOR.azulAccent },
-  sectionTitle: { fontFamily: FONT.bold, fontSize: 13, color: COLOR.azulEscuro, marginTop: 4, marginBottom: 7 },
-  sectionDivider: { height: 2, width: 42, backgroundColor: COLOR.azulAccent, marginBottom: 10 },
-  narrativaCard: { borderLeftWidth: 4, borderLeftColor: COLOR.azulAccent, backgroundColor: COLOR.azulXClaro, padding: 12, borderRadius: 5, marginBottom: 14 },
-  narrativaLabel: { fontFamily: FONT.bold, color: COLOR.azulPrimario, fontSize: 8, marginBottom: 5, textTransform: 'uppercase' },
-  narrativaText: { color: COLOR.textoDark, fontSize: 10, lineHeight: 1.35 },
-  repasseBox: { borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, overflow: 'hidden', marginBottom: 14 },
-  repasseBoxHeader: { backgroundColor: COLOR.azulPrimario, padding: 9 },
-  repasseBoxHeaderText: { color: COLOR.branco, fontFamily: FONT.bold, fontSize: 10 },
-  repasseBoxRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 10 },
-  repasseBoxRowAlt: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, paddingHorizontal: 10, backgroundColor: COLOR.cinzaBg },
-  repasseBoxLabel: { color: COLOR.cinzaDark, fontSize: 9 },
-  repasseBoxValue: { fontFamily: FONT.bold, color: COLOR.textoDark, fontSize: 9 },
-  repasseBoxFinal: { flexDirection: 'row', justifyContent: 'space-between', padding: 11, backgroundColor: COLOR.verdeBg, borderTopWidth: 1, borderTopColor: COLOR.verdeBorda },
-  repasseBoxFinalLabel: { color: COLOR.verde, fontFamily: FONT.bold, fontSize: 10 },
-  repasseBoxFinalValue: { color: COLOR.verde, fontFamily: FONT.bold, fontSize: 14 },
-  table: { borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 5, overflow: 'hidden', marginBottom: 12 },
-  tableHead: { flexDirection: 'row', backgroundColor: COLOR.azulEscuro },
-  tableHeadCell: { flex: 1, padding: 7, color: COLOR.branco, fontFamily: FONT.bold, fontSize: 8 },
-  tableRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: COLOR.cinzaBorda },
-  tableRowAlt: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: COLOR.cinzaBorda, backgroundColor: COLOR.cinzaBg },
-  tableCell: { flex: 1, padding: 7, fontSize: 8, color: COLOR.textoDark },
-  tableCellR: { flex: 1, padding: 7, fontSize: 8, color: COLOR.textoDark, textAlign: 'right' },
-  tableCellBold: { flex: 1, padding: 7, fontSize: 8, color: COLOR.textoDark, fontFamily: FONT.bold },
-  tableCellRBold: { flex: 1, padding: 7, fontSize: 8, color: COLOR.textoDark, textAlign: 'right', fontFamily: FONT.bold },
-  tableFooter: { flexDirection: 'row', backgroundColor: COLOR.azulClaro, borderTopWidth: 1, borderTopColor: COLOR.cinzaBorda },
-  tableFooterCell: { flex: 1, padding: 7, fontFamily: FONT.bold, color: COLOR.azulEscuro, fontSize: 8 },
-  tableFooterCellR: { flex: 1, padding: 7, fontFamily: FONT.bold, color: COLOR.azulEscuro, fontSize: 8, textAlign: 'right' },
-  chartContainer: { borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, padding: 12, marginBottom: 12 },
-  chartTitle: { fontFamily: FONT.bold, color: COLOR.azulEscuro, fontSize: 11, marginBottom: 9 },
-  chartLegend: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  chartLegendDot: { width: 7, height: 7, borderRadius: 4 },
-  chartLegendText: { color: COLOR.cinzaTexto, fontSize: 8 },
-  donutContainer: { flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 12 },
-  donutLegend: { flex: 1 },
-  donutLegendItem: { marginBottom: 8 },
-  donutLegendBar: { height: 5, borderRadius: 3, backgroundColor: COLOR.cinzaClaro, marginTop: 3 },
-  donutLegendLabel: { fontFamily: FONT.bold, color: COLOR.textoDark, fontSize: 8 },
-  donutLegendPct: { color: COLOR.cinzaTexto, fontSize: 7 },
-  donutLegendVal: { color: COLOR.textoDark, fontSize: 8, textAlign: 'right' },
-  indicGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  indicCard: { flex: 1, borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, padding: 10, backgroundColor: COLOR.branco },
-  indicLabel: { color: COLOR.cinzaTexto, textTransform: 'uppercase', fontSize: 7, marginBottom: 5 },
-  indicValue: { color: COLOR.azulEscuro, fontFamily: FONT.bold, fontSize: 15 },
-  indicSub: { color: COLOR.cinzaTexto, fontSize: 8, marginTop: 4 },
-  plataformaRow: { marginBottom: 8 },
-  plataformaName: { fontFamily: FONT.bold, color: COLOR.textoDark, fontSize: 8 },
-  plataformaBar: { height: 6, borderRadius: 3, backgroundColor: COLOR.cinzaClaro, marginTop: 4 },
-  plataformaBarFill: { height: 6, borderRadius: 3, backgroundColor: COLOR.azulAccent },
-  plataformaPct: { color: COLOR.cinzaTexto, fontSize: 7, marginTop: 2 },
-  plataformaVal: { color: COLOR.textoDark, fontFamily: FONT.bold, fontSize: 8, textAlign: 'right', marginTop: -10 },
-  insightCard: { flexDirection: 'row', borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, overflow: 'hidden', marginBottom: 9 },
-  insightCardAccent: { width: 6 },
-  insightCardBody: { flex: 1, padding: 10 },
-  insightCardTitle: { fontFamily: FONT.bold, color: COLOR.textoDark, fontSize: 10, marginBottom: 4 },
-  insightCardText: { color: COLOR.cinzaDark, fontSize: 8.5, lineHeight: 1.3 },
-  insightCardBadge: { alignSelf: 'flex-start', borderRadius: 3, paddingHorizontal: 6, paddingVertical: 3, marginTop: 6 },
-  insightCardBadgeText: { color: COLOR.branco, fontFamily: FONT.bold, fontSize: 7 },
-  historStats: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  historStatsStatCard: { flex: 1, backgroundColor: COLOR.cinzaBg, borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, padding: 10 },
-  historStatsStatLabel: { color: COLOR.cinzaTexto, fontSize: 7, textTransform: 'uppercase', marginBottom: 5 },
-  historStatsStatValue: { color: COLOR.azulEscuro, fontFamily: FONT.bold, fontSize: 13 },
-  emptyState: { padding: 18, borderWidth: 1, borderColor: COLOR.cinzaBorda, borderRadius: 6, backgroundColor: COLOR.cinzaBg, alignItems: 'center', marginBottom: 12 },
-  emptyStateTitle: { fontFamily: FONT.bold, color: COLOR.cinzaDark, fontSize: 10, marginBottom: 4 },
-  emptyStateText: { color: COLOR.cinzaTexto, fontSize: 8, textAlign: 'center' },
-  footer: { position: 'absolute', bottom: 18, left: 34, right: 34, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLOR.cinzaBorda, flexDirection: 'row', justifyContent: 'space-between' },
-  footerBrand: { fontFamily: FONT.bold, color: COLOR.azulEscuro, fontSize: 8 },
-  footerSub: { color: COLOR.cinzaTexto, fontSize: 7 },
-  footerPage: { color: COLOR.cinzaTexto, fontSize: 7, textAlign: 'right' },
-  footerDate: { color: COLOR.cinzaTexto, fontSize: 7, textAlign: 'right', marginTop: 2 },
+  page: {
+    paddingTop: 96, paddingBottom: 52, paddingHorizontal: 40,
+    fontFamily: 'Helvetica', fontSize: 9, color: COR.texto, backgroundColor: COR.branco,
+  },
+
+  // Cabeçalho — faixa azul-marinho de largura total em todas as páginas
+  header: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 82,
+    backgroundColor: COR.marinho, flexDirection: 'row',
+    justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerLogo: { width: 44, height: 44, objectFit: 'contain' },
+  headerTitulo: { fontFamily: BOLD, fontSize: 15, color: COR.branco },
+  headerSub: { fontSize: 10, color: COR.headerSub, marginTop: 3 },
+  headerRight: { alignItems: 'flex-end' },
+  headerMes: { fontFamily: BOLD, fontSize: 13, color: COR.branco },
+  headerMeta: { fontSize: 8, color: COR.headerSub, marginTop: 2 },
+  headerDoc: { fontSize: 7, color: COR.headerMeta, marginTop: 3 },
+
+  // Rodapé
+  footer: { position: 'absolute', bottom: 16, left: 40, right: 40 },
+  footerLinha: { flexDirection: 'row', justifyContent: 'space-between' },
+  footerTexto: { fontSize: 7, color: COR.cinza },
+  footerTexto2: { fontSize: 7, color: COR.cinza, marginTop: 2 },
+
+  // Títulos de seção
+  secaoTitulo: {
+    fontFamily: BOLD, fontSize: 11, color: COR.marinho,
+    borderBottomWidth: 1.2, borderBottomColor: COR.marinho,
+    paddingBottom: 3, marginBottom: 8, marginTop: 4,
+  },
+  tituloDetalhamento: { fontFamily: BOLD, fontSize: 13, color: COR.marinho, marginBottom: 10 },
+
+  // Grade de caixas (resumo / indicadores / próximo mês)
+  grid: { flexDirection: 'row', marginBottom: 12 },
+  box: {
+    flex: 1, borderWidth: 0.75, borderColor: COR.borda,
+    backgroundColor: COR.boxBg, paddingVertical: 8, paddingHorizontal: 7,
+  },
+  boxColado: { marginLeft: -0.75 },
+  // minHeight de 2 linhas alinha os valores mesmo quando um rótulo quebra
+  boxLabel: { fontSize: 7, color: COR.cinza, textTransform: 'uppercase', marginBottom: 4, minHeight: 16 },
+  boxValor: { fontFamily: BOLD, fontSize: 11, color: COR.texto },
+
+  // Calendário
+  calColunas: { flexDirection: 'row', marginBottom: 12 },
+  calEsquerda: { width: 165 },
+  calDireita: { flex: 1, paddingLeft: 14 },
+  calSemana: { flexDirection: 'row' },
+  calDiaSemana: {
+    width: 22, marginRight: 1.5, marginBottom: 2, textAlign: 'center',
+    fontSize: 6.5, fontFamily: BOLD, color: COR.cinza,
+  },
+  calCelula: {
+    width: 22, height: 19, marginRight: 1.5, marginBottom: 1.5,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calNumOcupado: { fontSize: 7, fontFamily: BOLD, color: COR.branco },
+  calNumVago: { fontSize: 7, color: COR.vagoNum },
+  calLegenda: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  calLegendaItem: { flexDirection: 'row', alignItems: 'center', marginRight: 8, marginBottom: 2 },
+  calLegendaCor: { width: 6, height: 6, marginRight: 3 },
+  calLegendaTexto: { fontSize: 6.5, color: COR.cinza },
+  vagasTexto: { fontSize: 8.5, lineHeight: 1.4, color: COR.texto },
+  leituraTitulo: { fontFamily: BOLD, fontSize: 9, color: COR.marinho, marginTop: 9, marginBottom: 4 },
+  leituraBullet: { flexDirection: 'row', marginBottom: 3 },
+  leituraMarcador: { fontSize: 8.5, color: COR.marinho, width: 9 },
+  leituraTexto: { flex: 1, fontSize: 8.5, lineHeight: 1.35, color: COR.texto },
+
+  // Tabela estilo DRE (apuração e bruto→líquido)
+  dreLinha: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 5, paddingHorizontal: 6,
+    borderBottomWidth: 0.75, borderBottomColor: COR.borda,
+  },
+  dreLabel: { fontSize: 9, color: COR.texto },
+  dreValor: { fontSize: 9, color: COR.texto },
+
+  // Bloco de repasse
+  repasseBox: {
+    borderWidth: 1, borderColor: COR.verdeBorda, backgroundColor: COR.verdeBg,
+    padding: 10, marginTop: 10, marginBottom: 12,
+  },
+  repasseLinha: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  repasseLabel: { fontSize: 7.5, color: COR.cinza, textTransform: 'uppercase' },
+  repasseValor: { fontFamily: BOLD, fontSize: 12, color: COR.verde },
+  repasseNota: { fontSize: 7.5, color: COR.cinza, marginTop: 4 },
+
+  // Tabelas de dados
+  thLeve: {
+    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COR.borda,
+    paddingVertical: 4, paddingHorizontal: 4,
+  },
+  thLeveCel: { fontFamily: BOLD, fontSize: 7.5, color: COR.marinho },
+  thEscuro: { flexDirection: 'row', backgroundColor: COR.marinho, paddingVertical: 5, paddingHorizontal: 4 },
+  thEscuroCel: { fontFamily: BOLD, fontSize: 7.5, color: COR.branco },
+  tr: { flexDirection: 'row', paddingVertical: 4, paddingHorizontal: 4, borderBottomWidth: 0.5, borderBottomColor: COR.borda },
+  trZebra: { backgroundColor: COR.zebra },
+  trTotal: { flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 4, backgroundColor: COR.azulClaro },
+  td: { fontSize: 8, color: COR.texto },
+  tdBold: { fontFamily: BOLD, fontSize: 8, color: COR.texto },
+  notaTabela: { fontSize: 7, color: COR.cinza, marginTop: 3, marginBottom: 10, lineHeight: 1.35 },
+  vazioItalico: { fontFamily: ITALICO, fontSize: 8.5, color: COR.cinza, marginBottom: 10 },
+
+  // Barra de participação por canal
+  barraTrilho: { flex: 1, justifyContent: 'center', paddingLeft: 6 },
+  barra: { height: 5 },
+
+  // Glossário
+  glossarioTitulo: { fontFamily: BOLD, fontSize: 8, color: COR.cinza, marginTop: 14, marginBottom: 3 },
+  glossarioTexto: { fontSize: 6.5, color: COR.cinza, lineHeight: 1.5 },
 })
 
-function PageHeader({ logoBase64, empreendimento, apartamento, mesNome, ano, pageNum, totalPages, pageTitle }: {
-  logoBase64: string
-  empreendimento: string
-  apartamento: string
-  mesNome: string
-  ano: string
-  pageNum: number
-  totalPages: number
-  pageTitle: string
+// Larguras fixas das colunas
+const W = {
+  canal: { canal: 58, reservas: 42, noites: 36, diaria: 52, taxa: 50, receita: 66, part: 36 },
+  reserva: { checkin: 52, checkout: 52, noites: 36, plataforma: 56, valor: 68 },
+  custo: { tipo: 70, valor: 78, pctReceita: 62 },
+}
+
+// ── Cálculo das janelas vagas ────────────────────────────────────────────────
+function janelasVagas(ocupacaoDias: Array<CanalKey | null>) {
+  const janelas: Array<{ ini: number; fim: number; len: number }> = []
+  let atual: { ini: number; fim: number; len: number } | null = null
+  ocupacaoDias.forEach((canal, i) => {
+    if (canal === null) {
+      if (atual) { atual.fim = i + 1; atual.len++ }
+      else { atual = { ini: i + 1, fim: i + 1, len: 1 }; janelas.push(atual) }
+    } else atual = null
+  })
+  const noitesVagas = janelas.reduce((s, j) => s + j.len, 0)
+  const maior = janelas.reduce<typeof janelas[number] | null>(
+    (m, j) => (!m || j.len > m.len ? j : m), null)
+  return { noitesVagas, janelas, maior }
+}
+
+// ── Componentes de estrutura ─────────────────────────────────────────────────
+function Cabecalho(p: {
+  logoBase64: string; empreendimento: string; apartamento: string
+  mesNome: string; ano: number; nomeProprietario: string
+  contratoLabel: string; taxaRepasse: number; tipoRepasse: string
+  documento: string; emitidoEm: string
 }) {
   return (
-    <View style={S.pageHeader}>
-      <View style={S.pageHeaderLeft}>
-        <Image src={logoBase64} style={S.pageHeaderLogo} />
+    <View fixed style={S.header}>
+      <View style={S.headerLeft}>
+        <Image src={p.logoBase64} style={S.headerLogo} />
         <View>
-          <Text style={S.pageHeaderTitle}>{pageTitle}</Text>
-          <Text style={S.pageHeaderSub}>{empreendimento} - Apt {apartamento}</Text>
+          <Text style={S.headerTitulo}>PRESTAÇÃO DE CONTAS</Text>
+          <Text style={S.headerSub}>{p.empreendimento} — Apartamento {p.apartamento}</Text>
         </View>
       </View>
-      <View style={S.pageHeaderRight}>
-        <View style={S.pageHeaderBadge}><Text style={S.pageHeaderBadgeText}>{mesNome} {ano}</Text></View>
-        <Text style={S.pageHeaderPag}>Pagina {pageNum} de {totalPages}</Text>
+      <View style={S.headerRight}>
+        <Text style={S.headerMes}>{p.mesNome}/{p.ano}</Text>
+        <Text style={S.headerMeta}>Proprietário: {p.nomeProprietario}</Text>
+        <Text style={S.headerMeta}>
+          {p.contratoLabel} · Repasse {taxaFmt(p.taxaRepasse)} sobre {p.tipoRepasse === 'faturamento' ? 'faturamento' : 'lucro'}
+        </Text>
+        <Text style={S.headerDoc}>Documento {p.documento} · Emitido em {p.emitidoEm}</Text>
       </View>
     </View>
   )
 }
 
-function PageFooter({ dataGeracao, pageNum }: { dataGeracao: string; pageNum: number }) {
+function Rodape({ geradoEm }: { geradoEm: string }) {
   return (
-    <View style={S.footer} fixed>
-      <View>
-        <Text style={S.footerBrand}>AlugEasy</Text>
-        <Text style={S.footerSub}>Prestacao de contas gerada automaticamente</Text>
+    <View fixed style={S.footer}>
+      <View style={S.footerLinha}>
+        <Text style={S.footerTexto}>Gerado pelo sistema financeiro AlugEasy em {geradoEm}</Text>
+        <Text style={S.footerTexto} render={({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}`} />
       </View>
-      <View>
-        <Text style={S.footerPage}>Pagina {pageNum}</Text>
-        <Text style={S.footerDate}>{dataGeracao}</Text>
-      </View>
+      <Text style={S.footerTexto2}>Dúvidas sobre este relatório: AlugEasy · alugueasy@gmail.com</Text>
     </View>
   )
 }
 
-function BarChart({ dados, width, height }: {
-  dados: Array<{ label: string; faturamento: number; custos: number; lucro: number }>
-  width: number
-  height: number
+function CaixaGrid({ itens }: {
+  itens: Array<{ label: string; valor: string; corValor?: string; bg?: string; bordaCor?: string }>
 }) {
-  const pad = 24
-  const max = Math.max(1, ...dados.flatMap(d => [d.faturamento, d.custos, d.lucro]).map(Math.abs))
-  const plotW = width - pad * 2
-  const plotH = height - pad * 2
-  const groupW = plotW / Math.max(1, dados.length)
-  const barW = Math.min(9, groupW / 4)
-  const y = (v: number) => pad + plotH - (Math.max(0, v) / max) * plotH
+  return (
+    <View style={S.grid} wrap={false}>
+      {itens.map((item, i) => (
+        <View
+          key={item.label}
+          style={[
+            S.box,
+            ...(i > 0 ? [S.boxColado] : []),
+            ...(item.bg ? [{ backgroundColor: item.bg }] : []),
+            ...(item.bordaCor ? [{ borderColor: item.bordaCor }] : []),
+          ]}
+        >
+          <Text style={S.boxLabel}>{item.label}</Text>
+          <Text style={[S.boxValor, ...(item.corValor ? [{ color: item.corValor }] : [])]}>{item.valor}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function LinhaDre(p: {
+  label: string; valor: string; corValor?: string; bold?: boolean
+  bg?: string; tamanho?: number
+}) {
+  return (
+    <View style={[S.dreLinha, ...(p.bg ? [{ backgroundColor: p.bg, borderBottomWidth: 0 }] : [])]} wrap={false}>
+      <Text style={[
+        S.dreLabel,
+        ...(p.bold ? [{ fontFamily: BOLD }] : []),
+        ...(p.tamanho ? [{ fontSize: p.tamanho }] : []),
+      ]}>{p.label}</Text>
+      <Text style={[
+        S.dreValor,
+        ...(p.bold ? [{ fontFamily: BOLD }] : []),
+        ...(p.tamanho ? [{ fontSize: p.tamanho }] : []),
+        ...(p.corValor ? [{ color: p.corValor }] : []),
+      ]}>{p.valor}</Text>
+    </View>
+  )
+}
+
+const DIAS_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+
+function Calendario({ mes, ano, ocupacaoDias }: {
+  mes: number; ano: number; ocupacaoDias: Array<CanalKey | null>
+}) {
+  const primeiroDow = new Date(ano, mes - 1, 1).getDay()
+  const celulas: Array<{ dia: number; canal: CanalKey | null } | null> = [
+    ...Array.from({ length: primeiroDow }, () => null),
+    ...ocupacaoDias.map((canal, i) => ({ dia: i + 1, canal })),
+  ]
+  while (celulas.length % 7 !== 0) celulas.push(null)
+  const semanas: Array<typeof celulas> = []
+  for (let i = 0; i < celulas.length; i += 7) semanas.push(celulas.slice(i, i + 7))
+
   return (
     <View>
-      <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {[0, 0.25, 0.5, 0.75, 1].map((g) => (
-          <Line key={g} x1={pad} y1={pad + plotH * g} x2={width - pad} y2={pad + plotH * g} stroke={COLOR.cinzaBorda} strokeWidth={0.6} />
-        ))}
-        {dados.map((d, i) => {
-          const x = pad + i * groupW + groupW / 2 - barW * 1.5
-          const hf = pad + plotH - y(d.faturamento)
-          const hc = pad + plotH - y(d.custos)
-          const hl = pad + plotH - y(d.lucro)
-          return (
-            <View key={d.label}>
-              <Rect x={x} y={y(d.faturamento)} width={barW} height={hf} fill={CHART_COLORS[0]} />
-              <Rect x={x + barW + 2} y={y(d.custos)} width={barW} height={hc} fill={CHART_COLORS[3]} />
-              <Rect x={x + (barW + 2) * 2} y={y(d.lucro)} width={barW} height={hl} fill={CHART_COLORS[1]} />
-            </View>
-          )
-        })}
-      </Svg>
-      <View style={S.chartLegend}>
-        <View style={S.chartLegendItem}><View style={[S.chartLegendDot, { backgroundColor: CHART_COLORS[0] }]} /><Text style={S.chartLegendText}>Faturamento</Text></View>
-        <View style={S.chartLegendItem}><View style={[S.chartLegendDot, { backgroundColor: CHART_COLORS[3] }]} /><Text style={S.chartLegendText}>Custos</Text></View>
-        <View style={S.chartLegendItem}><View style={[S.chartLegendDot, { backgroundColor: CHART_COLORS[1] }]} /><Text style={S.chartLegendText}>Lucro</Text></View>
+      <View style={S.calSemana}>
+        {DIAS_SEMANA.map((d, i) => <Text key={i} style={S.calDiaSemana}>{d}</Text>)}
       </View>
-    </View>
-  )
-}
-
-function arcPath(cx: number, cy: number, r: number, start: number, end: number) {
-  const s = (start - 90) * Math.PI / 180
-  const e = (end - 90) * Math.PI / 180
-  const x1 = cx + r * Math.cos(s)
-  const y1 = cy + r * Math.sin(s)
-  const x2 = cx + r * Math.cos(e)
-  const y2 = cy + r * Math.sin(e)
-  const large = end - start > 180 ? 1 : 0
-  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`
-}
-
-function DonutChart({ dados, size }: { dados: Array<{ label: string; valor: number }>; size: number }) {
-  const total = dados.reduce((s, d) => s + d.valor, 0)
-  const cx = size / 2
-  const cy = size / 2
-  const r = size / 2 - 4
-  if (total <= 0) return <Circle cx={cx} cy={cy} r={r} fill={COLOR.cinzaClaro} />
-  const segmentos = dados.reduce<Array<{ label: string; start: number; end: number }>>((acc, d) => {
-    const start = acc.length > 0 ? acc[acc.length - 1].end : 0
-    acc.push({ label: d.label, start, end: start + (d.valor / total) * 360 })
-    return acc
-  }, [])
-  return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {segmentos.map((seg, i) => (
-        <Path key={seg.label} d={arcPath(cx, cy, r, seg.start, seg.end)} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+      {semanas.map((semana, si) => (
+        <View key={si} style={S.calSemana}>
+          {semana.map((cel, ci) => cel === null
+            ? <View key={ci} style={S.calCelula} />
+            : (
+              <View key={ci} style={[S.calCelula, { backgroundColor: cel.canal ? CANAL_COR[cel.canal] : COR.vago }]}>
+                <Text style={cel.canal ? S.calNumOcupado : S.calNumVago}>{cel.dia}</Text>
+              </View>
+            ))}
+        </View>
       ))}
-      <Circle cx={cx} cy={cy} r={r * 0.58} fill={COLOR.branco} />
-    </Svg>
-  )
-}
-
-function InsightCard({ cor, titulo, texto, badge, badgeCor }: {
-  cor: string
-  titulo: string
-  texto: string
-  badge?: string
-  badgeCor?: string
-}) {
-  return (
-    <View style={S.insightCard}>
-      <View style={[S.insightCardAccent, { backgroundColor: cor }]} />
-      <View style={S.insightCardBody}>
-        <Text style={S.insightCardTitle}>{titulo}</Text>
-        <Text style={S.insightCardText}>{texto}</Text>
-        {badge ? <View style={[S.insightCardBadge, { backgroundColor: badgeCor ?? cor }]}><Text style={S.insightCardBadgeText}>{badge}</Text></View> : null}
+      <View style={S.calLegenda}>
+        {(['booking', 'airbnb', 'alugueasy'] as CanalKey[]).map(c => (
+          <View key={c} style={S.calLegendaItem}>
+            <View style={[S.calLegendaCor, { backgroundColor: CANAL_COR[c] }]} />
+            <Text style={S.calLegendaTexto}>{CANAL_LABEL[c]}</Text>
+          </View>
+        ))}
+        <View style={S.calLegendaItem}>
+          <View style={[S.calLegendaCor, { backgroundColor: COR.vago }]} />
+          <Text style={S.calLegendaTexto}>Vago</Text>
+        </View>
       </View>
     </View>
   )
 }
 
-function widthPct(v: number) {
-  return `${Math.max(2, Math.min(100, v))}%`
-}
-
-function shortDate(date: string) {
-  if (!date) return '-'
-  const [y, m, d] = date.split('-')
-  return `${d}/${m}/${y}`
-}
-
-function chunk<T>(arr: T[], max: number) {
-  return arr.slice(0, max)
-}
-
+// ── Documento ────────────────────────────────────────────────────────────────
 export function PrestacaoContasPdf(props: PrestacaoContasPdfProps) {
   const {
-    logoBase64, empreendimento, apartamento, mesNome, ano, nomeProprietario, modeloContrato,
-    taxaRepasse, tipoRepasse, receitaTotal, custosTotal, lucroLiquido, valorRepasse,
-    valorLiquidoProprietario, receitaAdm, receitaSub, custosAdm, custosSub, custosDetalhados,
-    numReservas, totalDiarias, taxaOcupacao, valorMedioDiaria, mediaDiariasPorReserva,
-    usandoDiarias, reservas, historicoMeses, porPlataforma,
+    logoBase64, empreendimento, apartamento, mes, ano, nomeProprietario,
+    contratoLabel, taxaRepasse, tipoRepasse, documento, emitidoEm, geradoEm,
+    receita, custosTotal, lucro, repasse, valorProprietario,
+    numReservas, noites, mediaNoitesReserva, ocupacaoDias,
+    receitaBruta, taxasPlataforma, ajusteManual,
+    canais, reservas, custos, mediaCustosHistorica, proximoMes,
   } = props
 
-  const dataGeracao = new Date().toLocaleDateString('pt-BR')
-  const margemPct = receitaTotal > 0 ? (lucroLiquido / receitaTotal) * 100 : 0
-  const historFat = historicoMeses.map(h => h.faturamento)
-  const historLucro = historicoMeses.map(h => h.lucro)
-  const mediaMensal = calcMedia(historFat)
-  const mesAtualVsMedia = mediaMensal > 0 ? ((receitaTotal - mediaMensal) / mediaMensal) * 100 : 0
-  const ultimos = historicoMeses.slice(-3)
-  const tendFatValor = ultimos.length >= 2 ? ultimos[ultimos.length - 1].faturamento - ultimos[0].faturamento : 0
-  const tendFat = tendencia(ultimos.at(-1)?.faturamento ?? 0, ultimos[0]?.faturamento ?? 0)
-  const topCustos = Object.values(custosDetalhados.reduce<Record<string, { label: string; valor: number }>>((acc, c) => {
-    acc[c.categoria] = acc[c.categoria] ?? { label: c.categoria, valor: 0 }
-    acc[c.categoria].valor += c.valor
-    return acc
-  }, {})).sort((a, b) => b.valor - a.valor)
-  const principalCusto = topCustos[0]
-  const ticketMedioReserva = numReservas > 0 ? receitaTotal / numReservas : 0
-  const contratoLabel = modeloContrato === 'sublocacao' ? 'Sublocacao' : 'Administracao'
-  const repasseBase = tipoRepasse === 'faturamento' ? receitaTotal : lucroLiquido
-  const narrativa = `${nomeProprietario} tem ${BRL(valorLiquidoProprietario)} a receber referente a ${mesNome}/${ano}. O periodo registrou ${BRL(receitaTotal)} em faturamento, ${BRL(custosTotal)} em custos e margem de ${pct(margemPct)}. A taxa de repasse aplicada foi de ${pct(taxaRepasse)} sobre ${tipoRepasse === 'faturamento' ? 'o faturamento' : 'o lucro liquido'}.`
-  const margemCor = margemPct >= 40 ? COLOR.verde : margemPct >= 20 ? COLOR.amarelo : COLOR.vermelho
-  const margemBadge = margemPct >= 40 ? 'Margem forte' : margemPct >= 20 ? 'Atencao' : 'Margem critica'
-  const maxCusto = Math.max(1, ...topCustos.map(c => c.valor))
-  const maxPlat = Math.max(1, ...porPlataforma.map(p => p.percentual))
-  const hasAdm = receitaAdm > 0 || custosAdm > 0
-  const hasSub = receitaSub > 0 || custosSub > 0
-  const hasAmbosOsTipos = hasAdm && hasSub
-  const tipoUnico = !hasAdm ? 'SUB' : !hasSub ? 'ADM' : null
-  const lucroAdm = receitaAdm - custosAdm
-  const lucroSub = receitaSub - custosSub
-  const lucroNeg = lucroLiquido < 0
+  const mesNome = MESES[mes - 1] ?? String(mes)
+  const mesNomeMin = mesNome.toLowerCase()
+  const diasDoMes = ocupacaoDias.length
+  const negativo = valorProprietario < 0
+
+  // KPIs derivados (fórmulas do modelo)
+  const ocupacaoPct = diasDoMes > 0 ? (noites / diasDoMes) * 100 : 0
+  const diariaMedia = noites > 0 ? receita / noites : null
+  const revpar = diasDoMes > 0 ? receita / diasDoMes : 0
+
+  // Janelas vagas
+  const vagas = janelasVagas(ocupacaoDias)
+  const resumoVagas = vagas.noitesVagas === 0
+    ? 'Nenhuma noite vaga no mês.'
+    : `${vagas.noitesVagas} ${vagas.noitesVagas === 1 ? 'noite vaga' : 'noites vagas'} em ` +
+      `${vagas.janelas.length} ${vagas.janelas.length === 1 ? 'janela' : 'janelas'} · ` +
+      `maior janela ociosa: ${vagas.maior!.len} ${vagas.maior!.len === 1 ? 'noite' : 'noites'} ` +
+      `(${dd(vagas.maior!.ini)} a ${dd(vagas.maior!.fim)})`
+
+  // "Leitura do mês" — bullets 100% determinísticos (regras fixas, sem IA)
+  const bullets: string[] = []
+  bullets.push(`Ocupação de ${pct1(ocupacaoPct)} (${noites} de ${diasDoMes} noites).`)
+  if (diariaMedia !== null)
+    bullets.push(`Diária média de ${BRL(diariaMedia)} e RevPAR de ${BRL(revpar)}.`)
+  bullets.push(vagas.noitesVagas === 0
+    ? 'Mês cheio: nenhuma noite vaga.'
+    : `${vagas.noitesVagas} ${vagas.noitesVagas === 1 ? 'noite vaga' : 'noites vagas'} em ` +
+      `${vagas.janelas.length} ${vagas.janelas.length === 1 ? 'janela' : 'janelas'} — a maior de ` +
+      `${vagas.maior!.len} ${vagas.maior!.len === 1 ? 'noite' : 'noites'} (${dd(vagas.maior!.ini)} a ${dd(vagas.maior!.fim)}).`)
+  const variacaoCustos = mediaCustosHistorica !== null && mediaCustosHistorica > 0
+    ? ((custosTotal - mediaCustosHistorica) / mediaCustosHistorica) * 100
+    : null
+  if (custosTotal > 0 && receita > 0) {
+    let frase = `Custos de ${BRL(custosTotal)} consumiram ${pct1((custosTotal / receita) * 100)} da receita`
+    if (variacaoCustos !== null && Math.abs(variacaoCustos) >= 5)
+      frase += `, ${pct1(Math.abs(variacaoCustos))} ${variacaoCustos > 0 ? 'acima' : 'abaixo'} da média dos meses anteriores`
+    bullets.push(frase + '.')
+  }
+  const receitaCanais = canais.reduce((s, c) => s + c.receita, 0)
+  const canalPrincipal = canais.length > 0
+    ? canais.reduce((m, c) => (c.receita > m.receita ? c : m), canais[0])
+    : null
+  if (canalPrincipal && receitaCanais > 0) {
+    const part = (canalPrincipal.receita / receitaCanais) * 100
+    if (part >= 34)
+      bullets.push(`${CANAL_LABEL[canalPrincipal.canal]} foi o principal canal do mês: ${pct1(part)} da receita (${canalPrincipal.noites} noites).`)
+  }
+
+  // Custos
+  const custosOrdenados = [...custos].sort((a, b) => b.valor - a.valor)
+  const custosRecorrentes = custos.filter(c => c.recorrente).reduce((s, c) => s + c.valor, 0)
+  const custosEventuais = custos.filter(c => !c.recorrente).reduce((s, c) => s + c.valor, 0)
+
+  // Reservas
+  const algumaCruzaMes = reservas.some(r => r.cruzaMes)
+  const totalNoitesReservas = reservas.reduce((s, r) => s + r.noites, 0)
+  const totalValorReservas = reservas.reduce((s, r) => s + r.valor, 0)
+
+  const taxaPctSobreBruto = receitaBruta > 0 ? (taxasPlataforma / receitaBruta) * 100 : 0
+  const baseRepasseLabel = tipoRepasse === 'faturamento' ? 'o faturamento' : 'o lucro'
+
+  const cabecalho = (
+    <Cabecalho
+      logoBase64={logoBase64} empreendimento={empreendimento} apartamento={apartamento}
+      mesNome={mesNome} ano={ano} nomeProprietario={nomeProprietario}
+      contratoLabel={contratoLabel} taxaRepasse={taxaRepasse} tipoRepasse={tipoRepasse}
+      documento={documento} emitidoEm={emitidoEm}
+    />
+  )
 
   return (
-    <Document title={`Prestacao de Contas - ${empreendimento} ${apartamento}`}>
+    <Document
+      title={`Prestação de Contas ${empreendimento} ${apartamento} ${mesNome}/${ano}`}
+      author="AlugEasy"
+    >
+      {/* ═══════════════ Página 1 — visão executiva ═══════════════ */}
       <Page size="A4" style={S.page}>
-        <View style={S.coverHeader}>
-          <View style={S.coverHeaderLeft}>
-            <Image src={logoBase64} style={S.coverLogo} />
-            <Text style={S.coverTitle}>Prestacao de Contas</Text>
-            <Text style={S.coverSub}>{empreendimento} - Apartamento {apartamento}</Text>
-          </View>
-          <View style={S.coverBadge}><Text style={S.coverBadgeText}>{mesNome} {ano}</Text></View>
-        </View>
-        <View style={S.coverStripe} />
-        <View style={S.infoStrip}>
-          <View style={S.infoStripItem}><Text style={S.infoStripLabel}>Proprietario</Text><Text style={S.infoStripValue}>{nomeProprietario}</Text></View>
-          <View style={S.infoStripItemBorder}><Text style={S.infoStripLabel}>Contrato</Text><Text style={S.infoStripValue}>{contratoLabel}</Text></View>
-          <View style={S.infoStripItemBorder}><Text style={S.infoStripLabel}>Fonte Receita</Text><Text style={S.infoStripValue}>{usandoDiarias ? 'Diarias' : 'Reservas'}</Text></View>
-        </View>
-        <View style={S.heroCard}>
-          <View style={S.heroRow}>
-            <View>
-              <Text style={S.heroLabel}>Valor liquido ao proprietario</Text>
-              <Text style={S.heroValue}>{BRL(valorLiquidoProprietario)}</Text>
-              <Text style={S.heroSub}>Resultado apos custos e repasse AlugEasy</Text>
-            </View>
-            <View style={S.heroRight}>
-              <View style={S.heroBadge}><Text style={S.heroBadgeText}>{margemBadge}</Text></View>
-              <Text style={S.heroMetaLabel}>Margem do mes</Text>
-              <Text style={S.heroMetaValue}>{pct(margemPct)}</Text>
-            </View>
-          </View>
-        </View>
-        <View style={S.kpiGrid}>
-          <View style={S.kpiCardGreen}><Text style={S.kpiLabel}>Faturamento</Text><Text style={S.kpiValueGreen}>{BRL(receitaTotal)}</Text><Text style={[S.kpiTrend, { color: corTendencia(tendFat) }]}>{tendFat} {BRL(Math.abs(tendFatValor))}</Text></View>
-          <View style={S.kpiCardRed}><Text style={S.kpiLabel}>Custos</Text><Text style={S.kpiValueRed}>{BRL(custosTotal)}</Text><Text style={S.kpiSub}>{pct(receitaTotal > 0 ? custosTotal / receitaTotal * 100 : 0)} da receita</Text></View>
-          <View style={S.kpiCard}><Text style={S.kpiLabel}>Lucro liquido</Text><Text style={S.kpiValue}>{BRL(lucroLiquido)}</Text><View style={S.kpiBar}><View style={[S.kpiBarFill, { width: widthPct(margemPct), backgroundColor: margemCor }]} /></View></View>
-        </View>
-        <Text style={S.sectionTitle}>Calculo de Repasse</Text>
-        <View style={S.sectionDivider} />
-        <View style={S.repasseBox}>
-          <View style={S.repasseBoxHeader}><Text style={S.repasseBoxHeaderText}>Memoria de calculo</Text></View>
-          <View style={S.repasseBoxRow}><Text style={S.repasseBoxLabel}>Receita total</Text><Text style={S.repasseBoxValue}>{BRL(receitaTotal)}</Text></View>
-          <View style={S.repasseBoxRowAlt}><Text style={S.repasseBoxLabel}>Custos totais</Text><Text style={S.repasseBoxValue}>- {BRL(custosTotal)}</Text></View>
-          <View style={S.repasseBoxRow}><Text style={S.repasseBoxLabel}>Base do repasse ({tipoRepasse})</Text><Text style={S.repasseBoxValue}>{BRL(repasseBase)}</Text></View>
-          <View style={S.repasseBoxRowAlt}><Text style={S.repasseBoxLabel}>Repasse AlugEasy ({pct(taxaRepasse)})</Text><Text style={S.repasseBoxValue}>- {BRL(valorRepasse)}</Text></View>
-          <View style={S.repasseBoxFinal}><Text style={S.repasseBoxFinalLabel}>Total ao proprietario</Text><Text style={S.repasseBoxFinalValue}>{BRL(valorLiquidoProprietario)}</Text></View>
-        </View>
-        <View style={S.narrativaCard}><Text style={S.narrativaLabel}>Resumo executivo</Text><Text style={S.narrativaText}>{narrativa}</Text></View>
-        <PageFooter dataGeracao={dataGeracao} pageNum={1} />
-      </Page>
+        {cabecalho}
 
-      <Page size="A4" style={S.page}>
-        <PageHeader logoBase64={logoBase64} empreendimento={empreendimento} apartamento={apartamento} mesNome={mesNome} ano={ano} pageNum={2} totalPages={5} pageTitle="Analise Financeira" />
-        <View style={S.chartContainer}><Text style={S.chartTitle}>Historico financeiro - 6 meses</Text><BarChart dados={historicoMeses} width={500} height={170} /></View>
-        <View style={S.historStats}>
-          <View style={S.historStatsStatCard}><Text style={S.historStatsStatLabel}>Media mensal</Text><Text style={S.historStatsStatValue}>{BRL(mediaMensal)}</Text></View>
-          <View style={S.historStatsStatCard}><Text style={S.historStatsStatLabel}>Atual vs media</Text><Text style={S.historStatsStatValue}>{pct(mesAtualVsMedia, true)}</Text></View>
-          <View style={S.historStatsStatCard}><Text style={S.historStatsStatLabel}>Melhor lucro</Text><Text style={S.historStatsStatValue}>{BRL(Math.max(0, ...historLucro))}</Text></View>
-        </View>
-        <Text style={S.sectionTitle}>ADM / SUB</Text><View style={S.sectionDivider} />
-        <View style={S.table}>
-          <View style={S.tableHead}><Text style={S.tableHeadCell}>Gestao</Text><Text style={S.tableHeadCell}>Receita</Text><Text style={S.tableHeadCell}>Custos</Text><Text style={S.tableHeadCell}>Resultado</Text></View>
-          {hasAmbosOsTipos ? (
-            <>
-              {hasAdm && <View style={S.tableRow}><Text style={S.tableCellBold}>ADM</Text><Text style={S.tableCellR}>{BRL(receitaAdm)}</Text><Text style={S.tableCellR}>{BRL(custosAdm)}</Text><Text style={S.tableCellRBold}>{BRL(lucroAdm)}</Text></View>}
-              {hasSub && <View style={S.tableRowAlt}><Text style={S.tableCellBold}>SUB</Text><Text style={S.tableCellR}>{BRL(receitaSub)}</Text><Text style={S.tableCellR}>{BRL(custosSub)}</Text><Text style={S.tableCellRBold}>{BRL(lucroSub)}</Text></View>}
-              <View style={S.tableFooter}><Text style={S.tableFooterCell}>Total</Text><Text style={S.tableFooterCellR}>{BRL(receitaTotal)}</Text><Text style={S.tableFooterCellR}>{BRL(custosTotal)}</Text><Text style={S.tableFooterCellR}>{BRL(lucroLiquido)}</Text></View>
-            </>
-          ) : tipoUnico ? (
-            <>
-              <View style={S.tableRow}>
-                <Text style={S.tableCell}>{tipoUnico === 'ADM' ? 'Administracao' : 'Sublocacao'}</Text>
-                <Text style={S.tableCellR}>{BRL(receitaTotal)}</Text>
-                <Text style={[S.tableCellR, { color: COLOR.vermelho }]}>{BRL(custosTotal)}</Text>
-                <Text style={[S.tableCellR, { color: lucroNeg ? COLOR.vermelho : COLOR.verde }]}>{BRL(lucroLiquido)} ({pct(margemPct)})</Text>
-              </View>
-              <View style={S.tableFooter}>
-                <Text style={S.tableFooterCell}>Total</Text>
-                <Text style={S.tableFooterCellR}>{BRL(receitaTotal)}</Text>
-                <Text style={S.tableFooterCellR}>{BRL(custosTotal)}</Text>
-                <Text style={S.tableFooterCellR}>{BRL(lucroLiquido)} ({pct(margemPct)})</Text>
-              </View>
-            </>
-          ) : (
-            <View style={S.tableFooter}><Text style={S.tableFooterCell}>Total</Text><Text style={S.tableFooterCellR}>{BRL(receitaTotal)}</Text><Text style={S.tableFooterCellR}>{BRL(custosTotal)}</Text><Text style={S.tableFooterCellR}>{BRL(lucroLiquido)}</Text></View>
-          )}
-        </View>
-        <Text style={S.sectionTitle}>Plataformas</Text><View style={S.sectionDivider} />
-        {porPlataforma.length ? porPlataforma.map((p, i) => (
-          <View key={p.plataforma} style={S.plataformaRow}>
-            <Text style={S.plataformaName}>{p.plataforma}</Text>
-            <View style={S.plataformaBar}><View style={[S.plataformaBarFill, { width: widthPct((p.percentual / maxPlat) * 100), backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }]} /></View>
-            <Text style={S.plataformaPct}>{pct(p.percentual)}</Text><Text style={S.plataformaVal}>{BRL(p.valor)}</Text>
-          </View>
-        )) : <View style={S.emptyState}><Text style={S.emptyStateTitle}>Sem plataformas no periodo</Text><Text style={S.emptyStateText}>Nao houve reservas validas para compor esta analise.</Text></View>}
-        <PageFooter dataGeracao={dataGeracao} pageNum={2} />
-      </Page>
+        <Text style={S.secaoTitulo}>Resumo financeiro do mês</Text>
+        <CaixaGrid itens={[
+          { label: 'Receita líquida', valor: BRL(receita) },
+          { label: 'Custos do mês', valor: BRL(custosTotal) },
+          { label: 'Lucro líquido', valor: BRL(lucro), corValor: lucro < 0 ? COR.vermelho : undefined },
+          { label: `Administração AlugEasy (${taxaFmt(taxaRepasse)})`, valor: BRL(repasse) },
+          {
+            label: 'Valor do proprietário', valor: BRL(valorProprietario),
+            corValor: negativo ? COR.vermelho : COR.verde,
+            bg: negativo ? COR.vermelhoBg : COR.verdeBg,
+          },
+        ]} />
 
-      <Page size="A4" style={S.page}>
-        <PageHeader logoBase64={logoBase64} empreendimento={empreendimento} apartamento={apartamento} mesNome={mesNome} ano={ano} pageNum={3} totalPages={5} pageTitle="Composicao de Custos" />
-        <View style={S.donutContainer}>
-          <DonutChart dados={chunk(topCustos, 5)} size={155} />
-          <View style={S.donutLegend}>
-            {chunk(topCustos, 5).map((c, i) => (
-              <View key={c.label} style={S.donutLegendItem}>
-                <Text style={S.donutLegendLabel}>{c.label}</Text>
-                <View style={S.donutLegendBar}><View style={[S.plataformaBarFill, { width: widthPct((c.valor / maxCusto) * 100), backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }]} /></View>
-                <Text style={S.donutLegendPct}>{pct(custosTotal > 0 ? c.valor / custosTotal * 100 : 0)}</Text><Text style={S.donutLegendVal}>{BRL(c.valor)}</Text>
+        <Text style={S.secaoTitulo}>Indicadores de desempenho</Text>
+        <CaixaGrid itens={[
+          { label: 'Reservas', valor: numReservas === null ? '—' : String(numReservas) },
+          { label: 'Noites ocupadas', valor: `${noites} de ${diasDoMes}` },
+          { label: 'Ocupação', valor: pct1(ocupacaoPct) },
+          { label: 'Diária média', valor: diariaMedia === null ? '—' : BRL(diariaMedia) },
+          { label: 'RevPAR', valor: BRL(revpar) },
+          { label: 'Média noites/reserva', valor: mediaNoitesReserva === null ? '—' : num1(mediaNoitesReserva) },
+        ]} />
+
+        <Text style={S.secaoTitulo}>Calendário de ocupação — {mesNomeMin}/{ano}</Text>
+        <View style={S.calColunas} wrap={false}>
+          <View style={S.calEsquerda}>
+            <Calendario mes={mes} ano={ano} ocupacaoDias={ocupacaoDias} />
+          </View>
+          <View style={S.calDireita}>
+            <Text style={S.vagasTexto}>{resumoVagas}</Text>
+            <Text style={S.leituraTitulo}>Leitura do mês</Text>
+            {bullets.slice(0, 5).map((b, i) => (
+              <View key={i} style={S.leituraBullet}>
+                <Text style={S.leituraMarcador}>•</Text>
+                <Text style={S.leituraTexto}>{b}</Text>
               </View>
             ))}
           </View>
         </View>
-        <Text style={S.sectionTitle}>Detalhamento</Text><View style={S.sectionDivider} />
-        <View style={S.table}>
-          <View style={S.tableHead}><Text style={S.tableHeadCell}>Categoria</Text><Text style={S.tableHeadCell}>Gestao</Text><Text style={S.tableHeadCell}>Participacao</Text><Text style={S.tableHeadCell}>Valor</Text></View>
-          {chunk(custosDetalhados, 17).map((c, i) => (
-            <View key={`${c.categoria}-${i}`} style={i % 2 ? S.tableRowAlt : S.tableRow}>
-              <Text style={S.tableCell}>{c.categoria}</Text><Text style={S.tableCell}>{c.tipoGestao}</Text><Text style={S.tableCellR}>{pct(custosTotal > 0 ? c.valor / custosTotal * 100 : 0)}</Text><Text style={S.tableCellRBold}>{BRL(c.valor)}</Text>
-            </View>
-          ))}
-          <View style={S.tableFooter}><Text style={S.tableFooterCell}>Total</Text><Text style={S.tableFooterCell} /><Text style={S.tableFooterCellR}>100,0%</Text><Text style={S.tableFooterCellR}>{BRL(custosTotal)}</Text></View>
+
+        <Text style={S.secaoTitulo}>Apuração do resultado</Text>
+        <View wrap={false}>
+          <LinhaDre label="Receita líquida das reservas" valor={BRL(receita)} />
+          <LinhaDre label="(-) Custos do imóvel no mês" valor={BRL(custosTotal)} corValor={custosTotal > 0 ? COR.vermelho : undefined} />
+          <LinhaDre label="(=) Lucro líquido" valor={BRL(lucro)} bold corValor={lucro < 0 ? COR.vermelho : undefined} />
+          <LinhaDre
+            label={`(-) Administração AlugEasy — ${taxaFmt(taxaRepasse)} sobre ${baseRepasseLabel}`}
+            valor={BRL(repasse)} corValor={repasse > 0 ? COR.vermelho : undefined}
+          />
+          <LinhaDre
+            label="(=) VALOR LÍQUIDO DO PROPRIETÁRIO" valor={BRL(valorProprietario)}
+            bold tamanho={10} bg={negativo ? COR.vermelhoBg : COR.verdeBg}
+            corValor={negativo ? COR.vermelho : COR.verde}
+          />
         </View>
-        {!custosDetalhados.length ? <View style={S.emptyState}><Text style={S.emptyStateTitle}>Sem custos lancados</Text><Text style={S.emptyStateText}>Nao foram encontrados custos para esta competencia.</Text></View> : null}
-        <PageFooter dataGeracao={dataGeracao} pageNum={3} />
+
+        <View
+          style={[S.repasseBox, ...(negativo ? [{ backgroundColor: COR.vermelhoBg, borderColor: COR.vermelho }] : [])]}
+          wrap={false}
+        >
+          <View style={S.repasseLinha}>
+            <Text style={S.repasseLabel}>Repasse ao proprietário</Text>
+            <Text style={[S.repasseValor, ...(negativo ? [{ color: COR.vermelho }] : [])]}>{BRL(valorProprietario)}</Text>
+          </View>
+          <Text style={S.repasseNota}>
+            Crédito em conta do proprietário conforme condições do contrato de administração.
+          </Text>
+        </View>
+
+        <Rodape geradoEm={geradoEm} />
       </Page>
 
+      {/* ═══════════════ Página 2+ — detalhamento do mês ═══════════════ */}
       <Page size="A4" style={S.page}>
-        <PageHeader logoBase64={logoBase64} empreendimento={empreendimento} apartamento={apartamento} mesNome={mesNome} ano={ano} pageNum={4} totalPages={5} pageTitle="Reservas e Operacao" />
-        <View style={S.indicGrid}>
-          <View style={S.indicCard}><Text style={S.indicLabel}>Reservas</Text><Text style={S.indicValue}>{numReservas}</Text><Text style={S.indicSub}>validas no periodo</Text></View>
-          <View style={S.indicCard}><Text style={S.indicLabel}>Diarias</Text><Text style={S.indicValue}>{totalDiarias}</Text><Text style={S.indicSub}>noites vendidas</Text></View>
-          <View style={S.indicCard}><Text style={S.indicLabel}>Diaria media</Text><Text style={S.indicValue}>{BRL(valorMedioDiaria)}</Text><Text style={S.indicSub}>por noite</Text></View>
-          <View style={S.indicCard}><Text style={S.indicLabel}>Media por reserva</Text><Text style={S.indicValue}>{mediaDiariasPorReserva.toFixed(1).replace('.', ',')}</Text><Text style={S.indicSub}>noites</Text></View>
-        </View>
-        {taxaOcupacao !== undefined ? <View style={S.narrativaCard}><Text style={S.narrativaLabel}>Taxa de ocupacao</Text><Text style={S.narrativaText}>A ocupacao estimada do mes foi de {pct(taxaOcupacao)}, calculada sobre {totalDiarias} diarias vendidas.</Text></View> : null}
-        <Text style={S.sectionTitle}>Reservas</Text><View style={S.sectionDivider} />
-        {reservas.length ? (
-          <View style={S.table}>
-            <View style={S.tableHead}><Text style={S.tableHeadCell}>Hospede</Text><Text style={S.tableHeadCell}>Periodo</Text><Text style={S.tableHeadCell}>Canal</Text><Text style={S.tableHeadCell}>Noites</Text><Text style={S.tableHeadCell}>Valor</Text></View>
-            {chunk(reservas, 15).map((r, i) => (
-              <View key={`${r.checkin}-${i}`} style={i % 2 ? S.tableRowAlt : S.tableRow}>
-                <Text style={S.tableCell}>{r.nome_hospede ?? 'Hospede'}</Text><Text style={S.tableCell}>{shortDate(r.checkin)} a {shortDate(r.checkout)}</Text><Text style={S.tableCell}>{r.plataforma ?? 'Outros'}</Text><Text style={S.tableCellR}>{r.noites}</Text><Text style={S.tableCellRBold}>{BRL(r.valor_liquido)}</Text>
+        {cabecalho}
+
+        <Text style={S.tituloDetalhamento}>Detalhamento do mês</Text>
+
+        {receitaBruta > 0 && (
+          <View wrap={false}>
+            <Text style={S.secaoTitulo}>Receita do mês — do bruto ao líquido</Text>
+            <LinhaDre label="Receita bruta das reservas" valor={BRL(receitaBruta)} />
+            <LinhaDre
+              label={`(-) Taxas de plataforma (${pct1(taxaPctSobreBruto)} do bruto)`}
+              valor={BRL(taxasPlataforma)} corValor={COR.vermelho}
+            />
+            {Math.abs(ajusteManual) >= 0.01 && (
+              <LinhaDre
+                label={ajusteManual > 0 ? '(+) Lançamentos manuais (sem taxa de plataforma)' : '(-) Ajustes de conferência'}
+                valor={BRL(Math.abs(ajusteManual))}
+                corValor={ajusteManual < 0 ? COR.vermelho : undefined}
+              />
+            )}
+            <LinhaDre label="(=) Receita líquida das reservas" valor={BRL(receita)} bold corValor={COR.marinho} />
+            <View style={{ marginBottom: 12 }} />
+          </View>
+        )}
+
+        {canais.length > 0 && (
+          <View wrap={false}>
+            <Text style={S.secaoTitulo}>Receita por canal</Text>
+            <View style={S.thLeve}>
+              <Text style={[S.thLeveCel, { width: W.canal.canal }]}>Canal</Text>
+              <Text style={[S.thLeveCel, { width: W.canal.reservas, textAlign: 'right' }]}>Reservas</Text>
+              <Text style={[S.thLeveCel, { width: W.canal.noites, textAlign: 'right' }]}>Noites</Text>
+              <Text style={[S.thLeveCel, { width: W.canal.diaria, textAlign: 'right' }]}>Diária líq.</Text>
+              <Text style={[S.thLeveCel, { width: W.canal.taxa, textAlign: 'right' }]}>Taxa efetiva</Text>
+              <Text style={[S.thLeveCel, { width: W.canal.receita, textAlign: 'right' }]}>Receita líquida</Text>
+              <Text style={[S.thLeveCel, { width: W.canal.part, textAlign: 'right' }]}>Part. (%)</Text>
+              <Text style={[S.thLeveCel, { flex: 1 }]} />
+            </View>
+            {canais.map((c, i) => {
+              const part = receitaCanais > 0 ? (c.receita / receitaCanais) * 100 : 0
+              return (
+                <View key={c.canal} style={[S.tr, ...(i % 2 ? [S.trZebra] : [])]}>
+                  <Text style={[S.tdBold, { width: W.canal.canal }]}>{CANAL_LABEL[c.canal]}</Text>
+                  <Text style={[S.td, { width: W.canal.reservas, textAlign: 'right' }]}>{c.reservas}</Text>
+                  <Text style={[S.td, { width: W.canal.noites, textAlign: 'right' }]}>{c.noites}</Text>
+                  <Text style={[S.td, { width: W.canal.diaria, textAlign: 'right' }]}>
+                    {c.noites > 0 ? BRL(c.receita / c.noites) : '—'}
+                  </Text>
+                  <Text style={[S.td, { width: W.canal.taxa, textAlign: 'right' }]}>
+                    {c.taxaEfetivaPct === null ? '—' : pct1(c.taxaEfetivaPct)}
+                  </Text>
+                  <Text style={[S.td, { width: W.canal.receita, textAlign: 'right' }]}>{BRL(c.receita)}</Text>
+                  <Text style={[S.td, { width: W.canal.part, textAlign: 'right' }]}>{pct1(part)}</Text>
+                  <View style={S.barraTrilho}>
+                    <View style={[S.barra, { backgroundColor: CANAL_COR[c.canal], width: `${Math.max(2, part)}%` }]} />
+                  </View>
+                </View>
+              )
+            })}
+            <Text style={S.notaTabela}>
+              Diária líq. = receita líquida do canal / noites no mês. Taxa efetiva = quanto o canal
+              reteve sobre o valor bruto das reservas do mês.
+            </Text>
+          </View>
+        )}
+
+        <Text style={S.secaoTitulo}>Reservas de {mesNomeMin} ({reservas.length})</Text>
+        {reservas.length === 0 ? (
+          <Text style={S.vazioItalico}>Nenhuma reserva no mês.</Text>
+        ) : (
+          <View>
+            <View style={S.thEscuro}>
+              <Text style={[S.thEscuroCel, { flex: 1 }]}>Hóspede</Text>
+              <Text style={[S.thEscuroCel, { width: W.reserva.checkin }]}>Check-in</Text>
+              <Text style={[S.thEscuroCel, { width: W.reserva.checkout }]}>Check-out</Text>
+              <Text style={[S.thEscuroCel, { width: W.reserva.noites, textAlign: 'right' }]}>Noites*</Text>
+              <Text style={[S.thEscuroCel, { width: W.reserva.plataforma, paddingLeft: 8 }]}>Plataforma</Text>
+              <Text style={[S.thEscuroCel, { width: W.reserva.valor, textAlign: 'right' }]}>Valor líquido</Text>
+            </View>
+            {reservas.map((r, i) => (
+              <View key={`${r.checkin}-${i}`} style={[S.tr, ...(i % 2 ? [S.trZebra] : [])]} wrap={false}>
+                <Text style={[S.td, { flex: 1 }]}>{r.hospede}{r.cruzaMes ? ' (*)' : ''}</Text>
+                <Text style={[S.td, { width: W.reserva.checkin }]}>{dataBr(r.checkin)}</Text>
+                <Text style={[S.td, { width: W.reserva.checkout }]}>{dataBr(r.checkout)}</Text>
+                <Text style={[S.td, { width: W.reserva.noites, textAlign: 'right' }]}>{r.noites}</Text>
+                <Text style={[S.td, { width: W.reserva.plataforma, paddingLeft: 8 }]}>{CANAL_LABEL[r.canal]}</Text>
+                <Text style={[S.td, { width: W.reserva.valor, textAlign: 'right' }]}>{BRL(r.valor)}</Text>
               </View>
             ))}
+            <View style={S.trTotal} wrap={false}>
+              <Text style={[S.tdBold, { flex: 1, color: COR.marinho }]}>TOTAL</Text>
+              <Text style={[S.tdBold, { width: W.reserva.checkin }]} />
+              <Text style={[S.tdBold, { width: W.reserva.checkout }]} />
+              <Text style={[S.tdBold, { width: W.reserva.noites, textAlign: 'right', color: COR.marinho }]}>{totalNoitesReservas}</Text>
+              <Text style={[S.tdBold, { width: W.reserva.plataforma }]} />
+              <Text style={[S.tdBold, { width: W.reserva.valor, textAlign: 'right', color: COR.marinho }]}>{BRL(totalValorReservas)}</Text>
+            </View>
+            <Text style={S.notaTabela}>
+              {algumaCruzaMes
+                ? '(*) Reserva que cruza a virada do mês — valor proporcional apenas às noites dentro do mês. Coluna Noites = noites dentro do mês.'
+                : '* Noites dentro do mês de referência.'}
+            </Text>
           </View>
-        ) : <View style={S.emptyState}><Text style={S.emptyStateTitle}>Sem reservas validas</Text><Text style={S.emptyStateText}>Nao houve reservas validas para a competencia selecionada.</Text></View>}
-        <PageFooter dataGeracao={dataGeracao} pageNum={4} />
-      </Page>
+        )}
 
-      <Page size="A4" style={S.page}>
-        <PageHeader logoBase64={logoBase64} empreendimento={empreendimento} apartamento={apartamento} mesNome={mesNome} ano={ano} pageNum={5} totalPages={5} pageTitle="Inteligencia AlugEasy" />
-        <InsightCard cor={margemCor} titulo="Margem operacional" texto={`A margem do periodo foi de ${pct(margemPct)}. ${margemPct >= 40 ? 'O desempenho esta acima do patamar saudavel para operacao.' : margemPct >= 20 ? 'O resultado e positivo, mas merece acompanhamento dos principais custos.' : 'O resultado exige revisao de custos, precificacao ou ocupacao.'}`} badge={margemBadge} />
-        <InsightCard cor={corTendencia(tendFat)} titulo="Tendencia de faturamento" texto={`Nos ultimos tres meses, a variacao acumulada de faturamento foi de ${BRL(tendFatValor)}. O movimento atual esta sinalizado como ${tendFat}.`} />
-        <InsightCard cor={mesAtualVsMedia >= 0 ? COLOR.verde : COLOR.vermelho} titulo="Comparativo com media" texto={`O mes atual ficou ${pct(mesAtualVsMedia, true)} em relacao a media de ${BRL(mediaMensal)} dos meses analisados.`} />
-        <InsightCard cor={COLOR.amarelo} titulo="Principal custo" texto={principalCusto ? `${principalCusto.label} concentrou ${BRL(principalCusto.valor)}, equivalente a ${pct(custosTotal > 0 ? principalCusto.valor / custosTotal * 100 : 0)} dos custos.` : 'Nao ha custos registrados para identificar concentracao de despesas.'} />
-        <InsightCard cor={COLOR.azulAccent} titulo="Ticket medio por reserva" texto={`O ticket medio foi de ${BRL(ticketMedioReserva)} por reserva, com diaria media de ${BRL(valorMedioDiaria)}.`} />
-        <View style={S.repasseBox}>
-          <View style={S.repasseBoxHeader}><Text style={S.repasseBoxHeaderText}>Resumo final</Text></View>
-          <View style={S.repasseBoxRow}><Text style={S.repasseBoxLabel}>Resultado liquido do imovel</Text><Text style={S.repasseBoxValue}>{BRL(lucroLiquido)}</Text></View>
-          <View style={S.repasseBoxRowAlt}><Text style={S.repasseBoxLabel}>Repasse AlugEasy</Text><Text style={S.repasseBoxValue}>{BRL(valorRepasse)}</Text></View>
-          <View style={S.repasseBoxFinal}><Text style={S.repasseBoxFinalLabel}>Valor final ao proprietario</Text><Text style={S.repasseBoxFinalValue}>{BRL(valorLiquidoProprietario)}</Text></View>
+        <Text style={S.secaoTitulo}>Custos do imóvel</Text>
+        {custos.length === 0 ? (
+          <Text style={S.vazioItalico}>Nenhum custo informado para este mês.</Text>
+        ) : (
+          <View>
+            <View style={S.thEscuro}>
+              <Text style={[S.thEscuroCel, { flex: 1 }]}>Categoria</Text>
+              <Text style={[S.thEscuroCel, { width: W.custo.tipo }]}>Tipo</Text>
+              <Text style={[S.thEscuroCel, { width: W.custo.valor, textAlign: 'right' }]}>Valor</Text>
+              <Text style={[S.thEscuroCel, { width: W.custo.pctReceita, textAlign: 'right' }]}>% da receita</Text>
+            </View>
+            {custosOrdenados.map((c, i) => (
+              <View key={`${c.categoria}-${i}`} style={[S.tr, ...(i % 2 ? [S.trZebra] : [])]} wrap={false}>
+                <Text style={[S.td, { flex: 1 }]}>{c.categoria}</Text>
+                <Text style={[S.td, { width: W.custo.tipo }]}>{c.recorrente ? 'Recorrente' : 'Eventual'}</Text>
+                <Text style={[S.td, { width: W.custo.valor, textAlign: 'right' }]}>{BRL(c.valor)}</Text>
+                <Text style={[S.td, { width: W.custo.pctReceita, textAlign: 'right' }]}>
+                  {receita > 0 ? pct1((c.valor / receita) * 100) : '—'}
+                </Text>
+              </View>
+            ))}
+            <View style={S.trTotal} wrap={false}>
+              <Text style={[S.tdBold, { flex: 1, color: COR.marinho }]}>TOTAL DE CUSTOS</Text>
+              <Text style={[S.tdBold, { width: W.custo.tipo }]} />
+              <Text style={[S.tdBold, { width: W.custo.valor, textAlign: 'right', color: COR.marinho }]}>{BRL(custosTotal)}</Text>
+              <Text style={[S.tdBold, { width: W.custo.pctReceita, textAlign: 'right', color: COR.marinho }]}>
+                {receita > 0 ? pct1((custosTotal / receita) * 100) : '—'}
+              </Text>
+            </View>
+            <Text style={S.notaTabela}>
+              Recorrentes (mensalidades e serviços contínuos): {BRL(custosRecorrentes)} · Eventuais: {BRL(custosEventuais)}.
+              {variacaoCustos !== null && (
+                Math.abs(variacaoCustos) < 0.05
+                  ? ` Total em linha com a média dos meses anteriores em operação (${BRL(mediaCustosHistorica!)}/mês).`
+                  : ` Total ${pct1(Math.abs(variacaoCustos))} ${variacaoCustos > 0 ? 'acima' : 'abaixo'} da média dos meses anteriores em operação (${BRL(mediaCustosHistorica!)}/mês).`
+              )}
+            </Text>
+          </View>
+        )}
+
+        {proximoMes && proximoMes.reservas > 0 && (
+          <View wrap={false}>
+            <Text style={S.secaoTitulo}>
+              Próximo mês — reservas já confirmadas para {(MESES[proximoMes.mes - 1] ?? '').toLowerCase()}/{proximoMes.ano}
+            </Text>
+            <CaixaGrid itens={[
+              { label: 'Noites já reservadas', valor: `${proximoMes.noites} de ${proximoMes.diasDoMes}` },
+              { label: 'Reservas', valor: String(proximoMes.reservas) },
+              { label: 'Receita líquida prevista', valor: BRL(proximoMes.receitaPrevista) },
+            ]} />
+            <Text style={[S.notaTabela, { marginTop: -8 }]}>
+              Posição no fechamento deste relatório — previsão sujeita a cancelamentos e a novas reservas.
+            </Text>
+          </View>
+        )}
+
+        <View wrap={false}>
+          <Text style={S.glossarioTitulo}>Glossário</Text>
+          <Text style={S.glossarioTexto}>
+            Ocupação: percentual das noites do mês em que o imóvel esteve reservado.
+          </Text>
+          <Text style={S.glossarioTexto}>
+            Diária média: receita líquida do mês dividida pelas noites ocupadas.
+          </Text>
+          <Text style={S.glossarioTexto}>
+            RevPAR (receita por diária disponível): receita líquida dividida por todos os dias do mês,
+            ocupados ou não — mede ocupação e preço ao mesmo tempo.
+          </Text>
         </View>
-        <View style={S.narrativaCard}><Text style={S.narrativaLabel}>Assinatura</Text><Text style={S.narrativaText}>Relatorio preparado pela AlugEasy com base nos dados financeiros e operacionais registrados no sistema para a competencia indicada.</Text></View>
-        <PageFooter dataGeracao={dataGeracao} pageNum={5} />
+
+        <Rodape geradoEm={geradoEm} />
       </Page>
     </Document>
   )
