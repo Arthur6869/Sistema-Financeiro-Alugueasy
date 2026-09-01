@@ -5,6 +5,7 @@ import { MESES, MESES_ABREV } from '@/lib/constants'
 import { HistoricoChart } from '@/components/proprietario/historico-chart'
 import { HistoricoLinhaClicavel } from '@/components/proprietario/historico-linha-clicavel'
 import { DesempenhoImovelChart } from '@/components/proprietario/desempenho-imovel-chart'
+import { calcularTaxaCarteira } from '@/lib/calcular-kpis'
 
 type ApartamentoVinculo = {
   id: string
@@ -12,16 +13,6 @@ type ApartamentoVinculo = {
   taxa_repasse: number | null
   tipo_repasse: 'lucro' | 'faturamento' | null
   empreendimentos: { nome: string } | null
-}
-
-function calcularRepasse(
-  faturamento: number,
-  lucro: number,
-  taxaRepasse: number,
-  tipoRepasse: 'lucro' | 'faturamento'
-) {
-  const base = tipoRepasse === 'faturamento' ? faturamento : lucro
-  return base * (taxaRepasse / 100)
 }
 
 export default async function ProprietarioHistoricoPage() {
@@ -70,13 +61,15 @@ export default async function ProprietarioHistoricoPage() {
 
       const fatRows = (fat ?? []) as { apartamento_id: string; valor: number | null }[]
       const cusRows = (cus ?? []) as { apartamento_id: string; valor: number | null }[]
-      const faturamento = fatRows.reduce((s, r) => s + (r.valor ?? 0), 0)
-      const custos = cusRows.reduce((s, r) => s + (r.valor ?? 0), 0)
-      const lucro = faturamento - custos
-      const taxaRepasse = apartamentos[0]?.taxa_repasse ?? 0
-      const tipoRepasse = apartamentos[0]?.tipo_repasse ?? 'lucro'
-      const repasse = calcularRepasse(faturamento, lucro, taxaRepasse, tipoRepasse)
-      const valorProprietario = lucro - repasse
+      // Taxa imóvel a imóvel — carteiras mistas (ex.: MERCURE 12% + METROPOLITAN
+      // 15% do mesmo proprietário) erravam quando a taxa do primeiro imóvel
+      // valia para a carteira inteira.
+      const carteira = calcularTaxaCarteira(apartamentos, fatRows, cusRows)
+      const faturamento = carteira.faturamento
+      const custos = carteira.custos
+      const lucro = carteira.lucro
+      const repasse = carteira.taxaAlugEasy
+      const valorProprietario = carteira.valorProprietario
 
       const isAtual = m === mesAtual && a === anoAtual
       const semDados = faturamento === 0 && custos === 0

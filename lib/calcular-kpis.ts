@@ -121,3 +121,75 @@ export function somarKPIs(lista: KPIsResult[]): KPIsResult {
     tipoRepasseLabel:         lista[0]?.tipoRepasseLabel ?? 'Lucro Líquido',
   }
 }
+
+// ── Taxa de administração AlugEasy por carteira ──────────────────────────────
+// Cada imóvel ADM tem a SUA taxa (EASY 117 = 15%, MERCURE 1312 = 12%,
+// LINK 104/204 = 20%…). Somar a carteira inteira e aplicar uma taxa única erra
+// qualquer proprietário com imóveis de percentuais diferentes — por isso o
+// cálculo é sempre imóvel a imóvel. Usar estas funções em vez de repetir a regra.
+
+export type ApartamentoTaxa = {
+  id:           string
+  taxa_repasse: number | null
+  tipo_repasse: 'lucro' | 'faturamento' | null
+}
+
+export type LinhaValor = { apartamento_id: string; valor: number | null }
+
+export type TaxaCarteira = {
+  faturamento:       number
+  custos:            number
+  lucro:             number
+  taxaAlugEasy:      number   // quanto fica com a AlugEasy
+  valorProprietario: number   // lucro − taxaAlugEasy
+}
+
+export function calcularTaxaCarteira(
+  apartamentos: ApartamentoTaxa[],
+  diarias:      LinhaValor[],
+  custos:       LinhaValor[],
+): TaxaCarteira {
+  const soma = (linhas: LinhaValor[], aptId: string) =>
+    linhas.reduce((s, l) => l.apartamento_id === aptId ? s + Number(l.valor ?? 0) : s, 0)
+
+  let faturamento = 0, custosTotal = 0, taxaAlugEasy = 0
+
+  for (const apt of apartamentos) {
+    const fat   = soma(diarias, apt.id)
+    const cus   = soma(custos,  apt.id)
+    const base  = apt.tipo_repasse === 'faturamento' ? fat : fat - cus
+    faturamento  += fat
+    custosTotal  += cus
+    taxaAlugEasy += base * (Number(apt.taxa_repasse ?? 0) / 100)
+  }
+
+  const lucro = faturamento - custosTotal
+  return {
+    faturamento, custos: custosTotal, lucro, taxaAlugEasy,
+    valorProprietario: lucro - taxaAlugEasy,
+  }
+}
+
+/**
+ * Rótulo do percentual cobrado: "15% sobre o lucro" numa carteira homogênea,
+ * "12% a 20% sobre o lucro" quando os imóveis têm taxas diferentes.
+ * Retorna '' quando nenhum imóvel tem taxa (carteira 100% sublocação).
+ */
+export function rotuloTaxaCarteira(apartamentos: ApartamentoTaxa[]): string {
+  const comTaxa = apartamentos.filter(a => Number(a.taxa_repasse ?? 0) > 0)
+  if (comTaxa.length === 0) return ''
+
+  const pctFmt = (t: number) => `${t.toLocaleString('pt-BR')}%`
+  const taxas  = [...new Set(comTaxa.map(a => Number(a.taxa_repasse)))].sort((a, b) => a - b)
+  const pct    = taxas.length === 1
+    ? pctFmt(taxas[0])
+    : `${pctFmt(taxas[0])} a ${pctFmt(taxas[taxas.length - 1])}`
+
+  const temFaturamento = comTaxa.some(a => a.tipo_repasse === 'faturamento')
+  const temLucro       = comTaxa.some(a => a.tipo_repasse !== 'faturamento')
+  const base = temFaturamento && temLucro ? 'sobre lucro e faturamento'
+    : temFaturamento ? 'sobre o faturamento'
+    : 'sobre o lucro'
+
+  return `${pct} ${base}`
+}

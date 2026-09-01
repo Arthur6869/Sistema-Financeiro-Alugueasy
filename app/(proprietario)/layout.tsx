@@ -68,16 +68,6 @@ export default async function ProprietarioLayout({
           gap: 16,
         }}>
 
-          {/* Marca */}
-          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/image.png"
-              alt="AlugEasy"
-              style={{ height: 44, width: 'auto', display: 'block', borderRadius: 8 }}
-            />
-          </div>
-
           {/* Nav desktop — repassa mes/ano da URL atual para manter filtro entre abas */}
           <div data-tour="navegacao" className="hidden md:block">
             <DesktopNav />
@@ -111,8 +101,9 @@ export default async function ProprietarioLayout({
         </div>
       </header>
 
-      {/* Conteúdo — sem max-width: cada página controla a própria largura via .pg-wrap */}
-      <main className="flex-1 w-full pb-24 md:pb-0">
+      {/* Conteúdo — sem max-width: cada página controla a própria largura via .pg-wrap.
+          overflowX clip: nenhum elemento largo pode criar scroll lateral na página inteira */}
+      <main className="flex-1 w-full pb-24 md:pb-0" style={{ overflowX: 'clip' }}>
         {children}
       </main>
 

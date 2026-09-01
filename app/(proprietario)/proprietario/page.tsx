@@ -1,12 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { TrendingUp, Receipt, Wallet, Clock, BarChart2, FileText, Download, History, AlertCircle } from 'lucide-react'
+import { TrendingUp, Receipt, Wallet, Clock, BarChart2, FileText, Download, History, AlertCircle, Percent } from 'lucide-react'
 import { EvolucaoChart } from '@/components/proprietario/evolucao-chart'
 import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { RealtimeReservas } from '@/components/proprietario/realtime-reservas'
 import { MESES, MESES_ABREV } from '@/lib/constants'
-import { calcularKPIs, somarKPIs } from '@/lib/calcular-kpis'
+import { calcularKPIs, somarKPIs, calcularTaxaCarteira, rotuloTaxaCarteira } from '@/lib/calcular-kpis'
 import { OccupancyPanel } from '@/components/proprietario/occupancy-panel'
 import { SyncButton } from '@/components/proprietario/sync-button'
 
@@ -63,13 +63,16 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
     .filter((a): a is ApartamentoVinculo => a !== null)
 
   const aptIds = apartamentos.map(a => a.id)
+  // "15% sobre o lucro" numa carteira homogênea; "12% a 15%" quando os imóveis
+  // ADM do proprietário têm percentuais diferentes. '' = carteira sem taxa.
+  const rotuloTaxa = rotuloTaxaCarteira(apartamentos)
 
   // Timestamp do último ingest (cron ou webhook) — exibido pelo componente Realtime.
   // Leitura via SECURITY DEFINER: proprietário não acessa ingest_status diretamente.
   const { data: ingestAtRaw } = await supabase.rpc('ultimo_ingest_timestamp')
   const ingestAt: string | null = ingestAtRaw ?? null
 
-  let kpis = { faturamento: 0, custos: 0, lucro: 0, repasse: 0, margem: 0 }
+  let kpis = { faturamento: 0, custos: 0, lucro: 0, taxaAlugEasy: 0, repasse: 0, margem: 0 }
   let historicoData: { label: string; faturamento: number; lucro: number; repasse: number }[] = []
   let mesesComDados = 0
   let semCategoriasConfiguradas = false
@@ -195,15 +198,13 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
 
     const total = somarKPIs(metricas)
     kpis = {
-      faturamento: total.receitaTotal,
-      custos:      total.custosTotal,
-      lucro:       total.lucroLiquido,
-      repasse:     total.valorLiquidoProprietario,
-      margem:      total.margemLiquida,
+      faturamento:  total.receitaTotal,
+      custos:       total.custosTotal,
+      lucro:        total.lucroLiquido,
+      taxaAlugEasy: total.valorRepasse,
+      repasse:      total.valorLiquidoProprietario,
+      margem:       total.margemLiquida,
     }
-
-    const taxaRepasseBase  = metricas[0]?.taxa  ?? 0
-    const tipoRepasseBase  = (apartamentos[0]?.tipo_repasse  ?? 'lucro') as 'lucro' | 'faturamento'
 
     const mesParaHistorico = mes > 0 ? mes : (now.getMonth() + 1)
     const periodos = Array.from({ length: 6 }, (_, i) => {
@@ -216,16 +217,17 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         const di = `${a}-${String(m).padStart(2, '0')}-01`
         const df = new Date(a, m, 0).toISOString().slice(0, 10)
         const [{ data: fat }, { data: cus }] = await Promise.all([
-          supabase.from('diarias').select('valor, tipo_gestao').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
-          supabase.from('custos_proprietario').select('valor, tipo_gestao').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
+          supabase.from('diarias').select('apartamento_id, valor').in('apartamento_id', aptIds).gte('data', di).lte('data', df),
+          supabase.from('custos_proprietario').select('apartamento_id, valor').in('apartamento_id', aptIds).eq('mes', m).eq('ano', a),
         ])
-        // Histórico: diárias + custos repassáveis (sem fallback Amenitiz para reduzir queries)
-        const faturamento = (fat ?? []).reduce((s, r) => s + Number(r.valor ?? 0), 0)
-        const custos      = (cus ?? []).reduce((s, r) => s + Number(r.valor ?? 0), 0)
-        const lucro       = faturamento - custos
-        const base        = tipoRepasseBase === 'faturamento' ? faturamento : lucro
-        const repasse     = lucro - base * taxaRepasseBase
-        return { label, faturamento, lucro, repasse }
+        // Histórico: diárias + custos repassáveis (sem fallback Amenitiz para reduzir
+        // queries). Taxa imóvel a imóvel — cada ADM tem o seu percentual.
+        const carteira = calcularTaxaCarteira(
+          apartamentos,
+          (fat ?? []) as { apartamento_id: string; valor: number | null }[],
+          (cus ?? []) as { apartamento_id: string; valor: number | null }[],
+        )
+        return { label, faturamento: carteira.faturamento, lucro: carteira.lucro, repasse: carteira.valorProprietario }
       })
     )
 
@@ -248,7 +250,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         .pg-period select { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: #0f1a2e; background: #fff; border: 1px solid #e7e9ee; border-radius: 9px; padding: 9px 14px; cursor: pointer; outline: none; }
         .pg-period { display: flex; gap: 8px; align-items: center; }
 
-        .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 28px; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px,1fr)); gap: 14px; margin-bottom: 28px; }
         .kpi-card { background: #fff; border: 1px solid #e7e9ee; border-radius: 16px; padding: 18px 18px 16px; position: relative; overflow: hidden; transition: transform .15s, box-shadow .15s; }
         .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,38,71,.06); }
         .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
@@ -256,14 +258,27 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         .kpi-card.k-red::before { background: #dc2626; }
         .kpi-card.k-green::before { background: #15803d; }
         .kpi-card.k-amber::before { background: #d97706; }
+        .kpi-card.k-slate::before { background: #64748b; }
         .kpi-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
         .kpi-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .kpi-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; }
-        .kpi-val { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 3px; color: #0f1a2e; }
+        .kpi-val { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin-bottom: 3px; color: #0f1a2e; }
         .kpi-foot { font-size: 11.5px; color: #94a3b8; }
 
         /* Repasse: sempre verde (regra 12 do design doc) */
         .kpi-card.k-repasse .kpi-val { color: #166534; }
+
+        /* Mobile: filtros empilham e ocupam a largura toda — a linha
+           botão+selects+badge é mais larga que a tela e criava scroll lateral */
+        @media (max-width: 640px) {
+          .pg-wrap { padding: 20px 16px 56px; }
+          .pg-head { flex-direction: column; align-items: stretch; }
+          .pg-period { align-items: stretch !important; }
+          .pg-period > div:first-child { flex-wrap: wrap; }
+          .pg-period .sync-btn { flex: 1 1 100%; justify-content: center; }
+          .pg-period > div:first-child > div { flex: 1; }
+          .pg-period select { flex: 1; min-width: 0; }
+        }
 
         /* Mobile hero: repasse vira destaque full-width no topo do grid */
         @media (max-width: 640px) {
@@ -374,6 +389,17 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
             <div className="kpi-val" style={{ color: '#166534' }}>R$ {formatBRL(kpis.lucro)}</div>
             <div className="kpi-foot">Margem de {kpis.margem.toFixed(0)}% no período</div>
           </div>
+
+          {rotuloTaxa !== '' && (
+          <div className="kpi-card k-slate">
+            <div className="kpi-top">
+              <div className="kpi-icon" style={{ background: '#f1f5f9' }}><Percent size={14} color="#475569" /></div>
+              <span className="kpi-label" title="Taxa de administração AlugEasy, calculada imóvel a imóvel">Taxa AlugEasy</span>
+            </div>
+            <div className="kpi-val" style={{ color: '#475569' }}>− R$ {formatBRL(kpis.taxaAlugEasy)}</div>
+            <div className="kpi-foot">{rotuloTaxa}</div>
+          </div>
+          )}
 
           <div className="kpi-card k-amber k-repasse" data-tour="repasse">
             <div className="kpi-top">
