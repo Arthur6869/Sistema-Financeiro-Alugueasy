@@ -45,7 +45,7 @@ const STEPS = [
 
 export function ComoFuncionaSection() {
   return (
-    <section id="como-funciona" style={{ padding: '72px 5%', background: '#fff' }}>
+    <section id="como-funciona" className="section-pad" style={{ padding: '72px 5%', background: '#fff' }}>
       <style>{`
         .cf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
         .cf-step { display: flex; gap: 16px; padding: 20px 0; border-top: 1px solid #f1f5f9; }
@@ -64,6 +64,11 @@ export function ComoFuncionaSection() {
         @media (max-width: 900px) {
           .cf-grid { grid-template-columns: 1fr; gap: 32px; }
           .cf-summary-card { position: static; }
+        }
+        @media (max-width: 768px) {
+          .cf-summary-card { padding: 24px 20px; border-radius: 16px; }
+          .cf-num { font-size: 26px; width: 38px; }
+          .cf-step { gap: 12px; padding: 16px 0; }
         }
       `}</style>
 

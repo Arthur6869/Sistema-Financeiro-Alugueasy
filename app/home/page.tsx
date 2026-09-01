@@ -26,6 +26,7 @@ function Navbar() {
 
   return (
     <nav
+      className="nav-root"
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
         background: scrolled ? 'rgba(255,255,255,0.94)' : 'rgba(255,255,255,0.6)',
@@ -35,9 +36,9 @@ function Navbar() {
         justifyContent: 'space-between', transition: 'all .2s',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <LogoIcon size={30} color="#0f2647" />
-        <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.06em', color: '#0f2647' }}>
+        <span className="nav-brand-text" style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.06em', color: '#0f2647' }}>
           ALUGUEASY
         </span>
       </div>
@@ -51,11 +52,13 @@ function Navbar() {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <Link href="/login-proprietario" className="btn-outline-green btn-pill btn-sm">
           <Home size={13} />
-          Portal proprietário
+          <span className="lbl-full">Portal proprietário</span>
+          <span className="lbl-short">Proprietário</span>
         </Link>
         <Link href="/login" className="btn-navy btn-pill btn-sm">
           <Lock size={13} />
-          Acesso interno
+          <span className="lbl-full">Acesso interno</span>
+          <span className="lbl-short">Equipe</span>
         </Link>
       </div>
     </nav>
@@ -66,7 +69,7 @@ function Hero() {
   const bars = [38, 52, 45, 60, 35, 55, 42, 48, 65, 70, 30]
 
   return (
-    <section style={{ background: '#0f2647', padding: '100px 5% 90px', position: 'relative', overflow: 'hidden' }}>
+    <section className="hero-section" style={{ background: '#0f2647', padding: '100px 5% 90px', position: 'relative', overflow: 'hidden' }}>
       <div
         style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
@@ -109,12 +112,12 @@ function Hero() {
             tempo real, prestação de contas automatizada e controle total por empreendimento.
           </p>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Link href="/login" className="btn-white btn-xl">
+          <div className="hero-ctas" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Link href="/login" className="btn-white btn-xl hero-cta-interno">
               <Lock size={16} />
               Acesso interno
             </Link>
-            <Link href="/login-proprietario" className="btn-ghost btn-xl">
+            <Link href="/login-proprietario" className="btn-ghost btn-xl hero-cta-prop">
               <Home size={16} />
               Portal do proprietário
             </Link>
@@ -164,7 +167,7 @@ const FEATURES = [
 
 function Features() {
   return (
-    <section id="funcionalidades" style={{ padding: '72px 5%', background: '#f8f6f1' }}>
+    <section id="funcionalidades" className="section-pad" style={{ padding: '72px 5%', background: '#f8f6f1' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <span className="section-tag">Funcionalidades</span>
@@ -192,7 +195,7 @@ function Features() {
 
 function Portais() {
   return (
-    <section id="portais" style={{ padding: '72px 5%', background: '#fff' }}>
+    <section id="portais" className="section-pad" style={{ padding: '72px 5%', background: '#fff' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <span className="section-tag">Portais de acesso</span>
         <h2 className="section-title">Dois portais, um sistema</h2>
@@ -201,7 +204,7 @@ function Portais() {
         </p>
 
         <div className="portals-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-          <div style={{ background: '#0f2647', borderRadius: 20, padding: '36px 32px' }}>
+          <div className="portal-card portal-card-navy" style={{ background: '#0f2647', borderRadius: 20, padding: '36px 32px' }}>
             <span style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: 100, display: 'inline-block', marginBottom: 18 }}>
               Equipe interna
             </span>
@@ -230,7 +233,7 @@ function Portais() {
             </Link>
           </div>
 
-          <div style={{ background: '#14532d', borderRadius: 20, padding: '36px 32px' }}>
+          <div className="portal-card portal-card-green" style={{ background: '#14532d', borderRadius: 20, padding: '36px 32px' }}>
             <span style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: 100, display: 'inline-block', marginBottom: 18 }}>
               Proprietários
             </span>
@@ -266,15 +269,15 @@ function Portais() {
 
 function CtaStrip() {
   return (
-    <section style={{ background: '#0f2647', padding: '60px 5%' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
+    <section className="section-pad" style={{ background: '#0f2647', padding: '60px 5%' }}>
+      <div className="cta-strip-inner" style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ fontFamily: '"Instrument Serif",Georgia,serif', fontSize: 30, color: '#fff', fontWeight: 400, marginBottom: 6 }}>
             Pronto para acessar?
           </h2>
           <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>Escolha seu portal e entre com suas credenciais.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="cta-strip-actions" style={{ display: 'flex', gap: 10 }}>
           <Link href="/login-proprietario" className="btn-green btn-md"><Home size={15} /> Portal proprietário</Link>
           <Link href="/login" className="btn-white btn-md"><Lock size={15} /> Acesso interno</Link>
         </div>
@@ -285,7 +288,7 @@ function CtaStrip() {
 
 function Footer() {
   return (
-    <footer style={{ background: '#0a1b36', padding: '28px 5%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+    <footer className="site-footer" style={{ background: '#0a1b36', padding: '28px 5%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <LogoIcon size={22} color="rgba(255,255,255,0.35)" />
         <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)' }}>ALUGUEASY</span>
@@ -337,17 +340,45 @@ export default function HomeLandingPage() {
         .feat-card:hover { transform:translateY(-3px); box-shadow:0 12px 32px rgba(15,38,71,.08); }
         .feat-icon { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
 
+        .lbl-short { display: none; }
+        section[id] { scroll-margin-top: 72px; }
+
         @media (max-width: 900px) {
           .feat-grid { grid-template-columns: 1fr 1fr !important; }
         }
         @media (max-width: 768px) {
+          .nav-links-desktop { display: none !important; }
+          .nav-root { padding: 0 14px !important; }
+          .lbl-full { display: none; }
+          .lbl-short { display: inline; }
+          .btn-sm { font-size: 12px; padding: 8px 12px; }
+
           .hero-grid { grid-template-columns: 1fr !important; }
           .hero-visual { display: none; }
+          .hero-section { padding: 88px 20px 56px !important; }
+          .hero-ctas { flex-direction: column; }
+          .hero-ctas .btn-xl, .portal-card .btn-lg, .cta-strip-actions a { box-sizing: border-box; }
+          .hero-ctas .btn-xl { width: 100%; justify-content: center; }
+          /* No celular o público principal é o proprietário: portal dele vem primeiro e em destaque */
+          .hero-ctas .hero-cta-prop { order: -1; background: #15803d !important; color: #fff !important; border: none !important; box-shadow: 0 2px 8px rgba(21,128,61,.25); }
+
+          .section-pad { padding: 48px 20px !important; }
           .portals-grid { grid-template-columns: 1fr !important; }
-          .nav-links-desktop { display: none !important; }
+          .portal-card { padding: 28px 20px !important; border-radius: 16px !important; }
+          .portal-card-green { order: -1; }
+          .portal-card .btn-lg, .portal-card .btn-white { width: 100%; justify-content: center; }
+
+          .cta-strip-inner { flex-direction: column; align-items: stretch; text-align: center; }
+          .cta-strip-actions { flex-direction: column; }
+          .cta-strip-actions a { justify-content: center; }
+
+          .site-footer { flex-direction: column; justify-content: center; text-align: center; gap: 6px !important; padding: 24px 20px !important; }
         }
         @media (max-width: 600px) {
           .feat-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 400px) {
+          .nav-brand-text { display: none; }
         }
       `}</style>
 
