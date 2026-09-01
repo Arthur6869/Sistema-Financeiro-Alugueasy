@@ -68,9 +68,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // reservasOnly: apenas upsert em amenitiz_reservas — não toca diarias, importacoes ou syncs.
-    // O proprietário verifica novas reservas sem destruir dados existentes.
-    const result = await runAmenitizSync(admin, mes, ano, { actorUserId: userId, reservasOnly: true })
+    // reservasOnly: apenas amenitiz_reservas — não toca diarias, importacoes ou syncs.
+    // apenasNovas: só INSERE reservas inéditas; linhas existentes (inclusive as
+    // calibradas ou remapeadas pela gestão) nunca são regravadas por este botão.
+    // Atualização de status/valor de reservas já gravadas fica a cargo do cron.
+    const result = await runAmenitizSync(admin, mes, ano, { actorUserId: userId, reservasOnly: true, apenasNovas: true })
 
     if (result.success) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
