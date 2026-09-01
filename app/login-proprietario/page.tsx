@@ -34,6 +34,7 @@ export default function LoginProprietarioPage() {
   const [showPw,   setShowPw]   = useState(false)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
+  const [portalErrado, setPortalErrado] = useState(false)
   const [systemError, setSystemError] = useState('')
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export default function LoginProprietarioPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setPortalErrado(false)
 
     if (!supabase) {
       setError('Sistema não inicializado. Recarregue a página.')
@@ -73,10 +75,29 @@ export default function LoginProprietarioPage() {
     }
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
       if (authError) {
         setError('Email ou senha incorretos. Verifique seus dados.')
+        setLoading(false)
+        return
+      }
+
+      // Este portal é exclusivo de proprietários: contas da equipe interna
+      // (analista/admin) devem entrar pelo acesso interno.
+      const userId = authData.user?.id
+      const { data: profile } = userId
+        ? await supabase.from('profiles').select('role').eq('id', userId).single()
+        : { data: null }
+
+      if (profile?.role !== 'proprietario') {
+        await supabase.auth.signOut()
+        if (profile?.role === 'analista' || profile?.role === 'admin') {
+          setPortalErrado(true)
+          setError('Este portal é exclusivo para proprietários. Membros da equipe devem entrar pelo acesso interno.')
+        } else {
+          setError('Sua conta não tem acesso ao portal. Fale com a equipe AlugEasy.')
+        }
         setLoading(false)
         return
       }
@@ -254,7 +275,17 @@ export default function LoginProprietarioPage() {
               {error && (
                 <div className="prop-alert prop-alert-err">
                   <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <span>{error}</span>
+                  <span>
+                    {error}
+                    {portalErrado && (
+                      <>
+                        {' '}
+                        <Link href="/login" style={{ fontWeight: 600, color: '#0f2647', textDecoration: 'underline' }}>
+                          Ir para o acesso interno →
+                        </Link>
+                      </>
+                    )}
+                  </span>
                 </div>
               )}
 

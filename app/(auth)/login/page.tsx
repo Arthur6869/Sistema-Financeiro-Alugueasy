@@ -26,6 +26,7 @@ export default function LoginPage() {
   const [showPw,   setShowPw]   = useState(false)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
+  const [portalErrado, setPortalErrado] = useState(false)
   const [systemError, setSystemError] = useState('')
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setPortalErrado(false)
 
     if (!supabase) {
       setError('Sistema não inicializado. Recarregue a página.')
@@ -66,10 +68,30 @@ export default function LoginPage() {
     }
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
       if (authError) {
         setError(authError.message || 'Email ou senha incorretos. Verifique suas credenciais.')
+        setLoading(false)
+        return
+      }
+
+      // Este formulário é exclusivo da equipe interna: contas de proprietário
+      // devem entrar pelo portal próprio. Sem esta checagem a sessão é criada
+      // e o proxy redireciona para o portal, "aceitando" o login no lugar errado.
+      const userId = authData.user?.id
+      const { data: profile } = userId
+        ? await supabase.from('profiles').select('role').eq('id', userId).single()
+        : { data: null }
+
+      if (profile?.role !== 'analista' && profile?.role !== 'admin') {
+        await supabase.auth.signOut()
+        if (profile?.role === 'proprietario') {
+          setPortalErrado(true)
+          setError('Este acesso é exclusivo da equipe interna. Para entrar na sua conta, use o Portal do Proprietário.')
+        } else {
+          setError('Sua conta não tem acesso ao sistema. Fale com a equipe AlugEasy.')
+        }
         setLoading(false)
         return
       }
@@ -258,7 +280,17 @@ export default function LoginPage() {
               {error && (
                 <div className="ae-alert ae-alert-err">
                   <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <span>{error}</span>
+                  <span>
+                    {error}
+                    {portalErrado && (
+                      <>
+                        {' '}
+                        <Link href="/login-proprietario" style={{ fontWeight: 600, color: '#15803d', textDecoration: 'underline' }}>
+                          Ir para o Portal do Proprietário →
+                        </Link>
+                      </>
+                    )}
+                  </span>
                 </div>
               )}
 
