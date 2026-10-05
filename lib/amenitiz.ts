@@ -32,8 +32,18 @@ export interface AmenitizReserva {
 }
 
 // ── TAXAS POR PLATAFORMA — Regras de negócio AlugEasy ──────────────────────
+//
+// BOOKING — tabela por empreendimento com VIGÊNCIA pela data de CHECK-IN da
+// reserva. Reajuste do Booking informado pelo usuário em 08/09/2026 (print):
+// faixa de 13% → 15% e faixa de 16% → 18%. Vigência CONFIRMADA pelo usuário
+// em 08/09/2026: check-in a partir de 01/08/2026 — julho/2026 e anteriores
+// (prestações já entregues) ficam com a tabela antiga. O gerador de planilha
+// (lib-prestacao.mjs, TAXAS_BOOKING) repete esta tabela — manter os dois iguais.
 
-const TAXA_BOOKING: Record<string, number> = {
+export const TAXA_BOOKING_VIGENCIA = '2026-08-01'
+
+// Tabela antiga (confirmada pelo usuário em 06/07/2026) — check-in < vigência
+const TAXA_BOOKING_ATE_JUL_2026: Record<string, number> = {
   'ESSENCE':        0.16,
   'METROPOLITAN':   0.16,
   'CULLINAN':       0.16,
@@ -55,9 +65,50 @@ const TAXA_BOOKING: Record<string, number> = {
   'VISION':         0.13,
 }
 
+// Tabela reajustada — check-in >= vigência. Lista definitiva enviada pelo
+// usuário em 05/10/2026 (corrige o print de 08/09: VISION é 15%, não 18%;
+// SAINT MORITZ entra com 15%). ASA SUL, AMAZE e a exceção MERCURE 1419 não
+// constam na lista de 05/10 — mantidos como no print de 08/09.
+const TAXA_BOOKING_DESDE_AGO_2026: Record<string, number> = {
+  'ESSENCE':        0.18,
+  'METROPOLITAN':   0.18,
+  'CULLINAN':       0.18,
+  'BRISAS DO LAGO': 0.18,
+  'BRISAS':         0.18,
+  'MERCURE':        0.18, // exceto apt 1419 → 15%
+  'MERCURE LIDER':  0.18,
+  'VISION':         0.15,
+  'SAINT MORITZ':   0.15,
+  'ASA SUL':        0.15, // print: "13% para 15%" (o sistema aplicava 16% até jul/2026)
+  'LINK':           0.15, // print: "15% para 15%" (o sistema aplicava 13% até jul/2026)
+  'EASY':           0.15,
+  'ATHOS':          0.15,
+  'ATHOS BULCAO':   0.15,
+  'ATHOS BULÇÃO':   0.15,
+  'ATHOS BULCÃO':   0.15,
+  'NOBILE':         0.15,
+  'FUSION':         0.15,
+  'RAMADA':         0.15,
+  'AMAZE':          0.13, // não consta no print — mantido
+}
+
 // Casos especiais por apartamento — key: "EMPREENDIMENTO_UPPER::APT_NUM"
-const TAXA_BOOKING_ESPECIFICO: Record<string, number> = {
+const TAXA_BOOKING_ESPECIFICO_ATE_JUL_2026: Record<string, number> = {
   'MERCURE::1419': 0.13,
+}
+const TAXA_BOOKING_ESPECIFICO_DESDE_AGO_2026: Record<string, number> = {
+  'MERCURE::1419': 0.15,
+}
+
+/** Reajuste do Booking vale para a reserva? Pela data de check-in (ISO). Sem data → tabela antiga. */
+export function taxaBookingNovaVigente(checkin: string | null | undefined): boolean {
+  return String(checkin ?? '').slice(0, 10) >= TAXA_BOOKING_VIGENCIA
+}
+
+function taxaBookingPara(emp: string, apt: string, novaVigente: boolean): number {
+  const especifico = novaVigente ? TAXA_BOOKING_ESPECIFICO_DESDE_AGO_2026 : TAXA_BOOKING_ESPECIFICO_ATE_JUL_2026
+  const tabela = novaVigente ? TAXA_BOOKING_DESDE_AGO_2026 : TAXA_BOOKING_ATE_JUL_2026
+  return especifico[`${emp}::${apt}`] ?? tabela[emp] ?? (novaVigente ? 0.15 : 0.13)
 }
 
 // Airbnb — taxa única para todos os empreendimentos
@@ -66,8 +117,9 @@ const TAXA_AIRBNB = 0.1821
 /**
  * Taxas de plataforma vigentes para um apartamento — para exibição no portal.
  * `ref` (mes/ano do período visualizado) aplica a vigência histórica:
- * Airbnb era 0% até mai/2026 (18,21% a partir de jun/2026). mes <= 0 = ano
- * inteiro (usa a taxa vigente do ano).
+ * Airbnb era 0% até mai/2026 (18,21% a partir de jun/2026); Booking usa a
+ * tabela antiga até jul/2026 e a reajustada a partir de ago/2026. mes <= 0 =
+ * ano inteiro (usa a taxa vigente do ano).
  */
 export function getTaxasPlataforma(
   empNome: string,
@@ -76,7 +128,8 @@ export function getTaxasPlataforma(
 ): { booking: number; airbnb: number; alugueasy: number } {
   const emp = (empNome ?? '').toUpperCase().trim()
   const apt = String(aptNumero ?? '').trim().toUpperCase()
-  const booking = TAXA_BOOKING_ESPECIFICO[`${emp}::${apt}`] ?? TAXA_BOOKING[emp] ?? 0.13
+  const bookingNovo = !ref || ref.ano > 2026 || (ref.ano === 2026 && (ref.mes >= 8 || ref.mes <= 0))
+  const booking = taxaBookingPara(emp, apt, bookingNovo)
   const airbnbVigente = !ref || ref.ano > 2026 || (ref.ano === 2026 && (ref.mes >= 6 || ref.mes <= 0))
   return { booking, airbnb: airbnbVigente ? TAXA_AIRBNB : 0, alugueasy: 0.10 }
 }
@@ -94,12 +147,15 @@ export function extrairEmpreendimento(roomName: string): string {
 
 /**
  * Calcula o valor líquido após dedução da taxa da plataforma.
+ * `checkin` (ISO) define a vigência da tabela do Booking — sem data, vale a
+ * tabela antiga (não reajusta reserva de data desconhecida por acidente).
  */
 export function calcularValorLiquido(
   valorBruto: number,
   source: string,
   empNome: string,
-  aptNumero: number | string
+  aptNumero: number | string,
+  checkin: string | null | undefined
 ): { valorLiquido: number; taxaAplicada: number; plataformaNormalizada: string } {
 
   const src = (source ?? '').toLowerCase().trim()
@@ -117,10 +173,10 @@ export function calcularValorLiquido(
     }
   }
 
-  // BOOKING — taxa varia por empreendimento (com caso especial por apt)
+  // BOOKING — taxa varia por empreendimento (com caso especial por apt) e por
+  // vigência: check-in >= TAXA_BOOKING_VIGENCIA usa a tabela reajustada
   if (src.includes('booking')) {
-    const chaveEspecial = `${emp}::${apt}`
-    const taxa = TAXA_BOOKING_ESPECIFICO[chaveEspecial] ?? TAXA_BOOKING[emp] ?? 0.13
+    const taxa = taxaBookingPara(emp, apt, taxaBookingNovaVigente(checkin))
     return {
       valorLiquido: valorBruto * (1 - taxa),
       taxaAplicada: taxa,

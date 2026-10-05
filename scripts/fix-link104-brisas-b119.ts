@@ -70,7 +70,7 @@ async function main() {
   const cancelada = (s: string | null) => ['cancelled', 'canceled', 'no_show'].includes(String(s ?? '').toLowerCase())
 
   for (const r of reservas ?? []) {
-    const novo = calcularValorLiquido(Number(r.valor_bruto) || 0, r.source ?? '', 'BRISAS', 'B119')
+    const novo = calcularValorLiquido(Number(r.valor_bruto) || 0, r.source ?? '', 'BRISAS', 'B119', r.checkin)
     const k = `${r.ano_competencia}-${String(r.mes_competencia).padStart(2, '0')}`
     porMes[k] ??= { qtd: 0, liqAtual: 0, liqNovo: 0 }
     if (!cancelada(r.status)) {
@@ -123,7 +123,7 @@ async function main() {
 
   // 5. Mover reservas uma a uma (valores recalculados individualmente)
   for (const r of reservas ?? []) {
-    const novo = calcularValorLiquido(Number(r.valor_bruto) || 0, r.source ?? '', 'BRISAS', 'B119')
+    const novo = calcularValorLiquido(Number(r.valor_bruto) || 0, r.source ?? '', 'BRISAS', 'B119', r.checkin)
     const { error } = await supabase
       .from('amenitiz_reservas')
       .update({

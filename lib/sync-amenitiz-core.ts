@@ -338,7 +338,8 @@ export async function runAmenitizSync(
     // no vínculo/diárias; a reserva continua exibindo a unidade real.
     const aptNumCanonico = APELIDOS_APARTAMENTO[`${empNomeDoRoom}::${aptNumRoom}`] ?? aptNumRoom
 
-    const { valorLiquido, taxaAplicada, plataformaNormalizada } = calcularValorLiquido(valorBruto, r.source, empNomeDoRoom, aptNumRoom)
+    // Check-in define a vigência da tabela do Booking (reajuste de 09/2026).
+    const { valorLiquido, taxaAplicada, plataformaNormalizada } = calcularValorLiquido(valorBruto, r.source, empNomeDoRoom, aptNumRoom, r.checkin)
 
     // Ajuste manual da gestão: força o valor líquido gravado na reserva; com
     // afetaDiarias o valor ajustado também entra na agregação de diárias.
