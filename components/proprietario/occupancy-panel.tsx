@@ -53,10 +53,23 @@ function nomeEx(raw: string | null): string {
   return s.length > 1 ? `${n} ${s[s.length - 1].charAt(0).toUpperCase()}.` : n
 }
 
-function dNum(d: string | null): number | null {
+// Dia dentro do mês exibido. Data em mês posterior vale totalDays + 1 (saída
+// depois do fim do mês — a última noite do mês conta); em mês anterior, 1.
+function diaNoMes(d: string | null, mes: number, ano: number, totalDays: number): number | null {
   if (!d) return null
-  const n = parseInt(d.split('-')[2] ?? '0')
-  return isNaN(n) ? null : n
+  const [y, m, dia] = d.slice(0, 10).split('-').map(p => parseInt(p))
+  if (isNaN(y) || isNaN(m) || isNaN(dia)) return null
+  if (y > ano || (y === ano && m > mes)) return totalDays + 1
+  if (y < ano || (y === ano && m < mes)) return 1
+  return dia
+}
+
+// Noites entre duas datas ISO — pela data completa, não pelo dia do mês
+// (28/05→03/06 são 6 noites; subtrair os dias dava 3 − 28 = 0).
+function noitesEntre(ci: string | null, co: string | null): number {
+  if (!ci || !co) return 0
+  const n = Math.round((Date.parse(co.slice(0, 10) + 'T00:00:00Z') - Date.parse(ci.slice(0, 10) + 'T00:00:00Z')) / 86400000)
+  return isNaN(n) ? 0 : Math.max(0, n)
 }
 
 function fBRL(v: number): string {
@@ -141,8 +154,8 @@ export function OccupancyPanel({ apartamentos, reservas, mes, ano, nomeMes, sinc
         const dayMap: Record<number, { plat: string; hospede: string; isCheckin: boolean }> = {}
         if (showGrid) {
           for (const r of aptRes) {
-            const ci = dNum(r.checkin) ?? 1
-            const co = dNum(r.checkout) ?? (totalDays + 1)
+            const ci = diaNoMes(r.checkin, mes, ano, totalDays) ?? 1
+            const co = diaNoMes(r.checkout, mes, ano, totalDays) ?? (totalDays + 1)
             for (let d = ci; d < co && d <= totalDays; d++) {
               dayMap[d] = { plat: r.plataforma_normalizada ?? '', hospede: r.nome_hospede ?? '', isCheckin: d === ci }
             }
@@ -151,7 +164,7 @@ export function OccupancyPanel({ apartamentos, reservas, mes, ano, nomeMes, sinc
 
         const noites = showGrid
           ? Object.keys(dayMap).length
-          : aptRes.reduce((s, r) => { const ci = dNum(r.checkin) ?? 0; const co = dNum(r.checkout) ?? 0; return s + Math.max(0, co - ci) }, 0)
+          : aptRes.reduce((s, r) => s + noitesEntre(r.checkin, r.checkout), 0)
         const pct = showGrid ? Math.round((noites / totalDays) * 100) : 0
         const fatApt = aptRes.reduce((s, r) => s + Number(r.valor_liquido ?? 0), 0)
 
@@ -253,9 +266,7 @@ export function OccupancyPanel({ apartamentos, reservas, mes, ano, nomeMes, sinc
               <div style={{ display: 'flex', gap: 12, overflowX: 'auto', padding: '4px 20px 20px', scrollbarWidth: 'thin' }}>
                 {aptRes.map(r => {
                   const cfg = getPCfg(r.plataforma_normalizada)
-                  const ci = dNum(r.checkin)
-                  const co = dNum(r.checkout)
-                  const nCard = ci && co ? Math.max(0, co - ci) : 0
+                  const nCard = noitesEntre(r.checkin, r.checkout)
                   const ent = fDia(r.checkin)
                   const sai = fDia(r.checkout)
                   return (

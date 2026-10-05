@@ -41,8 +41,12 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
 
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+  // Parâmetro inválido (?ano=0, ?mes=abc) cai no período atual: "todos os anos"
+  // não existe no portal e gerava datas impossíveis ("0-06-01") nas consultas.
+  const mesParam = params.mes !== undefined ? parseInt(params.mes) : NaN
+  const anoParam = params.ano !== undefined ? parseInt(params.ano) : NaN
+  const mes = mesParam >= 0 && mesParam <= 12 ? mesParam : now.getMonth() + 1
+  const ano = anoParam >= 2000 && anoParam <= 2100 ? anoParam : now.getFullYear()
   // Mês corrente: KPIs preferem amenitiz_reservas (cron 5 min + realtime) em vez
   // de diárias (sync diário 05:00) — o faturamento sobe ao vivo, taxas já descontadas.
   const isMesCorrente = mes === now.getMonth() + 1 && ano === now.getFullYear()
@@ -140,8 +144,14 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
 
     // Proration: clipa datas ao período e calcula valor proporcional às noites no mês.
     // Ex: reserva 11/05→11/06 em junho = 10 noites de 31 → exibe 01/06→11/06, valor ×(10/31).
+    // A saída é recortada para o dia 1º do mês SEGUINTE (não o último dia do mês):
+    // checkout é dia de saída, sem pernoite — recortar em dataFim apagava a última
+    // noite do mês na grade de ocupação.
     const firstDayMs  = mes > 0 ? new Date(dataInicio + 'T00:00:00').getTime() : 0
     const nextMonthMs = mes > 0 ? new Date(ano, mes, 1).getTime() : 0
+    const proximoMesInicio = mes === 12
+      ? `${ano + 1}-01-01`
+      : `${ano}-${String(mes + 1).padStart(2, '0')}-01`
 
     const reservasProrated = (reservasBruto ?? []).flatMap(r => {
       let checkin  = r.checkin
@@ -158,7 +168,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         if (totalNights > 0 && monthNights < totalNights) {
           valor    = (monthNights / totalNights) * r.valor_liquido
           if (ci < firstDayMs)  checkin  = dataInicio
-          if (co > nextMonthMs) checkout = dataFim
+          if (co > nextMonthMs) checkout = proximoMesInicio
         }
       }
 
@@ -166,9 +176,6 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
     })
 
     semCategoriasConfiguradas = (catCount ?? 0) === 0
-    semDados = (diariasData?.length ?? 0) === 0
-      && (custosData?.length ?? 0) === 0
-      && reservasProrated.length === 0
 
     // Painel: reservas ativas com datas/valor ajustados ao período
     reservasParaPainel = reservasProrated
@@ -184,6 +191,11 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
         nome_hospede: r.nome_hospede,
         apartamento_id: r.apartamento_id ?? '',
       }))
+
+    // Só reservas ativas contam: mês apenas com canceladas é mês sem dados.
+    semDados = (diariasData?.length ?? 0) === 0
+      && (custosData?.length ?? 0) === 0
+      && reservasParaPainel.length === 0
 
     // KPIs: reservasProrated como fallback Amenitiz quando não há diárias importadas.
     // No mês corrente as reservas viram fonte primária (preferirReservas) para o
@@ -329,7 +341,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
           <div className="pg-period" data-tour="periodo" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {mes > 0 && <SyncButton mes={mes} ano={ano} />}
-              <MonthYearFilter mes={mes} ano={ano} />
+              <MonthYearFilter mes={mes} ano={ano} permitirTodosAnos={false} />
             </div>
             {/* Assinatura Realtime: badge "atualizado há X min" + notificação de nova reserva */}
             <RealtimeReservas apartamentoIds={aptIds} initialIngestAt={ingestAt} />

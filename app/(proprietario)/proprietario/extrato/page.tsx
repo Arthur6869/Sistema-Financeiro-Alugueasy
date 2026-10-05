@@ -56,8 +56,11 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
 
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+  // Parâmetro inválido (?ano=0, ?mes=abc) cai no período atual — ver proprietario/page.tsx
+  const mesParam = params.mes !== undefined ? parseInt(params.mes) : NaN
+  const anoParam = params.ano !== undefined ? parseInt(params.ano) : NaN
+  const mes = mesParam >= 0 && mesParam <= 12 ? mesParam : now.getMonth() + 1
+  const ano = anoParam >= 2000 && anoParam <= 2100 ? anoParam : now.getFullYear()
   const nomeMes = mes > 0 ? (MESES[mes - 1] ?? '') : ''
   const labelPeriodo = nomeMes ? `${nomeMes} ${ano}` : String(ano)
 
@@ -208,7 +211,7 @@ export default async function ExtratoPropPage({ searchParams }: { searchParams: 
             <p className="pg-greeting-sub">Demonstrativo completo de faturamento, custos e repasse</p>
           </div>
           <div className="pg-period" data-tour="ext-periodo">
-            <MonthYearFilter mes={mes} ano={ano} />
+            <MonthYearFilter mes={mes} ano={ano} permitirTodosAnos={false} />
           </div>
         </div>
 

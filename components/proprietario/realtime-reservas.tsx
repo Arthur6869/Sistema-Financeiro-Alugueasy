@@ -20,7 +20,7 @@ type NovaReserva = {
   valor_liquido: number | null
 }
 
-type PayloadRow = NovaReserva & { apartamento_id: string | null }
+type PayloadRow = NovaReserva & { apartamento_id: string | null; status: string | null }
 
 function formatData(s: string | null): string {
   if (!s) return '?'
@@ -136,7 +136,9 @@ export function RealtimeReservas({ apartamentoIds, initialIngestAt }: RealtimeRe
           if (row.apartamento_id && !apartamentoIds.includes(row.apartamento_id)) return
 
           const bookingId = row.booking_id ?? ''
-          const isNovo = payload.eventType === 'INSERT' && !seenIds.current.has(bookingId)
+          // Cancelada/no-show inserida pelo sync não é "reserva nova" para o proprietário
+          const cancelada = ['cancelled', 'canceled', 'no_show'].includes(String(row.status ?? '').toLowerCase())
+          const isNovo = payload.eventType === 'INSERT' && !cancelada && !seenIds.current.has(bookingId)
           if (bookingId) seenIds.current.add(bookingId)
 
           setIngestAt(new Date())

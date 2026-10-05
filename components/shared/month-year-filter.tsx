@@ -7,9 +7,11 @@ import { MESES, ANOS } from '@/lib/constants'
 interface MonthYearFilterProps {
   mes: number // 0 = Todos
   ano: number // 0 = Todos
+  // Portal do proprietário não tem visão "todos os anos" (as consultas são por ano)
+  permitirTodosAnos?: boolean
 }
 
-export function MonthYearFilter({ mes, ano }: MonthYearFilterProps) {
+export function MonthYearFilter({ mes, ano, permitirTodosAnos = true }: MonthYearFilterProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -43,7 +45,7 @@ export function MonthYearFilter({ mes, ano }: MonthYearFilterProps) {
         onChange={(e) => updateParam('ano', e.target.value)}
         className="text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#193660]/30 cursor-pointer"
       >
-        <option value={0}>Todos os anos</option>
+        {permitirTodosAnos && <option value={0}>Todos os anos</option>}
         {ANOS.map((a) => (
           <option key={a} value={a}>
             {a}
