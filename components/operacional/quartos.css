@@ -1,0 +1,161 @@
+/*
+ * Modelos de estado dos quartos da equipe de limpeza (/operacional).
+ * Cada cartão recebe data-situacao="pendente|incompleta|ocupado|limpo|livre"
+ * e herda as cores das variáveis abaixo — trocar a paleta de um estado é
+ * mexer só aqui.
+ */
+
+.quarto {
+  --q-cor: #64748b;        /* tom principal (selo, ícone, texto de status) */
+  --q-fundo: #ffffff;      /* fundo do cartão */
+  --q-borda: #e2e8f0;
+  --q-selo-fundo: #f1f5f9; /* quadrado com o número */
+  --q-selo-texto: #475569;
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--q-borda);
+  background: var(--q-fundo);
+  transition: transform .12s ease, box-shadow .12s ease;
+  overflow: hidden;
+}
+.quarto:hover { box-shadow: 0 4px 14px -6px rgb(15 23 42 / .18); }
+.quarto:active { transform: scale(.985); }
+
+/* faixa lateral com a cor do estado */
+.quarto::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--q-cor);
+  opacity: .9;
+}
+
+.quarto-selo {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -.01em;
+  background: var(--q-selo-fundo);
+  color: var(--q-selo-texto);
+}
+
+.quarto-status { color: var(--q-cor); }
+
+.quarto-pilula {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--q-cor);
+  background: color-mix(in srgb, var(--q-cor) 12%, transparent);
+  white-space: nowrap;
+}
+
+/* ── Estados ─────────────────────────────────────────────────────────── */
+
+/* Pendente: hóspede saiu e ninguém limpou ainda */
+.quarto[data-situacao="pendente"] {
+  --q-cor: #d97706;
+  --q-fundo: #fffbeb;
+  --q-borda: #fcd34d;
+  --q-selo-fundo: #f59e0b;
+  --q-selo-texto: #ffffff;
+}
+/* Pendente com hóspede chegando hoje: urgente */
+.quarto[data-situacao="pendente"][data-urgente="true"] {
+  --q-cor: #dc2626;
+  --q-fundo: #fef2f2;
+  --q-borda: #fca5a5;
+  --q-selo-fundo: #dc2626;
+}
+.quarto[data-situacao="pendente"] .quarto-pilula::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: quarto-pulso 1.6s ease-in-out infinite;
+}
+
+/* Incompleta: limpou, mas faltaram itens */
+.quarto[data-situacao="incompleta"] {
+  --q-cor: #c2410c;
+  --q-fundo: #fff7ed;
+  --q-borda: #fdba74;
+  --q-selo-fundo: #ffedd5;
+  --q-selo-texto: #c2410c;
+}
+
+/* Ocupado: hóspede no imóvel */
+.quarto[data-situacao="ocupado"] {
+  --q-cor: #2563eb;
+  --q-fundo: #ffffff;
+  --q-borda: #dbeafe;
+  --q-selo-fundo: #eff6ff;
+  --q-selo-texto: #1d4ed8;
+}
+
+/* Limpo / finalizado */
+.quarto[data-situacao="limpo"] {
+  --q-cor: #059669;
+  --q-fundo: #f0fdf4;
+  --q-borda: #a7f3d0;
+  --q-selo-fundo: #10b981;
+  --q-selo-texto: #ffffff;
+}
+
+/* Livre: nada a fazer */
+.quarto[data-situacao="livre"] {
+  --q-cor: #94a3b8;
+}
+
+/* ── Contadores do topo (também são filtros) ─────────────────────────── */
+.contador {
+  --q-cor: #0f766e;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  text-align: left;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.contador[data-situacao="pendente"] { --q-cor: #d97706; }
+.contador[data-situacao="ocupado"]  { --q-cor: #2563eb; }
+.contador[data-situacao="limpo"]    { --q-cor: #059669; }
+.contador-numero { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--q-cor); }
+.contador-rotulo { font-size: 11.5px; color: #64748b; font-weight: 500; }
+.contador[aria-pressed="true"] {
+  border-color: var(--q-cor);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-cor) 15%, transparent);
+}
+
+@keyframes quarto-pulso {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quarto, .contador { transition: none; }
+  .quarto[data-situacao="pendente"] .quarto-pilula::before { animation: none; }
+}

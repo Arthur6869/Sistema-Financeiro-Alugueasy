@@ -35,6 +35,7 @@ export default function LoginProprietarioPage() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
   const [portalErrado, setPortalErrado] = useState(false)
+  const [irOperacional, setIrOperacional] = useState(false)
   const [systemError, setSystemError] = useState('')
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export default function LoginProprietarioPage() {
     setLoading(true)
     setError('')
     setPortalErrado(false)
+    setIrOperacional(false)
 
     if (!supabase) {
       setError('Sistema não inicializado. Recarregue a página.')
@@ -95,6 +97,9 @@ export default function LoginProprietarioPage() {
         if (profile?.role === 'analista' || profile?.role === 'admin') {
           setPortalErrado(true)
           setError('Este portal é exclusivo para proprietários. Membros da equipe devem entrar pelo acesso interno.')
+        } else if (profile?.role === 'operacional') {
+          setIrOperacional(true)
+          setError('Este portal é exclusivo para proprietários. A equipe de limpeza entra pelo acesso operacional.')
         } else {
           setError('Sua conta não tem acesso ao portal. Fale com a equipe AlugEasy.')
         }
@@ -282,6 +287,14 @@ export default function LoginProprietarioPage() {
                         {' '}
                         <Link href="/login" style={{ fontWeight: 600, color: '#0f2647', textDecoration: 'underline' }}>
                           Ir para o acesso interno →
+                        </Link>
+                      </>
+                    )}
+                    {irOperacional && (
+                      <>
+                        {' '}
+                        <Link href="/login-operacional" style={{ fontWeight: 600, color: '#0f766e', textDecoration: 'underline' }}>
+                          Ir para o acesso operacional →
                         </Link>
                       </>
                     )}

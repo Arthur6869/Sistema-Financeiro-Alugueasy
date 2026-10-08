@@ -19,6 +19,7 @@ import {
   BedDouble,
   FileText,
   ClipboardList,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -47,6 +48,7 @@ const navItems = [
   { href: '/relatorio', label: 'Relatório', icon: BarChart3 },
   { href: '/relatorio-desempenho', label: 'Desempenho', icon: BarChart3 },
   { href: '/prestacao-contas', label: 'Prestação de Contas', icon: FileText },
+  { href: '/limpezas', label: 'Limpezas', icon: Sparkles },
 ]
 
 const adminItems = [

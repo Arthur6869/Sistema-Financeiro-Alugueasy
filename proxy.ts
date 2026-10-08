@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Rotas públicas que não exigem autenticação
-const PUBLIC_ROUTES = ['/home', '/login-proprietario']
+const PUBLIC_ROUTES = ['/home', '/login-proprietario', '/login-operacional']
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -57,6 +57,8 @@ export async function proxy(request: NextRequest) {
   const role = profile?.role
   const isInterno = role === 'analista' || role === 'admin'
   const isProprietario = role === 'proprietario'
+  // Equipe de limpeza: área própria em /operacional, sem acesso a nada financeiro
+  const isOperacional = role === 'operacional'
 
   // Proprietário desativado → encerra sessão e redireciona para login
   if (isProprietario && profile?.ativo === false) {
@@ -64,9 +66,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login-proprietario?erro=conta_desativada', request.url))
   }
 
+  // Operacional desativado → mesma regra do proprietário
+  if (isOperacional && profile?.ativo === false) {
+    await supabase.auth.signOut()
+    return NextResponse.redirect(new URL('/login-operacional?erro=conta_desativada', request.url))
+  }
+
   // Conta sem papel de acesso válido → encerra a sessão e devolve ao login.
   // Cobre auto-cadastros e profiles ausentes/corrompidos.
-  if (!isInterno && !isProprietario) {
+  if (!isInterno && !isProprietario && !isOperacional) {
     await supabase.auth.signOut()
     if (pathname.startsWith('/login')) return supabaseResponse // evita loop: mostra o formulário
     const url = new URL('/login', request.url)
@@ -79,6 +87,17 @@ export async function proxy(request: NextRequest) {
 
   // Autenticado com papel válido tentando acessar /login → home do papel
   if (pathname.startsWith('/login')) {
+    const home = isProprietario ? '/proprietario' : isOperacional ? '/operacional' : '/'
+    return NextResponse.redirect(new URL(home, request.url))
+  }
+
+  // Operacional só circula dentro de /operacional
+  if (isOperacional && !pathname.startsWith('/operacional')) {
+    return NextResponse.redirect(new URL('/operacional', request.url))
+  }
+
+  // Proprietário e equipe interna não entram na área operacional
+  if (!isOperacional && pathname.startsWith('/operacional')) {
     return NextResponse.redirect(new URL(isProprietario ? '/proprietario' : '/', request.url))
   }
 

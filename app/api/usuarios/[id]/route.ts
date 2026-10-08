@@ -9,7 +9,7 @@ function getAdminClient() {
   return createAdminClient(url, key)
 }
 
-// PATCH /api/usuarios/[id] — desativar ou reativar um proprietário
+// PATCH /api/usuarios/[id] — desativar ou reativar um proprietário ou operacional
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,8 +33,8 @@ export async function PATCH(
   if (profileErr || !profile) {
     return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
   }
-  if (profile.role !== 'proprietario') {
-    return NextResponse.json({ error: 'Apenas proprietários podem ser desativados' }, { status: 400 })
+  if (profile.role !== 'proprietario' && profile.role !== 'operacional') {
+    return NextResponse.json({ error: 'Apenas proprietários e equipe operacional podem ser desativados' }, { status: 400 })
   }
 
   const { error: updateErr } = await adminClient
@@ -47,7 +47,7 @@ export async function PATCH(
   return NextResponse.json({ success: true, id, ativo })
 }
 
-// DELETE /api/usuarios/[id] — excluir permanentemente um proprietário
+// DELETE /api/usuarios/[id] — excluir permanentemente um proprietário ou operacional
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -64,8 +64,10 @@ export async function DELETE(
   if (profileErr || !profile) {
     return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
   }
-  if (profile.role !== 'proprietario') {
-    return NextResponse.json({ error: 'Apenas proprietários podem ser excluídos' }, { status: 400 })
+  // Operacional também pode ser excluído: o histórico de limpezas sobrevive
+  // (limpezas.operador_id vira NULL e o nome fica guardado em operador_nome).
+  if (profile.role !== 'proprietario' && profile.role !== 'operacional') {
+    return NextResponse.json({ error: 'Apenas proprietários e equipe operacional podem ser excluídos' }, { status: 400 })
   }
 
   // 1. Remover vínculos (defensivo — ON DELETE CASCADE cobre, mas garante consistência)

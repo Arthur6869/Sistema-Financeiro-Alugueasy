@@ -51,7 +51,12 @@ const supabase = createClient() // sem await
 ### Schema público (tabelas existentes)
 
 ```
-profiles                    → id (uuid), full_name, role ('admin'|'analista'|'proprietario')
+profiles                    → id (uuid), full_name, role ('admin'|'analista'|'proprietario'|'pendente'|'operacional'), ativo
+limpeza_checklist_itens     → id, apartamento_id (NULL = todos os imóveis), area, descricao, ordem, ativo
+limpezas                    → id, apartamento_id, imovel, operador_id, operador_nome (quem registrou),
+                               responsaveis (jsonb [{id, nome}] = todos que fizeram a limpeza, migration 041),
+                               iniciada_em, finalizada_em, itens (jsonb), total_itens, itens_concluidos,
+                               completa (gerada), observacao, email_enviado, email_erro
 empreendimentos             → id, nome (unique)
 apartamentos                → id, empreendimento_id (fk), numero
                                UNIQUE (empreendimento_id, numero)
@@ -78,7 +83,10 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 - `status` em `importacoes` aceita **apenas** `'concluido'` ou `'erro'` — **nunca** `'sucesso'`
 - `tipo` em `importacoes` aceita **apenas** `'custos_adm'`, `'custos_sub'`, `'diarias_adm'`, `'diarias_sub'`
 - `tipo_gestao` aceita **apenas** `'adm'` ou `'sub'`
-- `role` em `profiles` aceita **apenas** `'admin'`, `'analista'` ou `'proprietario'`
+- `role` em `profiles` aceita **apenas** `'admin'`, `'analista'`, `'proprietario'`, `'pendente'` (conta nova, sem acesso) ou `'operacional'` (equipe de limpeza, migration 040)
+- `is_interno()` é **só** admin/analista. **Nunca** incluir `'operacional'` nela: abriria toda a base financeira para a limpeza. Use `is_operacional_ativo()`.
+- O operacional **não lê** `apartamentos`/`empreendimentos` nem os `profiles` dos colegas; a lista de imóveis vem de `listar_imoveis_limpeza()` (sem dados financeiros; traz `limpa_hoje`, calculado pela data em São Paulo) e os colegas de `listar_equipe_limpeza()` (só id + nome das contas operacionais ativas).
+- `limpezas` não tem policy de INSERT para sessão de usuário: grava só via `POST /api/limpezas` (service_role após validar papel e conta ativa).
 
 ### RLS (Row Level Security)
 
@@ -102,7 +110,15 @@ proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento
 | `/diarias` | Protegido | Autenticados |
 | `/relatorio` | Protegido | Autenticados |
 | `/importar` | Protegido | **Apenas admin** |
-| `/usuarios` | Protegido | **Apenas admin** |
+| `/usuarios` | Protegido | **Apenas analista** (cadastra internos, proprietários e equipe operacional) |
+| `/limpezas` | Protegido | Analista e admin — checklists enviados pela equipe operacional |
+| `/limpezas/checklist` | Protegido | **Apenas analista** — edita o modelo do checklist |
+| `/login-operacional` | Público | Login da equipe de limpeza |
+| `/operacional` | Protegido | **Apenas operacional** — lista de imóveis |
+| `/operacional/limpeza/[id]` | Protegido | **Apenas operacional** — checklist do imóvel |
+| `/operacional/historico` | Protegido | **Apenas operacional** — limpezas da própria pessoa |
+| `POST /api/limpezas` | API Route | **Apenas operacional ativo** (cookie ou Bearer) — grava a limpeza e envia e-mail para `LIMPEZA_EMAIL_DESTINO` |
+| `POST/PATCH/DELETE /api/limpezas/checklist` | API Route | **Apenas analista** — itens do checklist |
 | `POST /api/import` | API Route | Deve verificar autenticação manualmente |
 | `GET /api/custos-manual` | API Route | Autenticado — lista custos manuais com filtros |
 | `POST /api/custos-manual` | API Route | **Apenas analista** — insere lançamento manual |

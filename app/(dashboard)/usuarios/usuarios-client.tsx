@@ -12,8 +12,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Users, Shield, Eye, Home, Power, Trash2, X } from 'lucide-react'
+import { Users, Shield, Eye, Home, Power, Trash2, X, Sparkles } from 'lucide-react'
 import { CadastrarUsuarioModal } from '@/components/modals/cadastrar-usuario-modal'
+import { CadastrarOperacionalModal } from '@/components/modals/cadastrar-operacional-modal'
+import { RedefinirSenhaModal } from '@/components/modals/redefinir-senha-modal'
 import { CadastrarProprietarioModal } from '@/components/modals/cadastrar-proprietario-modal'
 import { GerenciarProprietarioModal } from '@/components/modals/gerenciar-proprietario-modal'
 import { EnviarExtratoButton } from '@/components/modals/enviar-extrato-button'
@@ -74,8 +76,11 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
     return profile.ativo !== false
   }
 
-  const sistemicos = profiles.filter(p => p.role !== 'proprietario')
+  // Operacional tem bloco próprio — antes de existir, toda conta que não fosse
+  // proprietário caía em "Usuários Internos" com o selo de Analista.
+  const sistemicos = profiles.filter(p => p.role !== 'proprietario' && p.role !== 'operacional')
   const proprietarios = profiles.filter(p => p.role === 'proprietario')
+  const operacionais = profiles.filter(p => p.role === 'operacional')
 
   const allIds = useMemo(() => profiles.map(p => p.id), [profiles])
 
@@ -168,7 +173,7 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
         removerProprietario(profile.id)
       } else {
         const data = await res.json()
-        alert(data.error ?? 'Erro ao excluir proprietário')
+        alert(data.error ?? 'Erro ao excluir usuário')
       }
     } catch {
       alert('Erro de conexão')
@@ -384,6 +389,103 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
             </Table>
           </CardContent>
         </Card>
+
+        {/* Equipe operacional (limpeza) */}
+        <Card className="border border-gray-100 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+              <Sparkles size={18} />
+              Equipe Operacional
+              <Badge variant="outline" className="text-xs border-teal-200 bg-teal-50 text-teal-700 ml-1">
+                Limpeza · checklist
+              </Badge>
+            </CardTitle>
+            <CadastrarOperacionalModal onCriado={adicionarUsuario} />
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-100">
+                  <TableHead className="text-gray-500 font-medium">Nome</TableHead>
+                  <TableHead className="text-gray-500 font-medium">Status</TableHead>
+                  <TableHead className="text-gray-500 font-medium">Conta</TableHead>
+                  <TableHead className="text-gray-500 font-medium">Cadastrado em</TableHead>
+                  <TableHead className="text-gray-500 font-medium">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {operacionais.map((profile) => {
+                  const isLoading = loadingId === profile.id
+                  return (
+                    <TableRow key={profile.id} className="border-gray-100 hover:bg-gray-50">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                            style={{ backgroundColor: isAtivo(profile) ? '#0f766e' : '#9ca3af' }}
+                          >
+                            {profile.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+                          </div>
+                          <span className="font-medium text-gray-800">{profile.full_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell><StatusDot userId={profile.id} /></TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={isAtivo(profile) ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'}
+                        >
+                          {isAtivo(profile) ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-gray-500 text-sm">
+                        {new Date(profile.created_at).toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <RedefinirSenhaModal userId={profile.id} nome={profile.full_name} />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isLoading}
+                            onClick={() => handleToggleAtivo(profile)}
+                            className={
+                              isAtivo(profile)
+                                ? 'border-amber-200 text-amber-700 hover:bg-amber-50 gap-1'
+                                : 'border-green-200 text-green-700 hover:bg-green-50 gap-1'
+                            }
+                            title={isAtivo(profile) ? 'Bloquear o acesso' : 'Liberar o acesso'}
+                          >
+                            <Power size={13} />
+                            {isAtivo(profile) ? 'Desativar' : 'Reativar'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isLoading}
+                            onClick={() => setConfirmarExclusao(profile)}
+                            className="border-red-200 text-red-600 hover:bg-red-50 gap-1"
+                            title="Excluir conta permanentemente"
+                          >
+                            <Trash2 size={13} />
+                            Excluir
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+                {operacionais.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-gray-400 text-sm py-6">
+                      Nenhuma conta operacional. Use o botão acima para cadastrar a equipe de limpeza.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Modal de confirmação de exclusão */}
@@ -392,17 +494,28 @@ export function UsuariosClient({ profiles: profilesIniciais, apartamentos, vincu
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmarExclusao(null)} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 z-10 p-6">
             <div className="flex items-start justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900">Excluir proprietário?</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {confirmarExclusao.role === 'operacional' ? 'Excluir conta operacional?' : 'Excluir proprietário?'}
+              </h2>
               <button onClick={() => setConfirmarExclusao(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
                 <X size={20} />
               </button>
             </div>
-            <p className="text-sm text-gray-600 mb-6">
-              Você está prestes a excluir permanentemente o proprietário{' '}
-              <strong>{confirmarExclusao.full_name}</strong>. Esta ação removerá o usuário do
-              sistema de autenticação, o perfil e todos os vínculos de apartamentos.{' '}
-              <strong>Esta ação não pode ser desfeita.</strong>
-            </p>
+            {confirmarExclusao.role === 'operacional' ? (
+              <p className="text-sm text-gray-600 mb-6">
+                Você está prestes a excluir permanentemente a conta de{' '}
+                <strong>{confirmarExclusao.full_name}</strong>. O login deixa de existir, mas as limpezas
+                que essa pessoa registrou continuam no histórico. Para apenas bloquear o acesso, use Desativar.{' '}
+                <strong>Esta ação não pode ser desfeita.</strong>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-600 mb-6">
+                Você está prestes a excluir permanentemente o proprietário{' '}
+                <strong>{confirmarExclusao.full_name}</strong>. Esta ação removerá o usuário do
+                sistema de autenticação, o perfil e todos os vínculos de apartamentos.{' '}
+                <strong>Esta ação não pode ser desfeita.</strong>
+              </p>
+            )}
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setConfirmarExclusao(null)}>
                 Cancelar

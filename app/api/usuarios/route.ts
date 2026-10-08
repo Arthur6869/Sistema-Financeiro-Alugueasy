@@ -20,11 +20,14 @@ async function validarProprietario(userId: string) {
     .single()
 
   if (!profile) {
-    return { erro: NextResponse.json({ error: 'Proprietário não encontrado' }, { status: 404 }) }
+    return { erro: NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 }) }
   }
 
-  if (profile.role !== 'proprietario') {
-    return { erro: NextResponse.json({ error: 'Apenas proprietários podem ser editados nesta ação' }, { status: 400 }) }
+  // Credenciais editáveis por esta rota: proprietário e equipe operacional.
+  // Contas internas (analista/admin) continuam fora — não se troca senha de
+  // colega pela tela de usuários.
+  if (profile.role !== 'proprietario' && profile.role !== 'operacional') {
+    return { erro: NextResponse.json({ error: 'Apenas proprietários e equipe operacional podem ser editados nesta ação' }, { status: 400 }) }
   }
 
   return { erro: null }
@@ -77,14 +80,14 @@ export async function POST(request: NextRequest) {
     full_name: string
     email: string
     password: string
-    role: 'admin' | 'analista' | 'proprietario'
+    role: 'admin' | 'analista' | 'proprietario' | 'operacional'
     apartamento_ids?: string[]
   }
 
   if (!full_name?.trim() || !email?.trim() || !password || !role) {
     return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
   }
-  if (!['admin', 'analista', 'proprietario'].includes(role)) {
+  if (!['admin', 'analista', 'proprietario', 'operacional'].includes(role)) {
     return NextResponse.json({ error: 'Role inválido' }, { status: 400 })
   }
   if (password.length < 6) {

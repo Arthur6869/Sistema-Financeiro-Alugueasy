@@ -27,6 +27,7 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
   const [portalErrado, setPortalErrado] = useState(false)
+  const [irOperacional, setIrOperacional] = useState(false)
   const [systemError, setSystemError] = useState('')
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     setPortalErrado(false)
+    setIrOperacional(false)
 
     if (!supabase) {
       setError('Sistema não inicializado. Recarregue a página.')
@@ -89,6 +91,9 @@ export default function LoginPage() {
         if (profile?.role === 'proprietario') {
           setPortalErrado(true)
           setError('Este acesso é exclusivo da equipe interna. Para entrar na sua conta, use o Portal do Proprietário.')
+        } else if (profile?.role === 'operacional') {
+          setIrOperacional(true)
+          setError('Este acesso é exclusivo da equipe interna. A equipe de limpeza entra pelo acesso operacional.')
         } else {
           setError('Sua conta não tem acesso ao sistema. Fale com a equipe AlugEasy.')
         }
@@ -290,6 +295,14 @@ export default function LoginPage() {
                         </Link>
                       </>
                     )}
+                    {irOperacional && (
+                      <>
+                        {' '}
+                        <Link href="/login-operacional" style={{ fontWeight: 600, color: '#0f766e', textDecoration: 'underline' }}>
+                          Ir para o acesso operacional →
+                        </Link>
+                      </>
+                    )}
                   </span>
                 </div>
               )}
@@ -304,6 +317,12 @@ export default function LoginPage() {
               <Link href="/login-proprietario" style={{ fontSize: 12, fontWeight: 600, color: '#15803d', textDecoration: 'none' }}>
                 Acesse seu portal →
               </Link>
+              <div style={{ marginTop: 6 }}>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>Equipe de limpeza? </span>
+                <Link href="/login-operacional" style={{ fontSize: 12, fontWeight: 600, color: '#0f766e', textDecoration: 'none' }}>
+                  Acesso operacional →
+                </Link>
+              </div>
             </div>
 
             <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 16 }}>

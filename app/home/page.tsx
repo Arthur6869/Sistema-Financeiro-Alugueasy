@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import {
-  Lock, Home, BarChart2, FileText, Users, Download, RefreshCw,
+  Lock, Home, BarChart2, FileText, Users, Download, RefreshCw, Sparkles,
 } from 'lucide-react'
 import { ComoFuncionaSection } from '@/components/landing/como-funciona-section'
 
@@ -59,6 +59,11 @@ function Navbar() {
           <Lock size={13} />
           <span className="lbl-full">Acesso interno</span>
           <span className="lbl-short">Equipe</span>
+        </Link>
+        <Link href="/login-operacional" className="btn-outline-teal btn-pill btn-sm">
+          <Sparkles size={13} />
+          <span className="lbl-full">Acesso operacional</span>
+          <span className="lbl-short">Limpeza</span>
         </Link>
       </div>
     </nav>
@@ -120,6 +125,10 @@ function Hero() {
             <Link href="/login-proprietario" className="btn-ghost btn-xl hero-cta-prop">
               <Home size={16} />
               Portal do proprietário
+            </Link>
+            <Link href="/login-operacional" className="btn-ghost btn-xl hero-cta-op">
+              <Sparkles size={16} />
+              Acesso operacional
             </Link>
           </div>
         </div>
@@ -198,12 +207,12 @@ function Portais() {
     <section id="portais" className="section-pad" style={{ padding: '72px 5%', background: '#fff' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <span className="section-tag">Portais de acesso</span>
-        <h2 className="section-title">Dois portais, um sistema</h2>
+        <h2 className="section-title">Três portais, um sistema</h2>
         <p style={{ fontSize: 15, color: '#5a6a82', maxWidth: 480, marginBottom: 40 }}>
           Cada perfil acessa exatamente o que precisa, com segurança e clareza.
         </p>
 
-        <div className="portals-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div className="portals-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
           <div className="portal-card portal-card-navy" style={{ background: '#0f2647', borderRadius: 20, padding: '36px 32px' }}>
             <span style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: 100, display: 'inline-block', marginBottom: 18 }}>
               Equipe interna
@@ -261,6 +270,35 @@ function Portais() {
               Acessar meu portal
             </Link>
           </div>
+
+          <div className="portal-card" style={{ background: '#134e4a', borderRadius: 20, padding: '36px 32px' }}>
+            <span style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px', borderRadius: 100, display: 'inline-block', marginBottom: 18 }}>
+              Equipe de limpeza
+            </span>
+            <h3 style={{ fontFamily: '"Instrument Serif",Georgia,serif', fontSize: 26, fontWeight: 400, color: '#fff', marginBottom: 10 }}>
+              Acesso operacional
+            </h3>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, marginBottom: 20 }}>
+              Registre cada limpeza com o checklist do imóvel. A AlugEasy é avisada na hora.
+            </p>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 22 }}>
+              {['Login individual', 'Web e celular'].map(b => (
+                <span key={b} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 100, padding: '4px 10px', fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>{b}</span>
+              ))}
+            </div>
+            <ul style={{ listStyle: 'none', marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {['Lista de todos os imóveis', 'Checklist por cômodo', 'Observações de problemas', 'Aviso por e-mail ao finalizar', 'Histórico das suas limpezas'].map(i => (
+                <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#5eead4', flexShrink: 0 }} />
+                  {i}
+                </li>
+              ))}
+            </ul>
+            <Link href="/login-operacional" style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.3)' }} className="btn-lg">
+              <Sparkles size={15} />
+              Registrar limpeza
+            </Link>
+          </div>
         </div>
       </div>
     </section>
@@ -280,6 +318,7 @@ function CtaStrip() {
         <div className="cta-strip-actions" style={{ display: 'flex', gap: 10 }}>
           <Link href="/login-proprietario" className="btn-green btn-md"><Home size={15} /> Portal proprietário</Link>
           <Link href="/login" className="btn-white btn-md"><Lock size={15} /> Acesso interno</Link>
+          <Link href="/login-operacional" className="btn-teal btn-md"><Sparkles size={15} /> Acesso operacional</Link>
         </div>
       </div>
     </section>
@@ -306,7 +345,7 @@ export default function HomeLandingPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-        .btn-navy, .btn-green, .btn-white, .btn-ghost, .btn-outline-green {
+        .btn-navy, .btn-green, .btn-white, .btn-ghost, .btn-outline-green, .btn-teal, .btn-outline-teal {
           display: inline-flex; align-items: center; gap: 7px;
           font-family: 'DM Sans', sans-serif; font-weight: 600;
           border: none; cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1);
@@ -333,6 +372,12 @@ export default function HomeLandingPage() {
         .btn-outline-green { background: transparent; color: #15803d; border: 1.5px solid #15803d !important; }
         .btn-outline-green:hover { background: #15803d; color: #fff; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(21,128,61,.2); }
 
+        .btn-teal { background: #0f766e; color: #fff; box-shadow: 0 2px 8px rgba(15,118,110,.25); }
+        .btn-teal:hover { background: #115e59; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(15,118,110,.3); }
+
+        .btn-outline-teal { background: transparent; color: #0f766e; border: 1.5px solid #0f766e !important; }
+        .btn-outline-teal:hover { background: #0f766e; color: #fff; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15,118,110,.2); }
+
         .section-tag { display:inline-block; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#193660; background:rgba(25,54,96,.07); padding:4px 12px; border-radius:100px; margin-bottom:14px; }
         .section-title { font-family:'Instrument Serif',Georgia,serif; font-size:clamp(28px,3vw,38px); font-weight:400; color:#0f1a2e; line-height:1.2; margin-bottom:10px; }
 
@@ -345,6 +390,7 @@ export default function HomeLandingPage() {
 
         @media (max-width: 900px) {
           .feat-grid { grid-template-columns: 1fr 1fr !important; }
+          .portals-grid { grid-template-columns: 1fr 1fr !important; }
         }
         @media (max-width: 768px) {
           .nav-links-desktop { display: none !important; }
@@ -359,6 +405,7 @@ export default function HomeLandingPage() {
           .hero-ctas { flex-direction: column; }
           .hero-ctas .btn-xl, .portal-card .btn-lg, .cta-strip-actions a { box-sizing: border-box; }
           .hero-ctas .btn-xl { width: 100%; justify-content: center; }
+          .cta-strip-actions { flex-wrap: wrap; }
           /* No celular o público principal é o proprietário: portal dele vem primeiro e em destaque */
           .hero-ctas .hero-cta-prop { order: -1; background: #15803d !important; color: #fff !important; border: none !important; box-shadow: 0 2px 8px rgba(21,128,61,.25); }
 

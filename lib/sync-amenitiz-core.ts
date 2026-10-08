@@ -204,6 +204,54 @@ function lookupApt(
   return undefined
 }
 
+/**
+ * Grava entrada/saída de cada quarto em `limpeza_ocupacao` — a fonte da lista
+ * da equipe de limpeza. Usa TODOS os quartos da reserva (reserva de grupo ocupa
+ * vários) e também quartos que o mapeamento financeiro não reconhece (ex.: "SM
+ * 701"), que o sync de reservas descarta. Só reservas que saem a partir de 14
+ * dias atrás: o que é mais antigo não muda nada na limpeza e só gastaria IO.
+ * Sem dados do hóspede além do número de pessoas.
+ */
+async function gravarOcupacaoLimpeza(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  reservas: Awaited<ReturnType<typeof fetchTodasReservasMes>>,
+) {
+  const corte = new Date(Date.now() - 14 * 86400_000).toISOString().slice(0, 10)
+  const agora = new Date().toISOString()
+  // booking_id → linhas (uma por quarto); a chave interna deduplica o quarto
+  const porReserva = new Map<string, Map<string, Record<string, unknown>>>()
+  for (const r of reservas) {
+    const checkin = String(r.checkin ?? '').slice(0, 10)
+    const checkout = String(r.checkout ?? '').slice(0, 10)
+    if (!r.booking_id || !checkin || !checkout || checkout < corte) continue
+    const hospedes = (Number(r.adults) || 0) + (Number(r.children) || 0)
+    const id = String(r.booking_id)
+    for (const room of r.rooms ?? []) {
+      if (!room?.individual_room_id) continue
+      if (!porReserva.has(id)) porReserva.set(id, new Map())
+      porReserva.get(id)!.set(room.individual_room_id, {
+        booking_id: id, room_id: room.individual_room_id,
+        checkin, checkout, status: r.status ?? 'confirmed',
+        hospedes: hospedes || null, atualizado_em: agora,
+      })
+    }
+  }
+  // Lotes por reserva (nunca partir uma reserva entre dois lotes). Reserva
+  // trocada de quarto: apaga as linhas dela antes de regravar, senão o quarto
+  // antigo continuaria "ocupado".
+  const ids = [...porReserva.keys()]
+  const LOTE = 300
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const loteIds = ids.slice(i, i + LOTE)
+    const { error: delErr } = await supabase.from('limpeza_ocupacao').delete().in('booking_id', loteIds)
+    if (delErr) throw new Error(delErr.message)
+    const linhas = loteIds.flatMap(id => [...porReserva.get(id)!.values()])
+    const { error } = await supabase.from('limpeza_ocupacao').insert(linhas)
+    if (error) throw new Error(error.message)
+  }
+}
+
 export type SyncAmenitizResult = {
   success: boolean
   mes: number
@@ -278,6 +326,14 @@ export async function runAmenitizSync(
       await supabase.from('amenitiz_syncs').update({ status: 'erro', erro_mensagem: msg, updated_at: new Date().toISOString() }).eq('id', syncLog.id)
     }
     return { success: false, mes, ano, total_reservas: 0, faturamento_bruto: 0, faturamento_liquido: 0, apartamentos_sincronizados: 0, apts_nao_encontrados: [], error: msg }
+  }
+
+  // Ocupação para a equipe de limpeza (migration 043). Independe do mapeamento
+  // financeiro abaixo e nunca derruba o sync.
+  try {
+    await gravarOcupacaoLimpeza(supabase, reservas)
+  } catch (e) {
+    console.error('[Sync] ocupação da limpeza não gravada:', e instanceof Error ? e.message : e)
   }
 
   const porAptId: Record<string, { aptId: string; empNome: string; aptNum: string; tipoGestao: string; totalBruto: number; totalLiquido: number; countReservas: number }> = {}
