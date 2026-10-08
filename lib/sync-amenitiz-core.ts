@@ -226,6 +226,9 @@ async function gravarOcupacaoLimpeza(
     const checkout = String(r.checkout ?? '').slice(0, 10)
     if (!r.booking_id || !checkin || !checkout || checkout < corte) continue
     const hospedes = (Number(r.adults) || 0) + (Number(r.children) || 0)
+    // Só o PRIMEIRO nome do titular (migration 044): a equipe de limpeza não
+    // recebe sobrenome, e-mail nem telefone do hóspede.
+    const hospede = String(r.booker?.first_name ?? '').trim().split(/\s+/)[0]?.slice(0, 40) || null
     const id = String(r.booking_id)
     for (const room of r.rooms ?? []) {
       if (!room?.individual_room_id) continue
@@ -233,7 +236,7 @@ async function gravarOcupacaoLimpeza(
       porReserva.get(id)!.set(room.individual_room_id, {
         booking_id: id, room_id: room.individual_room_id,
         checkin, checkout, status: r.status ?? 'confirmed',
-        hospedes: hospedes || null, atualizado_em: agora,
+        hospedes: hospedes || null, hospede, atualizado_em: agora,
       })
     }
   }

@@ -76,6 +76,15 @@ export type ImovelLimpeza = {
   proxima_entrada_hospedes: number | null
   /** Quando o sync da Amenitiz gravou a ocupação pela última vez. */
   ocupacao_atualizada_em: string | null
+  /** Primeiro nome de quem está no imóvel (só o primeiro nome, migration 044). */
+  hospede_atual: string | null
+  /** Check-in de quem está no imóvel ('YYYY-MM-DD'). */
+  hospedado_desde: string | null
+  hospedes_atuais: number | null
+  /** Primeiro nome de quem entra na próxima reserva. */
+  proximo_hospede: string | null
+  /** Check-out da próxima reserva ('YYYY-MM-DD'). */
+  proxima_saida: string | null
 }
 
 /** Hoje em São Paulo, 'YYYY-MM-DD'. */
@@ -171,32 +180,79 @@ export function resumirPredios(imoveis: ImovelLimpeza[]): ResumoPredio[] {
   return [...mapa.values()].sort((a, b) => b.urgentes - a.urgentes || b.limpar - a.limpar || a.nome.localeCompare(b.nome))
 }
 
+/** Noites entre duas datas 'YYYY-MM-DD'. */
+export function noitesEntre(entrada: string, saida: string): number {
+  return Math.max(0, Math.round((Date.parse(`${saida}T12:00:00Z`) - Date.parse(`${entrada}T12:00:00Z`)) / 86400_000))
+}
+
+function noitesTxt(entrada: string, saida: string): string {
+  const n = noitesEntre(entrada, saida)
+  return `${n} ${n === 1 ? 'noite' : 'noites'}`
+}
+
+function pessoasTxt(n: number | null | undefined): string {
+  return n ? ` · ${n} ${n === 1 ? 'pessoa' : 'pessoas'}` : ''
+}
+
+/**
+ * Próxima reserva: "Entra hoje: João · até sáb, 11/10 (2 noites) · 2 pessoas"
+ * ou "Próximo: João · sáb, 11/10 · até ter, 14/10 (3 noites)". Sem nome quando
+ * a reserva não trouxe (ou quando a tela optar por não mostrar).
+ */
+export function descreverProximo(i: ImovelLimpeza): string {
+  if (!i.proxima_entrada) return 'Sem entrada prevista'
+  const dia = diaRelativo(i.proxima_entrada)
+  const nome = i.proximo_hospede ?? ''
+  const fim = i.proxima_saida ? ` · até ${diaRelativo(i.proxima_saida)} (${noitesTxt(i.proxima_entrada, i.proxima_saida)})` : ''
+  const cabeca = dia === 'hoje' || dia === 'amanhã'
+    ? (nome ? `Entra ${dia}: ${nome}` : `Entra ${dia}`)
+    : (nome ? `Próximo: ${nome} · ${dia}` : `Próxima entrada ${dia}`)
+  return `${cabeca}${fim}${pessoasTxt(i.proxima_entrada_hospedes)}`
+}
+
+/** Saída e entrada no mesmo dia (hoje, ou na data da saída de quem está): a limpeza mais apertada. */
+export function trocaNoMesmoDia(i: ImovelLimpeza): boolean {
+  if (i.saida_hoje && i.entrada_hoje) return true
+  return !!i.hospedado_ate && !!i.proxima_entrada && i.hospedado_ate === i.proxima_entrada
+}
+
 /** Linha de status de cada unidade, igual no site e no app. */
 export function descreverSituacao(i: ImovelLimpeza): { titulo: string; detalhe: string } {
   const quem = i.ultima_limpeza_por ? ` · ${i.ultima_limpeza_por}` : ''
-  const chegada = i.proxima_entrada
-    ? `Próxima entrada ${diaRelativo(i.proxima_entrada)}${i.proxima_entrada_hospedes ? ` · ${i.proxima_entrada_hospedes} hósp.` : ''}`
-    : 'Sem entrada prevista'
+  const proximo = descreverProximo(i)
   switch (i.situacao) {
     case 'pendente':
       return {
-        titulo: i.saida_hoje ? 'Saída hoje · limpar após a saída' : `Hóspede saiu ${diaRelativo(i.ultima_saida ?? hojeSP())}`,
-        detalhe: i.entrada_hoje ? 'Entrada hoje — prioridade' : chegada,
+        titulo: i.saida_hoje && i.entrada_hoje
+          ? 'Troca hoje · limpar assim que sair'
+          : i.saida_hoje
+            ? 'Saída hoje · limpar após a saída'
+            : `Hóspede saiu ${diaRelativo(i.ultima_saida ?? hojeSP())}`,
+        detalhe: proximo,
       }
     case 'incompleta':
       return { titulo: 'Limpeza incompleta', detalhe: `Registrada ${tempoDesde(i.ultima_limpeza_em)}${quem}` }
-    case 'ocupado':
+    case 'ocupado': {
+      const sai = diaRelativo(i.hospedado_ate ?? hojeSP())
+      const partes = [
+        i.hospedado_desde ? `Entrou ${diaRelativo(i.hospedado_desde)}` : null,
+        i.hospedado_desde && i.hospedado_ate ? noitesTxt(i.hospedado_desde, i.hospedado_ate) : null,
+        pessoasTxt(i.hospedes_atuais).slice(3) || null,
+        trocaNoMesmoDia(i) ? 'troca no mesmo dia' : null,
+        i.limpa_hoje ? `arrumação hoje${quem}` : null,
+      ].filter(Boolean)
       return {
-        titulo: `Hospedado · sai ${diaRelativo(i.hospedado_ate ?? hojeSP())}`,
-        detalhe: i.limpa_hoje ? `Arrumação hoje${quem}` : 'Aguardar a saída do hóspede',
+        titulo: i.hospede_atual ? `Hóspede: ${i.hospede_atual} · sai ${sai}` : `Hospedado · sai ${sai}`,
+        detalhe: partes.length ? partes.join(' · ') : 'Aguardar a saída do hóspede',
       }
+    }
     case 'limpo':
       return {
         titulo: i.limpa_hoje ? `Finalizado hoje às ${hora(i.ultima_limpeza_em)}` : 'Pronto para o próximo hóspede',
-        detalhe: i.limpa_hoje ? `${chegada}${quem}` : chegada,
+        detalhe: i.limpa_hoje ? `${proximo}${quem}` : proximo,
       }
     default:
-      return { titulo: 'Disponível', detalhe: chegada }
+      return { titulo: 'Disponível', detalhe: proximo }
   }
 }
 
