@@ -27,13 +27,15 @@ function lerRascunho(aptId: string): Rascunho | null {
 }
 
 export function ChecklistForm({
-  unidadeId, imovel, itens, equipe, usuarioId,
+  unidadeId, imovel, itens, equipe, usuarioId, voltarPara = '/operacional',
 }: {
   unidadeId: string
   imovel: string
   itens: ItemChecklistModelo[]
   equipe: MembroEquipe[]
   usuarioId: string
+  /** Para onde o botão da tela de sucesso leva (o prédio do imóvel). */
+  voltarPara?: string
 }) {
   const router = useRouter()
   const [marcados, setMarcados] = useState<Set<string>>(new Set())
@@ -173,10 +175,10 @@ export function ChecklistForm({
           {resultado.emailEnviado ? 'A AlugEasy foi avisada por e-mail' : 'Registro salvo. O escritório verá no sistema.'}
         </div>
         <Link
-          href="/operacional"
+          href={voltarPara}
           className="block w-full mt-6 py-3.5 rounded-xl bg-[#0f766e] text-white font-semibold"
         >
-          Voltar para os imóveis
+          Voltar para o prédio
         </Link>
       </div>
     )

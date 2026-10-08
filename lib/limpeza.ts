@@ -109,6 +109,68 @@ export function urgencia(i: ImovelLimpeza): number {
   return 9
 }
 
+/** Slug do prédio para a URL: "Athos Bulcão" → "athos-bulcao". */
+export function slugPredio(nome: string): string {
+  return nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+const ORDEM_SITUACAO: Record<SituacaoLimpeza, number> = { pendente: 0, incompleta: 1, ocupado: 2, limpo: 3, livre: 4 }
+
+function numeroOrdenavel(n: string): number {
+  const d = parseInt(n.replace(/\D/g, ''), 10)
+  return isNaN(d) ? Number.MAX_SAFE_INTEGER : d
+}
+
+/**
+ * Ordem de trabalho dentro de um prédio: urgentes (hóspede chega hoje),
+ * pendentes, incompletas, hospedados, prontos, livres — e por número no empate.
+ */
+export function ordenarPorPrioridade(imoveis: ImovelLimpeza[]): ImovelLimpeza[] {
+  return [...imoveis].sort((a, b) =>
+    urgencia(a) - urgencia(b)
+    || ORDEM_SITUACAO[a.situacao] - ORDEM_SITUACAO[b.situacao]
+    || numeroOrdenavel(a.numero) - numeroOrdenavel(b.numero)
+    || a.numero.localeCompare(b.numero))
+}
+
+/** Resumo de um prédio para a tela inicial da equipe. */
+export type ResumoPredio = {
+  nome: string
+  slug: string
+  total: number
+  limpar: number
+  urgentes: number
+  hospedados: number
+  prontos: number
+  livres: number
+  /** Pior estado entre as unidades — define a cor do cartão. */
+  pior: SituacaoLimpeza | 'urgente'
+}
+
+/** Agrupa por empreendimento; prédios com mais trabalho vêm primeiro. */
+export function resumirPredios(imoveis: ImovelLimpeza[]): ResumoPredio[] {
+  const mapa = new Map<string, ResumoPredio>()
+  for (const i of imoveis) {
+    let r = mapa.get(i.empreendimento)
+    if (!r) {
+      r = { nome: i.empreendimento, slug: slugPredio(i.empreendimento), total: 0, limpar: 0, urgentes: 0, hospedados: 0, prontos: 0, livres: 0, pior: 'livre' }
+      mapa.set(i.empreendimento, r)
+    }
+    r.total++
+    if (i.situacao === 'pendente' || i.situacao === 'incompleta') {
+      r.limpar++
+      if (i.situacao === 'pendente' && i.entrada_hoje) r.urgentes++
+    } else if (i.situacao === 'ocupado') r.hospedados++
+    else if (i.situacao === 'limpo') r.prontos++
+    else r.livres++
+  }
+  for (const r of mapa.values()) {
+    r.pior = r.urgentes ? 'urgente' : r.limpar ? 'pendente' : r.hospedados ? 'ocupado' : r.prontos ? 'limpo' : 'livre'
+  }
+  return [...mapa.values()].sort((a, b) => b.urgentes - a.urgentes || b.limpar - a.limpar || a.nome.localeCompare(b.nome))
+}
+
 /** Linha de status de cada unidade, igual no site e no app. */
 export function descreverSituacao(i: ImovelLimpeza): { titulo: string; detalhe: string } {
   const quem = i.ultima_limpeza_por ? ` · ${i.ultima_limpeza_por}` : ''

@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import '@/components/operacional/quartos.css'
 import { createClient } from '@/lib/supabase/server'
 import { ChecklistForm } from '@/components/operacional/checklist-form'
-import { descreverSituacao, type ImovelLimpeza, type ItemChecklistModelo, type MembroEquipe } from '@/lib/limpeza'
+import { descreverSituacao, slugPredio, type ImovelLimpeza, type ItemChecklistModelo, type MembroEquipe } from '@/lib/limpeza'
 
 /** `id` = unidade de limpeza (limpeza_unidades.id, migration 043). */
 export default async function LimpezaImovel({ params }: { params: Promise<{ id: string }> }) {
@@ -39,9 +39,12 @@ export default async function LimpezaImovel({ params }: { params: Promise<{ id: 
 
   return (
     <div>
-      <Link href="/operacional" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#0f766e] mb-3">
+      <Link
+        href={`/operacional/predio/${slugPredio(imovel.empreendimento)}`}
+        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#0f766e] mb-3"
+      >
         <ArrowLeft size={15} />
-        Trocar de imóvel
+        Voltar para {imovel.empreendimento}
       </Link>
 
       <div className="mb-4">
@@ -72,6 +75,7 @@ export default async function LimpezaImovel({ params }: { params: Promise<{ id: 
 
       <ChecklistForm
         unidadeId={id}
+        voltarPara={`/operacional/predio/${slugPredio(imovel.empreendimento)}`}
         imovel={`${imovel.empreendimento} ${imovel.numero}`}
         itens={(itens ?? []) as ItemChecklistModelo[]}
         equipe={(equipe ?? []) as MembroEquipe[]}

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { ListaImoveis } from '@/components/operacional/lista-imoveis'
+import { ListaPredios } from '@/components/operacional/lista-predios'
 import type { ImovelLimpeza } from '@/lib/limpeza'
 
 export default async function OperacionalInicio() {
@@ -7,16 +7,16 @@ export default async function OperacionalInicio() {
 
   // Única janela do operacional para os imóveis: função SECURITY DEFINER que
   // devolve os quartos ativos na Amenitiz com a situação de cada um — hóspede,
-  // saída, próxima entrada e última limpeza (migration 043).
+  // saída, próxima entrada e última limpeza (migration 043). A tela inicial
+  // resume por prédio; os apartamentos aparecem dentro do prédio escolhido.
   const { data, error } = await supabase.rpc('listar_imoveis_limpeza')
   const imoveis = (data ?? []) as ImovelLimpeza[]
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-[#0f1a2e]">Qual imóvel você vai limpar?</h1>
+      <h1 className="text-xl font-bold text-[#0f1a2e]">Em qual prédio você está?</h1>
       <p className="text-sm text-[#5a6a82] mt-1 mb-4">
-        Quando o hóspede sai, o imóvel aparece em <span className="font-semibold text-[#b45309]">Limpar agora</span>.
-        Toque nele, marque o checklist e finalize — a AlugEasy recebe o registro.
+        Toque no prédio para ver os apartamentos dele na ordem em que precisam de limpeza.
       </p>
 
       {error ? (
@@ -24,7 +24,7 @@ export default async function OperacionalInicio() {
           Não foi possível carregar os imóveis. Atualize a página ou avise o escritório.
         </div>
       ) : (
-        <ListaImoveis imoveis={imoveis} />
+        <ListaPredios imoveis={imoveis} />
       )}
     </div>
   )

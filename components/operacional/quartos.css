@@ -1,11 +1,15 @@
 /*
- * Modelos de estado dos quartos da equipe de limpeza (/operacional).
- * Cada cartão recebe data-situacao="pendente|incompleta|ocupado|limpo|livre"
- * e herda as cores das variáveis abaixo — trocar a paleta de um estado é
- * mexer só aqui.
+ * Modelos de estado da área da equipe de limpeza (/operacional).
+ *
+ * Dois cartões usam a mesma paleta: `.predio` (tela inicial, um por
+ * empreendimento) e `.quarto` (uma unidade dentro do prédio). Os dois recebem
+ * data-situacao="pendente|incompleta|ocupado|limpo|livre" — o prédio pode
+ * ainda receber "urgente", e o quarto marca urgência com data-urgente="true".
+ * Trocar a paleta de um estado é mexer só aqui.
  */
 
-.quarto {
+.quarto,
+.predio {
   --q-cor: #64748b;        /* tom principal (selo, ícone, texto de status) */
   --q-fundo: #ffffff;      /* fundo do cartão */
   --q-borda: #e2e8f0;
@@ -13,27 +17,32 @@
   --q-selo-texto: #475569;
 
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid var(--q-borda);
   background: var(--q-fundo);
   transition: transform .12s ease, box-shadow .12s ease;
   overflow: hidden;
 }
-.quarto:hover { box-shadow: 0 4px 14px -6px rgb(15 23 42 / .18); }
-.quarto:active { transform: scale(.985); }
+.quarto:hover, .predio:hover { box-shadow: 0 4px 14px -6px rgb(15 23 42 / .18); }
+.quarto:active, .predio:active { transform: scale(.985); }
 
 /* faixa lateral com a cor do estado */
-.quarto::before {
+.quarto::before,
+.predio::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
   background: var(--q-cor);
   opacity: .9;
+}
+
+/* ── Quarto (unidade) ────────────────────────────────────────────────── */
+.quarto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
 }
 
 .quarto-selo {
@@ -68,24 +77,67 @@
   white-space: nowrap;
 }
 
-/* ── Estados ─────────────────────────────────────────────────────────── */
+/* ── Prédio (empreendimento) ─────────────────────────────────────────── */
+.predio {
+  display: block;
+  padding: 14px 16px 14px 18px;
+}
+
+.predio-nome {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f1a2e;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+}
+.predio-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+
+.predio-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.predio-chip {
+  --c: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 11%, transparent);
+  white-space: nowrap;
+}
+.predio-chip[data-tipo="limpar"]  { --c: #d97706; }
+.predio-chip[data-tipo="urgente"] { --c: #dc2626; }
+.predio-chip[data-tipo="ocupado"] { --c: #2563eb; }
+.predio-chip[data-tipo="pronto"]  { --c: #059669; }
+.predio-chip[data-tipo="ok"]      { --c: #059669; background: transparent; padding-left: 0; }
+
+/* ── Estados (valem para quarto e prédio) ─────────────────────────────── */
 
 /* Pendente: hóspede saiu e ninguém limpou ainda */
-.quarto[data-situacao="pendente"] {
+[data-situacao="pendente"].quarto,
+[data-situacao="pendente"].predio {
   --q-cor: #d97706;
   --q-fundo: #fffbeb;
   --q-borda: #fcd34d;
   --q-selo-fundo: #f59e0b;
   --q-selo-texto: #ffffff;
 }
-/* Pendente com hóspede chegando hoje: urgente */
-.quarto[data-situacao="pendente"][data-urgente="true"] {
+/* Urgente: pendente com hóspede chegando hoje */
+[data-situacao="pendente"][data-urgente="true"].quarto,
+[data-situacao="urgente"].predio {
   --q-cor: #dc2626;
   --q-fundo: #fef2f2;
   --q-borda: #fca5a5;
   --q-selo-fundo: #dc2626;
+  --q-selo-texto: #ffffff;
 }
-.quarto[data-situacao="pendente"] .quarto-pilula::before {
+[data-situacao="pendente"].quarto .quarto-pilula::before {
   content: "";
   width: 6px;
   height: 6px;
@@ -95,7 +147,8 @@
 }
 
 /* Incompleta: limpou, mas faltaram itens */
-.quarto[data-situacao="incompleta"] {
+[data-situacao="incompleta"].quarto,
+[data-situacao="incompleta"].predio {
   --q-cor: #c2410c;
   --q-fundo: #fff7ed;
   --q-borda: #fdba74;
@@ -104,7 +157,8 @@
 }
 
 /* Ocupado: hóspede no imóvel */
-.quarto[data-situacao="ocupado"] {
+[data-situacao="ocupado"].quarto,
+[data-situacao="ocupado"].predio {
   --q-cor: #2563eb;
   --q-fundo: #ffffff;
   --q-borda: #dbeafe;
@@ -113,7 +167,8 @@
 }
 
 /* Limpo / finalizado */
-.quarto[data-situacao="limpo"] {
+[data-situacao="limpo"].quarto,
+[data-situacao="limpo"].predio {
   --q-cor: #059669;
   --q-fundo: #f0fdf4;
   --q-borda: #a7f3d0;
@@ -122,11 +177,13 @@
 }
 
 /* Livre: nada a fazer */
-.quarto[data-situacao="livre"] {
+[data-situacao="livre"].quarto,
+[data-situacao="livre"].predio {
   --q-cor: #94a3b8;
 }
 
-/* ── Contadores do topo (também são filtros) ─────────────────────────── */
+/* ── Contadores do topo ──────────────────────────────────────────────── */
+/* Na tela de prédios são só números; dentro do prédio viram filtros (botão). */
 .contador {
   --q-cor: #0f766e;
   display: flex;
@@ -141,6 +198,7 @@
   transition: border-color .12s ease, box-shadow .12s ease;
 }
 .contador[data-situacao="pendente"] { --q-cor: #d97706; }
+.contador[data-situacao="urgente"]  { --q-cor: #dc2626; }
 .contador[data-situacao="ocupado"]  { --q-cor: #2563eb; }
 .contador[data-situacao="limpo"]    { --q-cor: #059669; }
 .contador-numero { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--q-cor); }
@@ -156,6 +214,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quarto, .contador { transition: none; }
-  .quarto[data-situacao="pendente"] .quarto-pilula::before { animation: none; }
+  .quarto, .predio, .contador { transition: none; }
+  [data-situacao="pendente"].quarto .quarto-pilula::before { animation: none; }
 }
