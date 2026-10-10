@@ -16,7 +16,7 @@ export interface AmenitizBooker {
 }
 
 export interface AmenitizReserva {
-  booking_id: string
+  booking_id: string               // ⚠️ a API devolve NÚMERO na prática — usar String() como chave
   status: string                   // 'confirmed' | 'cancelled' | 'no_show'
   currency_code: string
   source: string                   // 'manual' | 'booking' | 'airbnb'

@@ -492,15 +492,19 @@ export async function runAmenitizSync(
       nome_hospede: nomeHospede, email_hospede: r.booker.email, phone_hospede: r.booker.phone,
       mes_competencia: mesCompetencia, ano_competencia: anoCompetencia, raw_data: r,
     }
+    // Chave SEMPRE texto: a API devolve booking_id como número (apesar do tipo
+    // declarado), e o banco devolve text — sem String() o lookup por
+    // booking_id vindo do banco (sync_hash e apenasNovas) nunca encontra nada.
+    const chave = String(r.booking_id)
     if (semVinculoTransferencia) {
       // FK explicitamente nula: sobrescreve atribuição errada gravada antes da regra
-      payloadsSemApt.delete(r.booking_id)
-      payloadsComApt.set(r.booking_id, { ...payload, apartamento_id: null })
+      payloadsSemApt.delete(chave)
+      payloadsComApt.set(chave, { ...payload, apartamento_id: null })
     } else if (aptId) {
-      payloadsSemApt.delete(r.booking_id)
-      payloadsComApt.set(r.booking_id, { ...payload, apartamento_id: aptId })
-    } else if (!payloadsComApt.has(r.booking_id)) {
-      payloadsSemApt.set(r.booking_id, payload)
+      payloadsSemApt.delete(chave)
+      payloadsComApt.set(chave, { ...payload, apartamento_id: aptId })
+    } else if (!payloadsComApt.has(chave)) {
+      payloadsSemApt.set(chave, payload)
     }
 
     // Cancelada: linha atualizada acima (status), mas fora das diárias e dos totais
@@ -542,8 +546,8 @@ export async function runAmenitizSync(
         .select('booking_id')
         .in('booking_id', ids.slice(i, i + 500))
       for (const row of existentes ?? []) {
-        payloadsComApt.delete(row.booking_id)
-        payloadsSemApt.delete(row.booking_id)
+        payloadsComApt.delete(String(row.booking_id))
+        payloadsSemApt.delete(String(row.booking_id))
       }
     }
   }
@@ -573,10 +577,11 @@ export async function runAmenitizSync(
       break
     }
     for (const row of existentes ?? []) {
-      const p = payloadsComApt.get(row.booking_id) ?? payloadsSemApt.get(row.booking_id)
+      const id = String(row.booking_id)
+      const p = payloadsComApt.get(id) ?? payloadsSemApt.get(id)
       if (p && row.sync_hash && row.sync_hash === p.sync_hash) {
-        payloadsComApt.delete(row.booking_id)
-        payloadsSemApt.delete(row.booking_id)
+        payloadsComApt.delete(id)
+        payloadsSemApt.delete(id)
         reservasInalteradas++
       }
     }
