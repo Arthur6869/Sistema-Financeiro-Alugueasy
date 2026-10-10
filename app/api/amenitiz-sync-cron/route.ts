@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
     try {
       const r = await runAmenitizSync(supabase, mes, ano, { reservasOnly })
       resultados.push({ mes, ano, success: r.success, total_reservas: r.total_reservas,
+        reservas_gravadas: r.reservas_gravadas ?? null, reservas_inalteradas: r.reservas_inalteradas ?? null,
         faturamento_liquido: r.faturamento_liquido, apts_nao_encontrados: r.apts_nao_encontrados,
         error: r.error ?? null })
       if (r.success) algumSucesso = true

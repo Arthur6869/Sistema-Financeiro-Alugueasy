@@ -1,5 +1,30 @@
 import { fetchTodasReservasMes, calcularValorLiquido } from '@/lib/amenitiz'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createHash } from 'crypto'
+
+// Serialização com chaves ordenadas em todos os níveis: a mesma reserva vinda
+// da Amenitiz com as chaves em outra ordem não pode parecer alterada.
+// undefined vira null (JSON.stringify omitiria a chave).
+function serializarOrdenado(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(serializarOrdenado).join(',')}]`
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return `{${Object.keys(o).sort().map(k => `${JSON.stringify(k)}:${serializarOrdenado(o[k])}`).join(',')}}`
+  }
+  return JSON.stringify(v) ?? 'null'
+}
+
+/**
+ * Hash estável do que o sync gravaria numa linha. Comparado com o `sync_hash`
+ * já gravado (migration 045) para PULAR o upsert de linhas idênticas: cada
+ * regravação custa I/O de disco (versão nova da linha, índices, WAL e
+ * autovacuum) mesmo sem mudança nenhuma — e o cron roda a cada 10 min. Foi o
+ * que esgotou o orçamento de I/O do Supabase em out/2026 (17 mi de updates
+ * em amenitiz_reservas para ~9 mil linhas).
+ */
+function hashEstavel(valor: unknown): string {
+  return createHash('sha1').update(serializarOrdenado(valor)).digest('hex')
+}
 
 const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
   // Formato "Nome Completo - Número" (separador ' - ' no nome do quarto no Amenitiz)
@@ -240,19 +265,46 @@ async function gravarOcupacaoLimpeza(
       })
     }
   }
-  // Lotes por reserva (nunca partir uma reserva entre dois lotes). Reserva
-  // trocada de quarto: apaga as linhas dela antes de regravar, senão o quarto
-  // antigo continuaria "ocupado".
+  // Lotes por reserva (nunca partir uma reserva entre dois lotes). Só as
+  // reservas cuja ocupação MUDOU são regravadas: compara o que está no banco
+  // com o que a Amenitiz devolveu e pula as idênticas — antes, ~600 linhas
+  // eram apagadas e reinseridas a cada rodada do cron (I/O de disco à toa).
+  // Reserva trocada de quarto: apaga as linhas dela antes de regravar, senão
+  // o quarto antigo continuaria "ocupado".
   const ids = [...porReserva.keys()]
   const LOTE = 300
   for (let i = 0; i < ids.length; i += LOTE) {
     const loteIds = ids.slice(i, i + LOTE)
-    const { error: delErr } = await supabase.from('limpeza_ocupacao').delete().in('booking_id', loteIds)
+    const { data: atuais, error: selErr } = await supabase
+      .from('limpeza_ocupacao')
+      .select('booking_id, room_id, checkin, checkout, status, hospedes, hospede')
+      .in('booking_id', loteIds)
+    if (selErr) throw new Error(selErr.message)
+    const gravadoPorId = new Map<string, Record<string, unknown>[]>()
+    for (const row of atuais ?? []) {
+      const id = String(row.booking_id)
+      if (!gravadoPorId.has(id)) gravadoPorId.set(id, [])
+      gravadoPorId.get(id)!.push(row)
+    }
+    const mudaram = loteIds.filter(id =>
+      assinaturaOcupacao(gravadoPorId.get(id) ?? []) !== assinaturaOcupacao([...porReserva.get(id)!.values()]))
+    if (mudaram.length === 0) continue
+    const { error: delErr } = await supabase.from('limpeza_ocupacao').delete().in('booking_id', mudaram)
     if (delErr) throw new Error(delErr.message)
-    const linhas = loteIds.flatMap(id => [...porReserva.get(id)!.values()])
+    const linhas = mudaram.flatMap(id => [...porReserva.get(id)!.values()])
     const { error } = await supabase.from('limpeza_ocupacao').insert(linhas)
     if (error) throw new Error(error.message)
   }
+}
+
+// O que importa para a limpeza numa reserva (sem atualizado_em), em ordem de
+// quarto — igual no banco e no payload novo ⇒ nada a regravar.
+function assinaturaOcupacao(linhas: Record<string, unknown>[]): string {
+  return JSON.stringify(
+    linhas
+      .map(l => [String(l.room_id), String(l.checkin), String(l.checkout), String(l.status), l.hospedes ?? null, l.hospede ?? null])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  )
 }
 
 export type SyncAmenitizResult = {
@@ -264,6 +316,10 @@ export type SyncAmenitizResult = {
   faturamento_liquido: number
   apartamentos_sincronizados: number
   apts_nao_encontrados: string[]
+  /** Linhas de amenitiz_reservas efetivamente gravadas (novas ou alteradas). */
+  reservas_gravadas?: number
+  /** Linhas idênticas ao banco, puladas pelo sync_hash (migration 045). */
+  reservas_inalteradas?: number
   error?: string
 }
 
@@ -492,6 +548,41 @@ export async function runAmenitizSync(
     }
   }
 
+  // Só grava o que mudou: o hash do payload vai na coluna sync_hash e é
+  // comparado com o da última gravação. Linha nova ou alterada → upsert;
+  // idêntica → pulada. Se a coluna ainda não existir (migration 045 não
+  // aplicada), cai no comportamento antigo e grava tudo — o sync nunca para
+  // por causa da otimização.
+  for (const mapa of [payloadsComApt, payloadsSemApt]) {
+    for (const [id, p] of mapa) mapa.set(id, { ...p, sync_hash: hashEstavel(p) })
+  }
+  let reservasInalteradas = 0
+  const idsCandidatos = apenasNovas ? [] : [...new Set([...payloadsComApt.keys(), ...payloadsSemApt.keys()])]
+  for (let i = 0; i < idsCandidatos.length; i += 500) {
+    const { data: existentes, error: selError } = await supabase
+      .from('amenitiz_reservas')
+      .select('booking_id, sync_hash')
+      .in('booking_id', idsCandidatos.slice(i, i + 500))
+    if (selError) {
+      console.warn('[Sync] sync_hash indisponível, gravando todas as reservas:', selError.message)
+      for (const mapa of [payloadsComApt, payloadsSemApt]) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        for (const [id, { sync_hash: _h, ...semHash }] of mapa) mapa.set(id, semHash)
+      }
+      reservasInalteradas = 0
+      break
+    }
+    for (const row of existentes ?? []) {
+      const p = payloadsComApt.get(row.booking_id) ?? payloadsSemApt.get(row.booking_id)
+      if (p && row.sync_hash && row.sync_hash === p.sync_hash) {
+        payloadsComApt.delete(row.booking_id)
+        payloadsSemApt.delete(row.booking_id)
+        reservasInalteradas++
+      }
+    }
+  }
+  const reservasGravadas = payloadsComApt.size + payloadsSemApt.size
+
   // Upsert em lotes de 500 — antes era 1 round trip por reserva (N+1).
   const LOTE = 500
   for (const rows of [Array.from(payloadsComApt.values()), Array.from(payloadsSemApt.values())]) {
@@ -573,5 +664,7 @@ export async function runAmenitizSync(
     faturamento_liquido: Math.round(totalLiquido * 100) / 100,
     apartamentos_sincronizados: Object.keys(porAptId).length,
     apts_nao_encontrados: naoEncontrados,
+    reservas_gravadas: reservasGravadas,
+    reservas_inalteradas: reservasInalteradas,
   }
 }
