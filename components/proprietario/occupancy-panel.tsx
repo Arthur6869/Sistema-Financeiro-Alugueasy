@@ -15,6 +15,8 @@ type Apto = {
   id: string
   numero: string
   empreendimento: string | null
+  /** 'sub' não paga a taxa AlugEasy da reserva direta — o badge some. */
+  tipo_gestao?: 'adm' | 'sub' | null
 }
 
 type Props = {
@@ -176,12 +178,13 @@ export function OccupancyPanel({ apartamentos, reservas, mes, ano, nomeMes, sinc
         ]
 
         // Taxas de plataforma do apartamento (Booking varia por empreendimento;
-        // Airbnb respeita a vigência do período exibido — 0% até mai/2026)
-        const taxas = getTaxasPlataforma(apt.empreendimento ?? '', apt.numero, { mes, ano })
+        // Airbnb respeita a vigência do período exibido — 0% até mai/2026).
+        // Sublocação só paga Booking e Airbnb: a taxa AlugEasy nem aparece.
+        const taxas = getTaxasPlataforma(apt.empreendimento ?? '', apt.numero, { mes, ano }, apt.tipo_gestao)
         const taxasItens: { key: string; nome: string; pct: number }[] = [
           { key: 'booking',   nome: 'Booking',  pct: taxas.booking },
           { key: 'airbnb',    nome: 'Airbnb',   pct: taxas.airbnb },
-          { key: 'alugueasy', nome: 'AlugEasy', pct: taxas.alugueasy },
+          ...(apt.tipo_gestao === 'sub' ? [] : [{ key: 'alugueasy', nome: 'AlugEasy', pct: taxas.alugueasy }]),
         ]
 
         return (

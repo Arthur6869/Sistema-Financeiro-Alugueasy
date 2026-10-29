@@ -114,24 +114,36 @@ function taxaBookingPara(emp: string, apt: string, novaVigente: boolean): number
 // Airbnb — taxa única para todos os empreendimentos
 const TAXA_AIRBNB = 0.1821
 
+// AlugEasy — reserva direta (source manual / alugueasy / amenitiz). Cobrada SÓ
+// em administração (tipo_gestao 'adm'): em sublocação ('sub') a reserva direta
+// é isenta e o imóvel paga apenas Booking e Airbnb (regra informada pelo
+// usuário em 16/10/2026). Sem tipo_gestao conhecido, vale a regra de adm.
+const TAXA_ALUGEASY = 0.10
+export type TipoGestao = 'adm' | 'sub'
+export function taxaAlugEasyPara(tipoGestao: string | null | undefined): number {
+  return tipoGestao === 'sub' ? 0 : TAXA_ALUGEASY
+}
+
 /**
  * Taxas de plataforma vigentes para um apartamento — para exibição no portal.
  * `ref` (mes/ano do período visualizado) aplica a vigência histórica:
  * Airbnb era 0% até mai/2026 (18,21% a partir de jun/2026); Booking usa a
  * tabela antiga até jul/2026 e a reajustada a partir de ago/2026. mes <= 0 =
- * ano inteiro (usa a taxa vigente do ano).
+ * ano inteiro (usa a taxa vigente do ano). `tipoGestao` 'sub' zera a taxa
+ * AlugEasy (sublocação não paga a taxa da reserva direta).
  */
 export function getTaxasPlataforma(
   empNome: string,
   aptNumero: string | number,
-  ref?: { mes: number; ano: number }
+  ref?: { mes: number; ano: number },
+  tipoGestao?: string | null
 ): { booking: number; airbnb: number; alugueasy: number } {
   const emp = (empNome ?? '').toUpperCase().trim()
   const apt = String(aptNumero ?? '').trim().toUpperCase()
   const bookingNovo = !ref || ref.ano > 2026 || (ref.ano === 2026 && (ref.mes >= 8 || ref.mes <= 0))
   const booking = taxaBookingPara(emp, apt, bookingNovo)
   const airbnbVigente = !ref || ref.ano > 2026 || (ref.ano === 2026 && (ref.mes >= 6 || ref.mes <= 0))
-  return { booking, airbnb: airbnbVigente ? TAXA_AIRBNB : 0, alugueasy: 0.10 }
+  return { booking, airbnb: airbnbVigente ? TAXA_AIRBNB : 0, alugueasy: taxaAlugEasyPara(tipoGestao) }
 }
 
 /**
@@ -149,13 +161,16 @@ export function extrairEmpreendimento(roomName: string): string {
  * Calcula o valor líquido após dedução da taxa da plataforma.
  * `checkin` (ISO) define a vigência da tabela do Booking — sem data, vale a
  * tabela antiga (não reajusta reserva de data desconhecida por acidente).
+ * `tipoGestao` do imóvel: em 'sub' a reserva direta (AlugEasy) é isenta;
+ * ausente ⇒ regra de administração (10%).
  */
 export function calcularValorLiquido(
   valorBruto: number,
   source: string,
   empNome: string,
   aptNumero: number | string,
-  checkin: string | null | undefined
+  checkin: string | null | undefined,
+  tipoGestao?: string | null
 ): { valorLiquido: number; taxaAplicada: number; plataformaNormalizada: string } {
 
   const src = (source ?? '').toLowerCase().trim()
@@ -184,11 +199,12 @@ export function calcularValorLiquido(
     }
   }
 
-  // MANUAL / ALUGUEASY / DIRETO — 10% para todos
+  // MANUAL / ALUGUEASY / DIRETO — 10% em administração; 0% em sublocação
   if (['manual', 'alugueasy', 'direct', 'amenitiz'].some(s => src.includes(s))) {
+    const taxa = taxaAlugEasyPara(tipoGestao)
     return {
-      valorLiquido: valorBruto * 0.90,
-      taxaAplicada: 0.10,
+      valorLiquido: valorBruto * (1 - taxa),
+      taxaAplicada: taxa,
       plataformaNormalizada: 'Alugueasy',
     }
   }

@@ -458,6 +458,7 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
               id: a.id,
               numero: a.numero,
               empreendimento: a.empreendimentos?.nome ?? null,
+              tipo_gestao: a.tipo_gestao,
             }))}
             reservas={reservasParaPainel}
             mes={mes}

@@ -32,6 +32,11 @@ const AMENITIZ_EMP_MAP: Array<[pfx: string, dbNome: string]> = [
   // "Asa Sul 415 - 104": 415 é a quadra (parte do nome), 104 é o apartamento
   ['ASA SUL 415',     'ASA SUL'],
   // Formato "Prefixo Número" (empreendimento + nº no mesmo segmento)
+  // "SM 806", "SM 701": Saint Moritz abreviado na Amenitiz. Sem este prefixo o
+  // sync descartava SM 701/1106/1808 (só o 806 resolvia, por amenitiz_room_id).
+  // Cadastro financeiro de 01/10/2026; 613 cadastrado em 22/10/2026.
+  ['SAINT MORITZ',    'SAINT MORITZ'],
+  ['SM',              'SAINT MORITZ'],
   ['BRISAS DO LAGO',  'BRISAS'],
   ['METROPOLITAN',    'METROPOLITAN'],
   ['MERCURE LIDER',   'MERCURE'],
@@ -79,6 +84,16 @@ const TRANSFERENCIAS_ANUNCIO: Array<{
   // ESSENCE 204 não existe no cadastro → antigo: null (reservas antigas ficam
   // com apartamento_id nulo, fora de qualquer portal e das diárias).
   { empNome: 'ASA SUL', aptNum: 'room:e4a90e7d', inicioNovoImovel: '2026-05-16', antigo: null },
+  // O mesmo quarto e4a90e7d ("Vision " na Amenitiz) trocou de imóvel de novo:
+  // a partir do check-in de 16/09/2026 opera o VISION 1016 (sub) e o ASA SUL
+  // 104 saiu da carteira — confirmado pelo usuário em 22/10/2026. O quarto
+  // resolve por amenitiz_room_id, que precisa estar no VISION 1016 para esta
+  // regra valer: mover SÓ DEPOIS do deploy, senão o cron de 10 min remapeia
+  // jul–set para o Vision. Reservas anteriores a 16/09 voltam ao ASA SUL 104
+  // pelo nome (chave do cadastro) e, em cadeia, as anteriores a 16/05 caem na
+  // regra de FK nula (entrada abaixo, mesma regra acima com a chave por nome).
+  { empNome: 'VISION',  aptNum: 'room:e4a90e7d', inicioNovoImovel: '2026-09-16', antigo: { empNome: 'ASA SUL', aptNum: '104' } },
+  { empNome: 'ASA SUL', aptNum: '104',           inicioNovoImovel: '2026-05-16', antigo: null },
 ]
 
 // Unidades que a Amenitiz anuncia separadas mas que no sistema são UM único
@@ -441,10 +456,15 @@ export async function runAmenitizSync(
     // Anúncio transferido: reserva anterior à troca pertence ao imóvel antigo.
     // Com antigo conhecido, remapeia (taxa e vínculo do imóvel certo); sem
     // antigo, marca para gravar com FK nula (limpa atribuição errada existente).
-    const transferencia = TRANSFERENCIAS_ANUNCIO.find(t =>
-      t.empNome === empNomeDoRoom && t.aptNum === aptNumRoom && r.checkin < t.inicioNovoImovel)
-    const semVinculoTransferencia = !!transferencia && transferencia.antigo === null
-    if (transferencia?.antigo) {
+    // Em cadeia: o imóvel antigo pode ter sido, ele mesmo, uma troca anterior
+    // (quarto e4a90e7d: VISION 1016 ← ASA SUL 104 ← sem imóvel).
+    let semVinculoTransferencia = false
+    for (let passo = 0; passo < TRANSFERENCIAS_ANUNCIO.length; passo++) {
+      const empAtual = empNomeDoRoom, aptAtual = aptNumRoom
+      const transferencia = TRANSFERENCIAS_ANUNCIO.find(t =>
+        t.empNome === empAtual && t.aptNum === aptAtual && r.checkin < t.inicioNovoImovel)
+      if (!transferencia) break
+      if (transferencia.antigo === null) { semVinculoTransferencia = true; break }
       empNomeDoRoom = transferencia.antigo.empNome
       aptNumRoom    = transferencia.antigo.aptNum
     }
@@ -453,8 +473,18 @@ export async function runAmenitizSync(
     // no vínculo/diárias; a reserva continua exibindo a unidade real.
     const aptNumCanonico = APELIDOS_APARTAMENTO[`${empNomeDoRoom}::${aptNumRoom}`] ?? aptNumRoom
 
+    // Resolver aptInfo ANTES do upsert para incluir apartamento_id como FK real
+    // (migration 022 — necessário para RLS do portal funcionar por FK, não por
+    // texto) e ANTES da taxa: o tipo de gestão do imóvel define se a reserva
+    // direta paga os 10% da AlugEasy (só adm; sub é isenta).
+    const aptInfo = semVinculoTransferencia
+      ? undefined
+      : aptNumRoom.startsWith('room:')
+        ? aptMapByRoomId[room.individual_room_id ?? '']
+        : lookupApt(aptMapCompleto, empNomeDoRoom, aptNumCanonico)
+
     // Check-in define a vigência da tabela do Booking (reajuste de 09/2026).
-    const { valorLiquido, taxaAplicada, plataformaNormalizada } = calcularValorLiquido(valorBruto, r.source, empNomeDoRoom, aptNumRoom, r.checkin)
+    const { valorLiquido, taxaAplicada, plataformaNormalizada } = calcularValorLiquido(valorBruto, r.source, empNomeDoRoom, aptNumRoom, r.checkin, aptInfo?.tipoGestao)
 
     // Ajuste manual da gestão: força o valor líquido gravado na reserva; com
     // afetaDiarias o valor ajustado também entra na agregação de diárias.
@@ -463,14 +493,6 @@ export async function runAmenitizSync(
     const valorLiquidoDiaria  = ajusteManual?.afetaDiarias ? ajusteManual.valor : valorLiquido
 
     const nomeHospede = [`${r.booker.first_name} ${r.booker.last_name}`.trim(), r.booker.phone?.trim() ? `— ${r.booker.phone.trim()}` : ''].filter(Boolean).join(' ')
-
-    // Resolver aptInfo ANTES do upsert para incluir apartamento_id como FK real
-    // (migration 022 — necessário para RLS do portal funcionar por FK, não por texto)
-    const aptInfo = semVinculoTransferencia
-      ? undefined
-      : aptNumRoom.startsWith('room:')
-        ? aptMapByRoomId[room.individual_room_id ?? '']
-        : lookupApt(aptMapCompleto, empNomeDoRoom, aptNumCanonico)
 
     // apartamento_id só é incluído no payload quando o lookup tem sucesso.
     // Ao omitir o campo no ON CONFLICT UPDATE, preservamos o valor existente no banco
