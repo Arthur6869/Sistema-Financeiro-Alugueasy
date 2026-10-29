@@ -8,19 +8,24 @@ import { registerMonitoramentoTools } from './tools/monitoramento.js'
 import { registerResources } from './resources.js'
 import { registerPrompts } from './prompts.js'
 import { createServer, IncomingMessage, ServerResponse } from 'node:http'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 
-assertEnv(['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'])
+// A chave interna é obrigatória: o servidor HTTP usa a service role, então
+// subir sem chave significaria liberar a base inteira para a internet.
+assertEnv(['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ALUGUEASY_INTERNAL_API_KEY'])
 
 const PORT = parseInt(process.env.MCP_PORT ?? '3001', 10)
-const INTERNAL_KEY = process.env.ALUGUEASY_INTERNAL_API_KEY ?? ''
+const INTERNAL_KEY = Buffer.from(process.env.ALUGUEASY_INTERNAL_API_KEY ?? '', 'utf8')
 
 const transports = new Map<string, StreamableHTTPServerTransport>()
 
+// Fail-closed e em tempo constante (mesma regra de lib/internal-key.ts do app).
 function authenticate(req: IncomingMessage): boolean {
-  if (!INTERNAL_KEY) return true
-  const auth = req.headers['x-alugueasy-internal-key']
-  return auth === INTERNAL_KEY
+  const header = req.headers['x-alugueasy-internal-key']
+  if (INTERNAL_KEY.length === 0 || typeof header !== 'string' || !header) return false
+  const recebido = Buffer.from(header, 'utf8')
+  if (recebido.length !== INTERNAL_KEY.length) return false
+  return timingSafeEqual(recebido, INTERNAL_KEY)
 }
 
 async function buildServer(): Promise<McpServer> {
@@ -35,12 +40,8 @@ async function buildServer(): Promise<McpServer> {
 }
 
 const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-alugueasy-internal-key, mcp-session-id')
-
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
-
+  // Sem CORS: clientes MCP não são navegadores, e liberar origem `*` deixaria
+  // qualquer site tentar a chave a partir do navegador de quem o visita.
   if (req.url === '/health' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ status: 'ok', server: 'alugueasy-mcp', version: '1.0.0' }))
