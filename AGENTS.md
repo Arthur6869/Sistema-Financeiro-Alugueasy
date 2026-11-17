@@ -11,7 +11,7 @@ Esta versão do Next.js tem **mudanças significativas** em relação ao que pod
 
 | Item | Valor |
 |---|---|
-| Framework | Next.js **16.2.1** com **App Router** |
+| Framework | Next.js **16.4.6** com **App Router** |
 | Runtime | React 19.2.4 |
 | Banco de dados | Supabase (PostgreSQL 17) — projeto `rlkmljeatapayiroggrp` |
 | Região Supabase | `sa-east-1` (São Paulo) |

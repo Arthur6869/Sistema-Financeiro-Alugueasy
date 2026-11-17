@@ -25,7 +25,7 @@ A documentação técnica completa do sistema (schema do banco, componentes, bug
 
 ## Resumo rápido para o agente
 
-- Framework: **Next.js 16.2.1** com **App Router** (não Pages Router)
+- Framework: **Next.js 16.4.6** com **App Router** (não Pages Router)
 - Banco: **Supabase** — projeto `rlkmljeatapayiroggrp` — região `sa-east-1`
 - Rota principal do dashboard: **`/`** (não `/dashboard`)
 - Usuário autenticado = `createClient()` do `@/lib/supabase/server`

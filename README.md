@@ -110,7 +110,7 @@ npm start
 
 | Tecnologia | Uso | Versão |
 |---|---|---|
-| Next.js | Framework web (App Router) | 16.2.1 |
+| Next.js | Framework web (App Router) | 16.4.6 |
 | React | Interface de usuário | 19.2.4 |
 | TypeScript | Linguagem tipada | 5.x |
 | Tailwind CSS v4 | Estilização | 4.x |

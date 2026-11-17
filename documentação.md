@@ -3,7 +3,7 @@
 > **Versão:** 2.2.0
 > **Última atualização:** 28/04/2026 (auditoria completa de implementação)
 > **Projeto Supabase:** `rlkmljeatapayiroggrp` — Região: `sa-east-1` (São Paulo)
-> **Build:** Next.js 16.2.1 / Turbopack — compilação TypeScript sem erros
+> **Build:** Next.js 16.4.6 / Turbopack — compilação TypeScript sem erros
 
 > Última consolidação: abril/2026 — absorveu SISTEMA_COMPLETO.md,
 > DASHBOARD_AMENITIZ_UPDATES.md, ANALISE-SISTEMA-MCP.md, CONTEXT.md,
@@ -100,7 +100,7 @@ Renderiza página com dados
 
 | Camada | Tecnologia | Versão | Propósito |
 |---|---|---|---|
-| Framework | Next.js App Router | 16.2.1 | SSR, rotas, API routes |
+| Framework | Next.js App Router | 16.4.6 | SSR, rotas, API routes |
 | Linguagem | TypeScript | 5.x | Tipagem estática |
 | UI Runtime | React | 19.2.4 | Renderização de interface |
 | Estilização | Tailwind CSS v4 | 4.x | Classes utilitárias |
@@ -1961,5 +1961,19 @@ Feita com dados fictícios em rotas temporárias (já removidas), sem login de
 proprietário: cerca de 50 verificações no navegador (desktop, tablet, 390px e 360px),
 teclado e movimento reduzido. **Falta conferir com uma conta real de proprietário**,
 em especial o tempo real (chegada de reserva) e o download do PDF.
+
+---
+
+## Next.js 16.4.3 → 16.4.6 (17/11/2026)
+
+- **Motivo:** dois avisos de segurança de gravidade moderada na faixa 16.2.0–16.4.4
+  (GHSA-mfr8-8qww-v76h e GHSA-vc7v-qv4w-wrv8), ligados a `'use cache'` e
+  `unstable_cache`. O sistema não usa esses recursos, mas na 16.4.3 o `next build`
+  passou a terminar com erro (`SecurityFatalError`) depois de gerar as páginas.
+- `next` e `eslint-config-next` fixados em **16.4.6** (versão exata, como antes).
+- Conferido: tipagem, lint e build sem o aviso; `next start` com as páginas públicas
+  respondendo 200, as rotas protegidas redirecionando para `/login` e os
+  cabeçalhos de segurança presentes.
+- Depois de trocar a versão é preciso **reiniciar o `npm run dev`** que estiver aberto.
 
 > **REGRA:** Esta documentação deve ser atualizada **sempre** que houver mudanças no schema do banco, novas rotas, alterações de regras de negócio, novos componentes ou correções de bugs.
