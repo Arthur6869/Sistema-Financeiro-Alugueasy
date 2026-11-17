@@ -87,6 +87,7 @@ export default async function DashboardPage({
     { data: apartamentosData },
     { data: custosOpVar },
     { data: mesesComCustosData },
+    papel,
   ] = await Promise.all([
     supabase.from('empreendimentos').select('id, nome').order('nome'),
     diariasQuery,
@@ -100,6 +101,9 @@ export default async function DashboardPage({
     mes === 0 && ano > 0
       ? supabase.from('custos').select('mes').eq('ano', ano).limit(50000)
       : Promise.resolve({ data: null, error: null }),
+    // Papel de quem está vendo: o layout já barrou quem não é interno; aqui só
+    // decide se as ações de escrita (limpar dados, atalho de importação) aparecem.
+    papelDoUsuario(supabase),
   ])
 
   if (empError)    console.error('[dashboard] empreendimentos:', empError.message)
@@ -186,7 +190,6 @@ export default async function DashboardPage({
   const lucroTotal = faturamentoTotal - custosTotal
   const qtdEmpreendimentos = empreendimentos?.length ?? 0
   const margemPct = faturamentoTotal > 0 ? Math.round((lucroTotal / faturamentoTotal) * 100) : 0
-  const custosPct = faturamentoTotal > 0 ? Math.min(100, Math.round((custosTotal / faturamentoTotal) * 100)) : 0
 
   // Map de apartamentos por ID — O(1) em vez de O(n) por .find() nos loops
   const aptLookupMap = new Map<string, AptDashRow>()
@@ -287,13 +290,6 @@ export default async function DashboardPage({
     }
   })
 
-  // Nome completo no chartData — o componente de gráfico aplica truncamento no eixo
-  const chartData = Object.entries(empreendimentoMap).map(([nome, vals]) => ({
-    empreendimento: nome,
-    faturamento: Math.round(vals.fat),
-    lucro: Math.round(vals.fat - vals.custos),
-  }))
-
   const empreendimentoCards = Object.entries(empreendimentoMap).map(([nome, vals]) => ({
     nome,
     fat: vals.fat,
@@ -303,30 +299,43 @@ export default async function DashboardPage({
   // Exibe dados se há qualquer faturamento ou custo — não esconde períodos só com custos
   const hasData = faturamentoTotal > 0 || custosReservas > 0
 
-  // Checagens proativas (room_ids, sync com erro, categorias repassáveis, margem)
-  const alertas = await verificarAlertas(supabase, { mes, ano, faturamentoTotal, margemPct })
+  // Analista opera o sistema; admin só lê.
+  const ehAnalista = papel === 'analista'
+
+  // Checagens proativas (room_ids, sync com erro, categorias repassáveis, margem).
+  // Só o analista vê as pendências — são tarefas de operação, e os links
+  // "Resolver" levam a telas que o admin não usa. Para os demais nem consultamos.
+  const alertas = ehAnalista
+    ? await verificarAlertas(supabase, { mes, ano, faturamentoTotal, margemPct })
+    : []
+
+  // De onde veio o faturamento — a tela só rotula; a regra é a de cima
+  const fonteFaturamento = usandoDiariasXlsx ? 'diarias' : isMesCorrente ? 'amenitiz-ao-vivo' : 'amenitiz'
 
   return (
-    <>
-    <AlertasPanel alertas={alertas} />
     <DashboardContent
       mes={mes}
       ano={ano}
       anoMesLabel={anoMesLabel}
-      usandoDiariasXlsx={usandoDiariasXlsx}
+      fonteFaturamento={fonteFaturamento}
       faturamentoTotal={faturamentoTotal}
       custosReservas={custosReservas}
       custosOperacionais={custosOperacionais}
-      custosTotal={custosTotal}
       lucroTotal={lucroTotal}
-      custosPct={custosPct}
       margemPct={margemPct}
       hasData={hasData}
       qtdEmpreendimentos={qtdEmpreendimentos}
-      chartData={chartData}
       empreendimentoCards={empreendimentoCards}
       apartamentoCards={apartamentoCards}
+      podeEditar={ehAnalista}
+      avisos={ehAnalista ? <AlertasPanel alertas={alertas} /> : null}
     />
-    </>
   )
+}
+
+async function papelDoUsuario(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  return (data?.role as string | undefined) ?? null
 }

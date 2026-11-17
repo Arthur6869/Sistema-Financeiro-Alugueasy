@@ -66,6 +66,9 @@ export default async function ReservasPage({
       </div>
 
       <ReservasEditavelTabela
+        // A tabela guarda as linhas em estado próprio: sem a key ela continuava
+        // mostrando o mês em que a tela foi aberta depois de trocar o período.
+        key={`${mes}-${ano}`}
         reservas={(reservas ?? []) as unknown as ReservaRow[]}
         role={profile?.role ?? ''}
         mes={mes}

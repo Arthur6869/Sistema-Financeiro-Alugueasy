@@ -1,463 +1,260 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Building2,
-  DollarSign,
-  Eye,
-  EyeOff,
-  Receipt,
-  TrendingDown,
-  TrendingUp,
-  Upload,
-} from 'lucide-react'
-import { DashboardCharts } from '@/components/charts/dashboard-charts'
-import { MonthYearFilter } from '@/components/shared/month-year-filter'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import gsap from 'gsap'
+import { useGSAP } from '@gsap/react'
+import { Eye, EyeOff, Info, Upload } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { LimparDadosButton } from '@/components/shared/limpar-dados-button'
-import { Suspense } from 'react'
-import { CensoredValue } from '@/components/dashboard/censored-value'
-import { formatCurrency } from '@/lib/constants'
+import { Composicao, Indicadores } from './kpis'
+import { PeriodoNav } from './periodo-nav'
+import { PorGestao } from './por-gestao'
+import { RankingEmpreendimentos } from './ranking-empreendimentos'
+import { TabelaApartamentos } from './tabela-apartamentos'
+import { CensuraProvider, semMovimento } from './valor'
+import type { ApartamentoCard, EmpreendimentoCard, EmpreendimentoLinha, FiltroGestao, FonteFaturamento } from './tipos'
 
-interface EmpreendimentoCard {
-  nome: string
-  fat: number
-  luc: number
-}
-
-interface ApartamentoCard {
-  numero: string
-  empNome: string
-  tipo: string
-  fat: number
-  custos: number
-  luc: number
-}
-
-interface ChartData {
-  empreendimento: string
-  faturamento: number
-  lucro: number
-}
+gsap.registerPlugin(useGSAP)
 
 interface DashboardContentProps {
   mes: number
   ano: number
   anoMesLabel: string
-  usandoDiariasXlsx: boolean
+  fonteFaturamento: FonteFaturamento
   faturamentoTotal: number
   custosReservas: number
   custosOperacionais: number
-  custosTotal: number
   lucroTotal: number
-  custosPct: number
   margemPct: number
   hasData: boolean
   qtdEmpreendimentos: number
-  chartData: ChartData[]
   empreendimentoCards: EmpreendimentoCard[]
   apartamentoCards: ApartamentoCard[]
+  /** Analista opera o sistema; admin só lê — sem ações destrutivas nem atalhos de importação */
+  podeEditar: boolean
+  /** Painel de pendências, já renderizado no servidor */
+  avisos?: ReactNode
 }
 
-export function DashboardContent({
-  mes,
-  ano,
-  anoMesLabel,
-  usandoDiariasXlsx,
-  faturamentoTotal,
-  custosReservas,
-  custosOperacionais,
-  custosTotal,
-  lucroTotal,
-  custosPct,
-  margemPct,
-  hasData,
-  qtdEmpreendimentos,
-  chartData,
-  empreendimentoCards,
-  apartamentoCards,
-}: DashboardContentProps) {
-  const [globalCensorEnabled, setGlobalCensorEnabled] = useState(false)
+const LIMPAR = 'transform,translate,rotate,scale,opacity'
 
-  const valueCensorClass = (enabled: boolean) => (enabled ? 'text-transparent bg-gray-900/80' : '')
+/**
+ * Dashboard da área interna. Recebe os números prontos de
+ * app/(dashboard)/page.tsx e cuida só de como eles são vistos: período,
+ * ocultar valores, filtros cruzados entre gráficos e tabela, animação.
+ */
+export function DashboardContent({
+  mes, ano, anoMesLabel, fonteFaturamento,
+  faturamentoTotal, custosReservas, custosOperacionais, lucroTotal, margemPct,
+  hasData, qtdEmpreendimentos, empreendimentoCards, apartamentoCards, podeEditar, avisos,
+}: DashboardContentProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const raiz = useRef<HTMLDivElement>(null)
+
+  const [censurado, setCensurado] = useState(false)
+  const [empreendimento, setEmpreendimento] = useState<string | null>(null)
+  const [gestao, setGestao] = useState<FiltroGestao>('todos')
+  // Trocar de período busca dados novos no servidor: enquanto chegam, a tela
+  // antiga fica esmaecida no lugar — sem piscar nem pular de layout.
+  const [pendente, iniciarTransicao] = useTransition()
+
+  function irPara(novoMes: number, novoAno: number) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('mes', String(novoMes))
+    params.set('ano', String(novoAno))
+    iniciarTransicao(() => router.push(`${pathname}?${params.toString()}`))
+  }
+
+  // A página manda faturamento e lucro por empreendimento; custo e contagem
+  // de apartamentos saem do que já veio — nenhum número novo é calculado.
+  const linhas: EmpreendimentoLinha[] = useMemo(() => {
+    const porEmp = new Map<string, number>()
+    apartamentoCards.forEach(a => porEmp.set(a.empNome, (porEmp.get(a.empNome) ?? 0) + 1))
+    return empreendimentoCards.map(e => ({ ...e, custos: e.fat - e.luc, apartamentos: porEmp.get(e.nome) ?? 0 }))
+  }, [empreendimentoCards, apartamentoCards])
+
+  const nomesEmpreendimentos = useMemo(
+    () => [...new Set(apartamentoCards.map(a => a.empNome))].sort((a, b) => a.localeCompare(b)),
+    [apartamentoCards],
+  )
+  // Um filtro escolhido num mês pode não existir no seguinte
+  const empAtivo = empreendimento && nomesEmpreendimentos.includes(empreendimento) ? empreendimento : null
+
+  // Entrada: uma vez só. `opacity` (não autoAlpha) para nada ficar sem foco/clique.
+  useGSAP(() => {
+    if (semMovimento()) return
+    gsap.from('[data-entrada]', {
+      y: 14, opacity: 0, duration: 0.55, ease: 'power3.out', stagger: 0.05, clearProps: LIMPAR,
+    })
+  }, { scope: raiz })
+
+  // Barras crescem a partir da base na entrada e a cada troca de período
+  useGSAP(() => {
+    const barras = raiz.current?.querySelectorAll('[data-barra]')
+    if (!barras?.length || semMovimento()) return
+    gsap.from(barras, {
+      scaleX: 0, duration: 0.8, ease: 'power3.out', stagger: 0.012, clearProps: LIMPAR,
+    })
+  }, { scope: raiz, dependencies: [mes, ano] })
+
+  const semCustosLancados = hasData && custosReservas === 0 && faturamentoTotal > 0
 
   return (
-    <div className="p-8 w-full">
-      <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
-        <div className="space-y-3">
-          <Button
-            type="button"
-            variant={globalCensorEnabled ? 'default' : 'outline'}
-            size="sm"
-            className="gap-2"
-            onClick={() => setGlobalCensorEnabled((prev) => !prev)}
-          >
-            {globalCensorEnabled ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {globalCensorEnabled ? 'Censura ativa' : 'Ativar censura'}
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-            <p className="text-gray-500 text-sm mt-1">
-              Visão geral financeira — {anoMesLabel}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Suspense fallback={null}>
-            <MonthYearFilter mes={mes} ano={ano} />
-          </Suspense>
-          <LimparDadosButton mes={mes} ano={ano} />
-        </div>
-      </div>
+    <CensuraProvider value={censurado}>
+      <div
+        ref={raiz}
+        className="min-h-[calc(100dvh-3.5rem)] bg-creme px-4 pb-16 pt-5 text-tinta sm:px-6 lg:min-h-dvh lg:px-8 lg:pt-8"
+      >
+        <div className="mx-auto max-w-[1400px]">
+          {avisos}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-5">
-        {/* Card 1 — Faturamento */}
-        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ backgroundColor: '#193660' }} />
-          <div className="p-6 pl-7">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                  Faturamento
-                </span>
-                {usandoDiariasXlsx && (
-                  <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-1.5 py-0.5">
-                    ✓ conferido
-                  </span>
+          {/* ── título + controles do período (uma linha, acima de tudo que eles recortam) ── */}
+          <header data-entrada className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+            <div>
+              <p className="font-rotulo text-[11px] font-semibold uppercase tracking-[0.14em] text-apagado">
+                Visão geral financeira
+              </p>
+              <h1 className="mt-1.5 font-titulo text-[40px] leading-none tracking-[-0.02em] text-tinta sm:text-[52px]">
+                Dashboard
+              </h1>
+              <p className="mt-2 text-sm text-apagado">{anoMesLabel}</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <PeriodoNav mes={mes} ano={ano} onIr={irPara} pendente={pendente} />
+              <button
+                type="button"
+                aria-pressed={censurado}
+                onClick={() => setCensurado(v => !v)}
+                className={cn(
+                  'inline-flex h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-700',
+                  censurado
+                    ? 'border-marca-800 bg-marca-800 text-white hover:bg-marca-600'
+                    : 'border-linha bg-white text-tinta hover:bg-creme-escuro',
                 )}
-              </div>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#19366018' }}>
-                <DollarSign size={17} style={{ color: '#193660' }} />
-              </div>
+              >
+                {censurado ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                {censurado ? 'Valores ocultos' : 'Ocultar valores'}
+              </button>
+              {podeEditar && <LimparDadosButton mes={mes} ano={ano} />}
             </div>
-            <p className="text-3xl font-extrabold text-gray-900 leading-none mb-1">
-              {hasData ? (
-                <span className="group">
-                  <CensoredValue
-                    value={formatCurrency(faturamentoTotal)}
-                    censored={globalCensorEnabled}
-                    className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                  />
-                </span>
-              ) : <span className="text-gray-300">R$ —</span>}
-            </p>
-            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
-            <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>Base de referência</span>
-                <span>100%</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-gray-100">
-                <div className="h-1.5 rounded-full" style={{ width: '100%', backgroundColor: '#193660' }} />
-              </div>
-            </div>
-          </div>
-        </div>
+          </header>
 
-        {/* Card 2 — Custos das Reservas */}
-        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-orange-400" />
-          <div className="p-6 pl-7">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Custos Reservas
-              </span>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-orange-50">
-                <Receipt size={17} className="text-orange-500" />
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold text-gray-900 leading-none mb-1">
-              {hasData ? (
-                <span className="group">
-                  <CensoredValue
-                    value={formatCurrency(custosReservas)}
-                    censored={globalCensorEnabled}
-                    className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                  />
-                </span>
-              ) : <span className="text-gray-300">R$ —</span>}
-            </p>
-            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
-            <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>% do faturamento</span>
-                <span>
-                  {hasData ? `${faturamentoTotal > 0 ? Math.round((custosReservas / faturamentoTotal) * 100) : 0}%` : '—'}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-gray-100">
-                <div
-                  className="h-1.5 rounded-full bg-orange-400"
-                  style={{ width: hasData && faturamentoTotal > 0 ? `${Math.min(100, Math.round((custosReservas / faturamentoTotal) * 100))}%` : '0%' }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3 — Custos Operacionais */}
-        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
-          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-red-400" />
-          <div className="p-6 pl-7">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Custos Operacionais
-              </span>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-red-50">
-                <Receipt size={17} className="text-red-500" />
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold text-gray-900 leading-none mb-1">
-              {hasData ? (
-                <span className="group">
-                  <CensoredValue
-                    value={formatCurrency(custosOperacionais)}
-                    censored={globalCensorEnabled}
-                    className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                  />
-                </span>
-              ) : <span className="text-gray-300">R$ —</span>}
-            </p>
-            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
-            <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>% do faturamento</span>
-                <span className="group">
-                  {hasData ? (
-                    <CensoredValue
-                      value={`${faturamentoTotal > 0 ? Math.round((custosOperacionais / faturamentoTotal) * 100) : 0}%`}
-                      censored={globalCensorEnabled}
-                      className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                    />
-                  ) : '—'}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-gray-100">
-                <div
-                  className="h-1.5 rounded-full bg-red-400"
-                  style={{ width: hasData && faturamentoTotal > 0 ? `${Math.min(100, Math.round((custosOperacionais / faturamentoTotal) * 100))}%` : '0%' }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4 — Lucro Líquido */}
-        <div className="relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
           <div
-            className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
-            style={{ backgroundColor: lucroTotal >= 0 ? '#16a34a' : '#dc2626' }}
-          />
-          <div className="p-6 pl-7">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Lucro Líquido
-              </span>
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${lucroTotal >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                {lucroTotal >= 0
-                  ? <TrendingUp size={17} className="text-green-600" />
-                  : <TrendingDown size={17} className="text-red-500" />}
-              </div>
-            </div>
-            <p className={`text-3xl font-extrabold leading-none mb-1 ${!hasData ? 'text-gray-300' : lucroTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {hasData ? (
-                <span className="group">
-                  <CensoredValue
-                    value={`${lucroTotal >= 0 ? '+' : ''}${formatCurrency(lucroTotal)}`}
-                    censored={globalCensorEnabled}
-                    className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
+            aria-busy={pendente}
+            className={cn('mt-6 space-y-4 transition-opacity duration-200', pendente && 'pointer-events-none opacity-50')}
+          >
+            <Indicadores
+              faturamento={faturamentoTotal}
+              custosReservas={custosReservas}
+              custosOperacionais={custosOperacionais}
+              lucro={lucroTotal}
+              margemPct={margemPct}
+              hasData={hasData}
+              periodo={anoMesLabel}
+              fonte={fonteFaturamento}
+            />
+
+            {semCustosLancados && (
+              <p data-entrada className="flex items-start gap-2.5 rounded-2xl border border-linha bg-white px-4 py-3 text-sm leading-snug text-tinta-suave">
+                <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-marca-700" />
+                <span>
+                  <strong className="font-semibold text-tinta">Lucro parcial.</strong>{' '}
+                  Ainda não há custos de reservas lançados neste período — o resultado desconta só os custos
+                  operacionais e vai mudar quando eles entrarem.
+                  {podeEditar && (
+                    <>
+                      {' '}
+                      <Link href="/importar" className="font-semibold text-marca-700 underline underline-offset-2">
+                        Importar custos
+                      </Link>
+                    </>
+                  )}
+                </span>
+              </p>
+            )}
+
+            {hasData && (
+              <Composicao
+                faturamento={faturamentoTotal}
+                custosReservas={custosReservas}
+                custosOperacionais={custosOperacionais}
+                lucro={lucroTotal}
+              />
+            )}
+
+            {linhas.length > 0 ? (
+              <>
+                <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+                  <RankingEmpreendimentos
+                    linhas={linhas}
+                    cadastrados={qtdEmpreendimentos}
+                    selecionado={empAtivo}
+                    onSelecionar={setEmpreendimento}
                   />
-                </span>
-              ) : 'R$ —'}
-            </p>
-            <p className="text-xs text-gray-400 mb-5">{anoMesLabel}</p>
-            <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span>Margem sobre faturamento</span>
-                <span className="group">
-                  {hasData ? (
-                    <CensoredValue
-                      value={`${margemPct}%`}
-                      censored={globalCensorEnabled}
-                      className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                    />
-                  ) : '—'}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-gray-100">
-                <div
-                  className="h-1.5 rounded-full"
-                  style={{
-                    width: hasData ? `${Math.min(100, Math.max(0, Math.abs(margemPct)))}%` : '0%',
-                    backgroundColor: lucroTotal >= 0 ? '#16a34a' : '#dc2626',
-                  }}
-                />
-              </div>
-            </div>
+                  <PorGestao
+                    apartamentos={apartamentoCards}
+                    faturamentoTotal={faturamentoTotal}
+                    filtro={gestao}
+                    onFiltrar={setGestao}
+                  />
+                </div>
+
+                {apartamentoCards.length > 0 && (
+                  <TabelaApartamentos
+                    apartamentos={apartamentoCards}
+                    empreendimentos={nomesEmpreendimentos}
+                    empreendimento={empAtivo}
+                    onEmpreendimento={setEmpreendimento}
+                    gestao={gestao}
+                    onGestao={setGestao}
+                  />
+                )}
+              </>
+            ) : (
+              <SemDados periodo={anoMesLabel} podeEditar={podeEditar} />
+            )}
           </div>
         </div>
       </div>
+    </CensuraProvider>
+  )
+}
 
-      <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3 w-fit mb-8">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#19366018' }}>
-          <Building2 size={16} style={{ color: '#193660' }} />
-        </div>
-        <div>
-          <p className="text-xs text-gray-400 leading-none mb-0.5">Empreendimentos cadastrados</p>
-          <p className="text-sm font-bold text-gray-800">
-            {qtdEmpreendimentos > 0
-              ? (
-                <span className="group">
-                  <CensoredValue
-                    value={`${qtdEmpreendimentos} empreendimento${qtdEmpreendimentos > 1 ? 's' : ''}`}
-                    censored={globalCensorEnabled}
-                    className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                  />
-                </span>
-              )
-              : '—'}
-          </p>
-        </div>
-      </div>
-
-      {chartData.length > 0 ? (
-        <div className={globalCensorEnabled ? 'rounded-xl overflow-hidden blur-[3px] pointer-events-none select-none' : ''}>
-          <DashboardCharts data={chartData} anoMesLabel={anoMesLabel} />
-        </div>
-      ) : (
-        <Link href="/importar">
-          <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border-2 border-dashed border-gray-200 shadow-sm mb-6 hover:border-[#193660] hover:bg-gray-50 transition-all duration-150 cursor-pointer group">
-            <div className="w-14 h-14 rounded-2xl bg-gray-50 group-hover:bg-[#19366015] flex items-center justify-center mb-4 transition-colors">
-              <Upload className="h-7 w-7 text-gray-300 group-hover:text-[#193660] transition-colors" />
-            </div>
-            <p className="text-gray-500 group-hover:text-gray-700 font-semibold transition-colors">Nenhum dado disponível</p>
-            <p className="text-gray-400 text-sm mt-1">
-              Clique aqui para importar planilhas e visualizar os gráficos
-            </p>
-          </div>
-        </Link>
+function SemDados({ periodo, podeEditar }: { periodo: string; podeEditar: boolean }) {
+  const conteudo = (
+    <>
+      <span className="grid size-14 place-items-center rounded-2xl bg-creme text-apagado transition-colors group-hover:bg-marca-50 group-hover:text-marca-700">
+        <Upload size={26} aria-hidden="true" />
+      </span>
+      <p className="mt-4 font-semibold text-tinta">Nenhum dado em {periodo}</p>
+      <p className="mt-1 max-w-sm text-sm text-apagado">
+        {podeEditar
+          ? 'Importe as planilhas do período para ver indicadores, ranking e apartamentos.'
+          : 'Os indicadores aparecem aqui assim que as planilhas do período forem importadas.'}
+      </p>
+      {podeEditar && (
+        <span className="mt-5 inline-flex h-10 items-center rounded-full bg-marca-800 px-5 text-sm font-semibold text-white transition-colors group-hover:bg-marca-600">
+          Importar planilhas
+        </span>
       )}
+    </>
+  )
+  const caixa = 'group flex flex-col items-center rounded-2xl border-2 border-dashed border-linha bg-white px-6 py-16 text-center'
 
-      {empreendimentoCards.length > 0 && (
-        <div>
-          <h2 className="text-base font-semibold text-gray-800 mb-4">
-            Resultado por Empreendimento
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {empreendimentoCards.map((emp) => (
-              <div
-                key={emp.nome}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer p-4"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-gray-800 truncate pr-2">{emp.nome}</span>
-                  <Badge
-                    className={`text-xs shrink-0 ${
-                      emp.luc >= 0
-                        ? 'bg-green-100 text-green-700 border-green-200'
-                        : 'bg-red-100 text-red-700 border-red-200'
-                    }`}
-                    variant="outline"
-                  >
-                    {emp.luc >= 0 ? '▲ Lucro' : '▼ Prejuízo'}
-                  </Badge>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Faturamento</span>
-                    <span className="font-medium text-gray-800 group">
-                      <CensoredValue
-                        value={formatCurrency(emp.fat, 0)}
-                        censored={globalCensorEnabled}
-                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                      />
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Lucro</span>
-                    <span className={`font-semibold ${emp.luc >= 0 ? 'text-green-600' : 'text-red-600'} group`}>
-                      <CensoredValue
-                        value={`${emp.luc >= 0 ? '+' : ''}${formatCurrency(emp.luc, 0)}`}
-                        censored={globalCensorEnabled}
-                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                      />
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {apartamentoCards.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">
-            Resultado por Apartamento
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {apartamentoCards.map((apt) => (
-              <div
-                key={`${apt.empNome}-${apt.numero}`}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-4"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900 leading-tight">
-                      {apt.numero}
-                    </p>
-                    <p className="text-xs text-gray-400 leading-tight">{apt.empNome}</p>
-                  </div>
-                  <Badge
-                    className={`text-[10px] shrink-0 mt-0.5 ${
-                      apt.tipo === 'adm'
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-purple-50 text-purple-700 border-purple-200'
-                    }`}
-                    variant="outline"
-                  >
-                    {apt.tipo.toUpperCase()}
-                  </Badge>
-                </div>
-                <div className="space-y-1 mt-3">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Fat.</span>
-                    <span className="font-medium text-gray-800 group">
-                      <CensoredValue
-                        value={formatCurrency(apt.fat)}
-                        censored={globalCensorEnabled}
-                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                      />
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-400">Custo</span>
-                    <span className="font-medium text-gray-700 group">
-                      <CensoredValue
-                        value={formatCurrency(apt.custos)}
-                        censored={globalCensorEnabled}
-                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                      />
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs pt-1 border-t border-gray-50">
-                    <span className="text-gray-400">Lucro</span>
-                    <span className={`font-semibold group ${apt.luc >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      <CensoredValue
-                        value={`${apt.luc >= 0 ? '+' : ''}${formatCurrency(apt.luc)}`}
-                        censored={globalCensorEnabled}
-                        className={valueCensorClass(globalCensorEnabled) + ' group-hover:text-transparent group-hover:bg-gray-900/80'}
-                      />
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+  return podeEditar ? (
+    <Link
+      href="/importar" data-entrada
+      className={cn(caixa, 'transition-colors hover:border-marca-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-700')}
+    >
+      {conteudo}
+    </Link>
+  ) : (
+    <div data-entrada className={caixa}>{conteudo}</div>
   )
 }

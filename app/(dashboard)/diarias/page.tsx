@@ -110,6 +110,9 @@ export default async function DiariasPage({
         </CardHeader>
         <CardContent>
           <DiariasPageClient
+            // A tabela guarda as linhas em estado próprio: sem a key ela continuava
+            // mostrando o mês em que a tela foi aberta depois de trocar o período.
+            key={`${mes}-${ano}-${tipoFiltro}`}
             initialDiarias={diariasRows}
             apartamentos={apartamentos}
             role={profile?.role ?? ''}

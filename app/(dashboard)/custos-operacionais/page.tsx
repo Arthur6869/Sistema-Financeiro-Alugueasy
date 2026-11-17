@@ -1,9 +1,61 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { MESES } from '@/lib/constants'
-import { Suspense } from 'react'
-import { MonthYearFilter } from '@/components/shared/month-year-filter'
-import { CustosOperacionaisClient } from '@/components/custos-operacionais/custos-operacionais-client'
+import {
+  COLUNAS_CONTA, COLUNAS_LANCAMENTO, normalizarConta, normalizarLancamento, ordenarContas,
+  type ContaOp, type LancamentoOp,
+} from '@/lib/custos-operacionais'
+import { TelaCustosOperacionais, type EstadoCustosOp } from '@/components/custos-operacionais/tela-custos-operacionais'
+
+type Supabase = Awaited<ReturnType<typeof createClient>>
+
+/** O banco devolve no máximo 1.000 linhas por consulta */
+const PAGINA = 1000
+
+// PGRST205 / 42P01: a tabela não existe — a migration 047 ainda não foi aplicada
+const semTabela = (codigo?: string) => codigo === 'PGRST205' || codigo === '42P01'
+
+/**
+ * Plano de contas + todos os valores do ano. O ano inteiro vem de uma vez
+ * porque a tela mostra a evolução mês a mês e o mês anterior ao lado do atual.
+ * Erro de consulta volta como erro — não como "ano sem custos".
+ */
+async function carregar(supabase: Supabase, ano: number): Promise<
+  { estado: EstadoCustosOp; contas: ContaOp[]; lancamentos: LancamentoOp[]; erro: string | null }
+> {
+  const vazio = { contas: [] as ContaOp[], lancamentos: [] as LancamentoOp[] }
+
+  const contasRes = await supabase.from('custos_operacionais_contas').select(COLUNAS_CONTA).order('ordem')
+  if (contasRes.error) {
+    return semTabela(contasRes.error.code)
+      ? { estado: 'sem-estrutura', ...vazio, erro: null }
+      : { estado: 'erro', ...vazio, erro: contasRes.error.message }
+  }
+
+  const lancamentos: LancamentoOp[] = []
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase
+      .from('custos_operacionais_lancamentos')
+      .select(COLUNAS_LANCAMENTO)
+      .eq('ano', ano)
+      .order('mes')
+      .order('id')
+      .range(de, de + PAGINA - 1)
+    if (error) {
+      return semTabela(error.code)
+        ? { estado: 'sem-estrutura', ...vazio, erro: null }
+        : { estado: 'erro', ...vazio, erro: error.message }
+    }
+    lancamentos.push(...(data ?? []).map(l => normalizarLancamento(l)))
+    if (!data || data.length < PAGINA) break
+  }
+
+  return {
+    estado: 'ok',
+    contas: ordenarContas((contasRes.data ?? []).map(c => normalizarConta(c))),
+    lancamentos,
+    erro: null,
+  }
+}
 
 export default async function CustosOperacionaisPage({
   searchParams,
@@ -14,42 +66,29 @@ export default async function CustosOperacionaisPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
-
   const params = await searchParams
   const now = new Date()
-  const mes = params.mes !== undefined ? parseInt(params.mes) : now.getMonth() + 1
-  const ano = params.ano !== undefined ? parseInt(params.ano) : now.getFullYear()
+  const mesRaw = params.mes ? parseInt(params.mes) : now.getMonth() + 1
+  const anoRaw = params.ano ? parseInt(params.ano) : now.getFullYear()
+  // Custo operacional é lançado por mês: "Todos os meses" (mes=0), que o menu
+  // traz de outras abas, cai no mês atual — mesmo critério de /custos.
+  const mes = mesRaw >= 1 && mesRaw <= 12 ? mesRaw : now.getMonth() + 1
+  const ano = anoRaw >= 2020 && anoRaw <= 2100 ? anoRaw : now.getFullYear()
 
-  const { data: varData } = await supabase
-    .from('custos_operacionais_variaveis')
-    .select('diarias')
-    .eq('mes', mes)
-    .eq('ano', ano)
-    .maybeSingle()
-
-  const diariasIniciais = varData?.diarias ?? 0
-  const anoMesLabel = `${MESES[mes - 1]} ${ano}`
+  const [{ data: profile }, dados] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).single(),
+    carregar(supabase, ano),
+  ])
 
   return (
-    <div className="p-8 w-full">
-      <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Custos Operacionais</h1>
-          <p className="text-gray-500 text-sm mt-1">Despesas fixas e variáveis mensais — {anoMesLabel}</p>
-        </div>
-        <Suspense fallback={null}>
-          <MonthYearFilter mes={mes} ano={ano} />
-        </Suspense>
-      </div>
-
-      <CustosOperacionaisClient
-        mes={mes}
-        ano={ano}
-        diariasIniciais={diariasIniciais}
-        role={profile?.role ?? 'admin'}
-      />
-    </div>
+    <TelaCustosOperacionais
+      contas={dados.contas}
+      lancamentos={dados.lancamentos}
+      mes={mes}
+      ano={ano}
+      podeEditar={profile?.role === 'analista'}
+      estado={dados.estado}
+      erro={dados.erro}
+    />
   )
 }

@@ -48,6 +48,50 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Identidade AlugEasy na área interna ─────────────────────────────────
+   Mesmas cores da landing e das telas de login, agora como utilitários do
+   Tailwind (bg-marca-800, text-tinta, border-linha, font-titulo…).
+
+   As fontes vêm de lib/fontes-marca.ts — a classe é aplicada no AppShell.
+   Ficam em `@theme inline` porque apontam para variáveis que só existem
+   abaixo dessa classe; o fallback dentro do var() mantém a regra válida fora dela. */
+@theme inline {
+  --font-titulo: var(--lp-serif, Georgia), 'Times New Roman', serif;
+  --font-rotulo: var(--lp-mono, ui-monospace), 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@theme {
+  --color-marca-950: #071426;
+  --color-marca-900: #0a1b36;
+  --color-marca-800: #0f2647;
+  --color-marca-700: #193660;
+  --color-marca-600: #1e4578;
+  --color-marca-100: #e4eaf3;
+  --color-marca-50: #f1f4f9;
+  --color-creme: #f8f6f1;
+  --color-creme-escuro: #efebe1;
+  --color-areia: #e8dfc9;
+  --color-tinta: #0f1a2e;
+  --color-tinta-suave: #3d4b61;
+  --color-apagado: #5a6a82;
+  --color-linha: #e6e1d6;
+
+  /* Séries dos gráficos. Conjunto validado NESTA ordem (faixa de luminosidade,
+     croma, distinção para daltônicos e contraste ≥ 3:1 sobre branco). O azul e
+     o verde "puros" da marca não servem para marca de gráfico: o #193660 fica
+     escuro demais para ser lido como cor, e verde ao lado de laranja se
+     confunde para quem tem protanopia — por isso lucro e custo de reservas
+     nunca ficam vizinhos. Cada série tem sempre a mesma cor em toda a tela. */
+  --color-serie-faturamento: #2a63b8;
+  --color-serie-custo-reservas: #eb6834;
+  --color-serie-custo-op: #6250d6;
+  --color-serie-lucro: #15803d;
+
+  /* Estado (não é série): sempre acompanhado de sinal ou rótulo, nunca só a cor */
+  --color-positivo: #15803d;
+  --color-negativo: #b42318;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

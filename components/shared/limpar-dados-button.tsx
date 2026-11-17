@@ -45,7 +45,7 @@ export function LimparDadosButton({ mes, ano }: LimparDadosButtonProps) {
     <button
       onClick={handleLimpar}
       disabled={loading}
-      className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      className="inline-flex h-11 items-center gap-1.5 rounded-full border border-red-200 bg-white px-4 text-sm font-medium text-negativo transition-colors hover:border-red-300 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-negativo disabled:cursor-not-allowed disabled:opacity-50"
       title="Apagar todos os dados do período selecionado"
     >
       {loading

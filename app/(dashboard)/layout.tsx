@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { AppSidebar } from '@/components/layout/app-sidebar'
+import { AppShell } from '@/components/layout/app-shell'
 import { PresencaHeartbeat } from '@/components/presenca/presenca-heartbeat'
 
 export default async function DashboardLayout({
@@ -31,12 +31,11 @@ export default async function DashboardLayout({
   if (role !== 'admin' && role !== 'analista') redirect('/login?erro=sem_acesso')
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <>
       <PresencaHeartbeat />
-      <AppSidebar role={role} fullName={fullName} email={email} />
-      <main className="flex-1 bg-white overflow-auto">
+      <AppShell role={role} fullName={fullName} email={email}>
         {children}
-      </main>
-    </div>
+      </AppShell>
+    </>
   )
 }

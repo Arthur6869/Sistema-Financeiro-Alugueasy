@@ -8,9 +8,11 @@ interface Props {
   tabela: 'custos' | 'reservas'
   mes: number
   ano: number
+  /** Troca o visual padrão (as abas já redesenhadas passam o botão em pílula) */
+  className?: string
 }
 
-export function ExportarTabelaXlsxButton({ tabela, mes, ano }: Props) {
+export function ExportarTabelaXlsxButton({ tabela, mes, ano, className }: Props) {
   const [loading, setLoading] = useState(false)
 
   const baixar = async () => {
@@ -41,16 +43,19 @@ export function ExportarTabelaXlsxButton({ tabela, mes, ano }: Props) {
 
   return (
     <button
+      type="button"
       onClick={baixar}
       disabled={loading}
       title={`Exportar ${tabela} em XLSX`}
-      className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium
+      className={className
+        ? `${className} disabled:cursor-not-allowed disabled:opacity-60`
+        : `flex items-center gap-1.5 px-3 py-2 text-sm font-medium
                  border border-[#193660] text-[#193660] rounded-lg
                  hover:bg-[#193660]/5 active:scale-[0.97]
                  disabled:opacity-60 disabled:cursor-not-allowed
-                 transition-all"
+                 transition-all`}
     >
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4" aria-hidden="true" />}
       <span>Exportar XLSX</span>
     </button>
   )

@@ -50,9 +50,9 @@ export function CriarApartamentoModal({ empreendimentoId, empreendimentoNome }: 
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all hover:opacity-90 active:scale-95"
-        style={{ backgroundColor: '#193660' }}
+        className="inline-flex h-11 items-center gap-2 rounded-full bg-marca-800 px-5 text-sm font-semibold text-white transition-colors hover:bg-marca-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-700"
       >
         <Plus size={15} />
         Criar Apartamento

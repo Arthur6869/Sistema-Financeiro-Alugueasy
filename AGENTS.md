@@ -69,7 +69,20 @@ importacoes                 → id, tipo ('custos_adm'|'custos_sub'|'diarias_adm
 proprietario_apartamentos   → id, proprietario_id (fk auth.users), apartamento_id (fk apartamentos),
                                ativo boolean DEFAULT true
                                UNIQUE (proprietario_id, apartamento_id)
+custos_operacionais_contas  → (migration 047) plano de contas dos custos da empresa: id, codigo (unique, "3.01"),
+                               nome, grupo, classificacao_dre, tipo ('fixo'|'variavel'|'provisao'),
+                               dia_vencimento (1–31 nullable), valor_base (referência), observacao, ordem, ativo
+custos_operacionais_lancamentos → (migration 047) valor de cada conta em cada mês: id, conta_id (fk, RESTRICT),
+                               mes, ano, valor (> 0), observacao, origem ('manual'|'planilha')
+                               UNIQUE (conta_id, mes, ano) — sem valor no mês = sem linha
 ```
+
+### Custos operacionais (migration 047)
+
+- Leitura só para interno (`is_interno()`); escrita só para **analista**. Proprietário, operacional e chave anônima não acessam.
+- As contas têm **nome de funcionário e salário**: nunca colocar esses dados em migration, seed, teste ou qualquer arquivo versionado. A carga inicial fica em `dados custos operacionais/` (fora do git pela regra `dados*/`).
+- Gravação pela API com a sessão do usuário (não service role): `PUT /api/custos-operacionais/lancamentos`, `POST /api/custos-operacionais/contas`, `PATCH /api/custos-operacionais/contas/[id]`. Não existe DELETE de conta — conta se encerra (`ativo = false`).
+- `custos_operacionais_variaveis` (diárias avulsas × R$ 250) é o modelo antigo: a aba não usa mais, mas o Dashboard e o app mobile ainda leem.
 
 ### Regra de origem em custos
 
