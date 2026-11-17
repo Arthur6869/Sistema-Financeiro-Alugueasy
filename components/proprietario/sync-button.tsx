@@ -1,18 +1,19 @@
 'use client'
 
-import { RefreshCw } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
+/** Busca as reservas do mês na Amenitiz e recarrega a página. */
 export function SyncButton({ mes, ano }: { mes: number; ano: number }) {
   const router = useRouter()
-  const [estado, setEstado] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
-  const [mensagem, setMensagem] = useState('')
+  const [carregando, setCarregando] = useState(false)
 
   async function sincronizar() {
-    if (estado === 'loading') return
-    setEstado('loading')
-    setMensagem('')
+    if (carregando) return
+    setCarregando(true)
     try {
       const r = await fetch('/api/proprietario/sync', {
         method: 'POST',
@@ -22,63 +23,28 @@ export function SyncButton({ mes, ano }: { mes: number; ano: number }) {
       const data = await r.json()
       if (data.success) {
         const n = data.total_reservas ?? 0
-        setMensagem(n > 0 ? `${n} reservas carregadas` : 'Dados atualizados')
-        setEstado('ok')
+        toast.success(n > 0 ? `${n} ${n === 1 ? 'reserva carregada' : 'reservas carregadas'}` : 'Dados atualizados')
         router.refresh()
-        setTimeout(() => setEstado('idle'), 5_000)
       } else {
-        setMensagem(data.error ?? 'Erro ao sincronizar')
-        setEstado('error')
-        setTimeout(() => setEstado('idle'), 6_000)
+        toast.error(data.error ?? 'Não foi possível atualizar agora.')
       }
     } catch {
-      setMensagem('Erro de conexão')
-      setEstado('error')
-      setTimeout(() => setEstado('idle'), 6_000)
+      toast.error('Sem conexão com o servidor. Tente de novo.')
+    } finally {
+      setCarregando(false)
     }
   }
 
-  const loading = estado === 'loading'
-  const ok      = estado === 'ok'
-  const error   = estado === 'error'
-
-  const borderColor = ok ? '#86efac' : error ? '#fca5a5' : '#e7e9ee'
-  const bgColor     = ok ? '#f0fdf4' : error ? '#fef2f2' : '#fff'
-  const textColor   = ok ? '#166534' : error ? '#b91c1c' : '#0f1a2e'
-  const iconColor   = ok ? '#166534' : error ? '#b91c1c' : '#193660'
-
   return (
-    <>
-      <style>{`
-        @keyframes spin-sync { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .sync-btn:hover:not(:disabled) { background: #f8f6f1 !important; border-color: #193660 !important; }
-      `}</style>
-      <button
-        className="sync-btn"
-        onClick={sincronizar}
-        disabled={loading}
-        aria-label="Sincronizar dados com Amenitiz"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: bgColor,
-          border: `1px solid ${borderColor}`,
-          borderRadius: 9,
-          padding: '7px 14px',
-          fontSize: 12.5, fontWeight: 600,
-          color: textColor,
-          cursor: loading ? 'default' : 'pointer',
-          fontFamily: 'DM Sans, sans-serif',
-          transition: 'all .15s',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <RefreshCw
-          size={13}
-          color={iconColor}
-          style={{ animation: loading ? 'spin-sync .8s linear infinite' : 'none', flexShrink: 0 }}
-        />
-        {loading ? 'Sincronizando…' : ok || error ? mensagem : 'Atualizar dados'}
-      </button>
-    </>
+    <button
+      type="button" onClick={sincronizar} disabled={carregando} aria-label="Atualizar reservas com a Amenitiz"
+      className={cn(
+        'inline-flex h-11 items-center gap-2 rounded-full border border-linha bg-white px-4 text-sm font-medium text-tinta transition-colors',
+        'hover:bg-creme-escuro focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-700 disabled:opacity-60',
+      )}
+    >
+      <RefreshCw size={16} aria-hidden="true" className={carregando ? 'animate-spin' : ''} />
+      {carregando ? 'Atualizando…' : 'Atualizar dados'}
+    </button>
   )
 }

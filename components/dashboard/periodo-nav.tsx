@@ -31,8 +31,11 @@ export function PeriodoNav({ mes, ano, onIr, pendente, permitirTodos = true }: {
   ano: number // 0 = todos
   onIr: (mes: number, ano: number) => void
   pendente: boolean
-  /** `false` nas abas que consultam um mês específico (lá "Todos" não tem como ser calculado) */
-  permitirTodos?: boolean
+  /**
+   * `false` nas abas que consultam um mês específico (lá "Todos" não tem como ser calculado);
+   * `'meses'` oferece só "Todos os meses" (o ano inteiro), sem "Todos os anos".
+   */
+  permitirTodos?: boolean | 'meses'
 }) {
   const hoje = useSyncExternalStore(semAssinatura, mesDeHoje, () => null)
   const noMesAtual = hoje === `${mes}-${ano}`
@@ -77,7 +80,7 @@ export function PeriodoNav({ mes, ano, onIr, pendente, permitirTodos = true }: {
             aria-label="Mês" className={campo} value={mes}
             onChange={e => onIr(Number(e.target.value), ano)}
           >
-            {permitirTodos && <option value={0}>Todos os meses</option>}
+            {permitirTodos !== false && <option value={0}>Todos os meses</option>}
             {MESES.map((nome, i) => <option key={nome} value={i + 1}>{nome}</option>)}
           </select>
           <ChevronDown size={14} aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-apagado" />
@@ -88,7 +91,7 @@ export function PeriodoNav({ mes, ano, onIr, pendente, permitirTodos = true }: {
             aria-label="Ano" className={campo} value={ano}
             onChange={e => onIr(mes, Number(e.target.value))}
           >
-            {permitirTodos && <option value={0}>Todos os anos</option>}
+            {permitirTodos === true && <option value={0}>Todos os anos</option>}
             {anos.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
           <ChevronDown size={14} aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-apagado" />

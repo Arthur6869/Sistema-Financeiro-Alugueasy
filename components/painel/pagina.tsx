@@ -25,16 +25,20 @@ const LIMPAR = 'transform,translate,rotate,scale,opacity'
  *   (barra horizontal) e `data-coluna` (vertical) crescem da base na entrada
  *   e a cada troca de período. Com prefers-reduced-motion nada anima.
  */
-export function PaginaInterna({ rotulo, titulo, sub, voltar, periodo, acoes, children }: {
+export function PaginaInterna({ rotulo, titulo, sub, voltar, periodo, acoes, estreita, tourPeriodo, children }: {
   /** Linha pequena acima do título */
   rotulo: string
   titulo: ReactNode
   sub?: ReactNode
   voltar?: { href: string; rotulo: string }
-  /** `permitirTodos: false` nas abas que consultam um mês específico */
-  periodo?: { mes: number; ano: number; permitirTodos?: boolean }
+  /** `permitirTodos: false` nas abas que consultam um mês específico; `'meses'` = só "Todos os meses" */
+  periodo?: { mes: number; ano: number; permitirTodos?: boolean | 'meses' }
   /** Botões à direita do período */
   acoes?: ReactNode
+  /** Largura de leitura (1100px) em vez da largura de trabalho (1400px) — portal do proprietário */
+  estreita?: boolean
+  /** `data-tour` da linha de controles (o tour guiado do portal aponta para ela) */
+  tourPeriodo?: string
   children: ReactNode
 }) {
   const router = useRouter()
@@ -74,7 +78,7 @@ export function PaginaInterna({ rotulo, titulo, sub, voltar, periodo, acoes, chi
       ref={raiz}
       className="min-h-[calc(100dvh-3.5rem)] bg-creme px-4 pb-16 pt-5 text-tinta sm:px-6 lg:min-h-dvh lg:px-8 lg:pt-8"
     >
-      <div className="mx-auto max-w-[1400px]">
+      <div className={cn('mx-auto', estreita ? 'max-w-[1100px]' : 'max-w-[1400px]')}>
         {voltar && (
           <Link
             href={voltar.href}
@@ -96,7 +100,7 @@ export function PaginaInterna({ rotulo, titulo, sub, voltar, periodo, acoes, chi
           </div>
 
           {(periodo || acoes) && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2" data-tour={tourPeriodo}>
               {periodo && (
                 <PeriodoNav
                   mes={periodo.mes} ano={periodo.ano} onIr={irPara} pendente={pendente}

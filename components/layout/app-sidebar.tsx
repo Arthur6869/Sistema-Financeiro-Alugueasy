@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { LogoMarca } from '@/components/marca/logo-marca'
 import {
   LayoutDashboard,
   Building2,
@@ -58,14 +59,6 @@ const adminItems: ItemMenu[] = [
   { href: '/importar', label: 'Importar', icon: Upload },
   { href: '/usuarios', label: 'Usuários', icon: Users },
 ]
-
-function LogoMarca({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <path d="M16 3L3 15H7.5V28H13.5V21H18.5V28H24.5V15H29L16 3Z" fill="currentColor" />
-    </svg>
-  )
-}
 
 // O menu só "recolhe" (ícones) no desktop; abaixo de 1024px ele é uma gaveta
 // e sempre mostra os rótulos. No servidor assumimos desktop.

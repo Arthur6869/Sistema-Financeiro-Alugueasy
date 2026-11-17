@@ -1,14 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { TrendingUp, Receipt, Wallet, Clock, BarChart2, FileText, Download, History, AlertCircle, Percent } from 'lucide-react'
-import { EvolucaoChart } from '@/components/proprietario/evolucao-chart'
-import { MonthYearFilter } from '@/components/shared/month-year-filter'
 import { RealtimeReservas } from '@/components/proprietario/realtime-reservas'
 import { MESES, MESES_ABREV } from '@/lib/constants'
 import { calcularKPIs, somarKPIs, calcularTaxaCarteira, rotuloTaxaCarteira } from '@/lib/calcular-kpis'
-import { OccupancyPanel } from '@/components/proprietario/occupancy-panel'
 import { SyncButton } from '@/components/proprietario/sync-button'
+import { InicioProprietario } from '@/components/proprietario/inicio'
+import { PainelOcupacao } from '@/components/proprietario/painel-ocupacao'
+import { getTaxasPlataforma } from '@/lib/amenitiz'
 
 type SearchParams = Promise<{ mes?: string; ano?: string }>
 
@@ -20,10 +18,6 @@ type ApartamentoVinculo = {
   tipo_repasse: 'lucro' | 'faturamento' | null
   modelo_contrato: 'administracao' | 'sublocacao' | null
   empreendimentos: { nome: string } | null
-}
-
-function formatBRL(valor: number) {
-  return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default async function ProprietarioDashboard({ searchParams }: { searchParams: SearchParams }) {
@@ -246,253 +240,51 @@ export default async function ProprietarioDashboard({ searchParams }: { searchPa
     mesesComDados = historicoData.filter(h => h.faturamento > 0 || h.lucro !== 0).length
   }
 
-  const temHistoricoSuficiente = mesesComDados >= 2
+  // Taxas de plataforma por imóvel ficam no servidor (lib/amenitiz tem partes só
+  // de servidor); a tela recebe os percentuais prontos. Sublocação não paga a
+  // taxa AlugEasy da reserva direta — ela nem aparece.
+  const apartamentosOcupacao = apartamentos.map(a => {
+    const taxas = getTaxasPlataforma(a.empreendimentos?.nome ?? '', a.numero, { mes, ano }, a.tipo_gestao)
+    return {
+      id: a.id,
+      numero: a.numero,
+      empreendimento: a.empreendimentos?.nome ?? null,
+      tipo_gestao: a.tipo_gestao,
+      taxas: { booking: taxas.booking, airbnb: taxas.airbnb, alugueasy: a.tipo_gestao === 'sub' ? null : taxas.alugueasy },
+    }
+  })
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap');
-        *, *::before, *::after { box-sizing: border-box; }
-
-        .pg-wrap { font-family: 'DM Sans', sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px 28px 64px; }
-
-        .pg-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 28px; }
-        .pg-greeting { font-family: 'Instrument Serif', Georgia, serif; font-size: 28px; font-weight: 400; color: #0f1a2e; margin-bottom: 4px; }
-        .pg-greeting-sub { font-size: 13px; color: #5a6a82; }
-        .pg-period select { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: #0f1a2e; background: #fff; border: 1px solid #e7e9ee; border-radius: 9px; padding: 9px 14px; cursor: pointer; outline: none; }
-        .pg-period { display: flex; gap: 8px; align-items: center; }
-
-        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px,1fr)); gap: 14px; margin-bottom: 28px; }
-        .kpi-card { background: #fff; border: 1px solid #e7e9ee; border-radius: 16px; padding: 18px 18px 16px; position: relative; overflow: hidden; transition: transform .15s, box-shadow .15s; }
-        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,38,71,.06); }
-        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
-        .kpi-card.k-navy::before { background: #0f2647; }
-        .kpi-card.k-red::before { background: #dc2626; }
-        .kpi-card.k-green::before { background: #15803d; }
-        .kpi-card.k-amber::before { background: #d97706; }
-        .kpi-card.k-slate::before { background: #64748b; }
-        .kpi-top { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
-        .kpi-icon { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .kpi-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; }
-        .kpi-val { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin-bottom: 3px; color: #0f1a2e; }
-        .kpi-foot { font-size: 11.5px; color: #94a3b8; }
-
-        /* Repasse: sempre verde (regra 12 do design doc) */
-        .kpi-card.k-repasse .kpi-val { color: #166534; }
-
-        /* Mobile: filtros empilham e ocupam a largura toda — a linha
-           botão+selects+badge é mais larga que a tela e criava scroll lateral */
-        @media (max-width: 640px) {
-          .pg-wrap { padding: 20px 16px 56px; }
-          .pg-head { flex-direction: column; align-items: stretch; }
-          .pg-period { align-items: stretch !important; }
-          .pg-period > div:first-child { flex-wrap: wrap; }
-          .pg-period .sync-btn { flex: 1 1 100%; justify-content: center; }
-          .pg-period > div:first-child > div { flex: 1; }
-          .pg-period select { flex: 1; min-width: 0; }
-        }
-
-        /* Mobile hero: repasse vira destaque full-width no topo do grid */
-        @media (max-width: 640px) {
-          .kpi-card.k-repasse {
-            order: -1;
-            grid-column: 1 / -1;
-            padding: 22px 22px 18px;
-            background: #f0fdf4;
-            border-color: #bbf7d0;
-          }
-          .kpi-card.k-repasse .kpi-val { font-size: 34px; letter-spacing: -.02em; }
-          .kpi-card.k-repasse .kpi-foot { font-size: 12.5px; }
-        }
-
-        .panel { background: #fff; border: 1px solid #e7e9ee; border-radius: 18px; padding: 24px; margin-bottom: 20px; }
-        .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
-        .panel-title { font-size: 15px; font-weight: 600; color: #0f1a2e; display: flex; align-items: center; gap: 8px; }
-        .panel-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
-
-        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 20px; text-align: center; }
-        .empty-icon { width: 48px; height: 48px; border-radius: 50%; background: #f8f6f1; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; color: #94a3b8; }
-        .empty-title { font-size: 14px; font-weight: 600; color: #0f1a2e; margin-bottom: 4px; }
-        .empty-desc { font-size: 12.5px; color: #94a3b8; max-width: 280px; }
-        .progress-track { width: 200px; height: 6px; background: #f8f6f1; border-radius: 100px; margin-top: 16px; overflow: hidden; }
-        .progress-fill { height: 100%; background: #193660; border-radius: 100px; }
-        .progress-label { font-size: 11px; color: #94a3b8; margin-top: 8px; }
-
-        .shortcut-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
-        .shortcut-card { border: 1px solid #e7e9ee; border-radius: 14px; padding: 18px; text-decoration: none; display: flex; flex-direction: column; gap: 8px; transition: all .15s; cursor: pointer; }
-        .shortcut-card:hover { border-color: #193660; background: #f8f6f1; }
-        .shortcut-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
-        .shortcut-title { font-size: 13.5px; font-weight: 600; color: #0f1a2e; }
-        .shortcut-desc { font-size: 11.5px; color: #94a3b8; }
-
-        @media (max-width: 900px) {
-          .kpi-grid { grid-template-columns: repeat(2,1fr); }
-          .shortcut-grid { grid-template-columns: 1fr; }
-        }
-      `}</style>
-
-      <div className="pg-wrap">
-
-        <div className="pg-head">
-          <div>
-            <h1 className="pg-greeting">Olá, {primeiroNome}</h1>
-            <p className="pg-greeting-sub">Resumo dos seus imóveis em <strong>{labelPeriodo}</strong></p>
-          </div>
-          <div className="pg-period" data-tour="periodo" style={{ flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {mes > 0 && <SyncButton mes={mes} ano={ano} />}
-              <MonthYearFilter mes={mes} ano={ano} permitirTodosAnos={false} />
-            </div>
-            {/* Assinatura Realtime: badge "atualizado há X min" + notificação de nova reserva */}
-            <RealtimeReservas apartamentoIds={aptIds} initialIngestAt={ingestAt} />
-          </div>
-        </div>
-
-        {/* Target do portal React: RealtimeReservas injeta aqui a seção "Chegaram agora" */}
-        <div id="novas-reservas-portal" />
-
-        {semDados ? (
-          <div className="panel" style={{ textAlign: 'center', padding: '48px 24px' }}>
-            <div className="empty-icon" style={{ margin: '0 auto 14px' }}><Clock size={22} /></div>
-            {mesSincronizado ? (
-              <>
-                <div className="empty-title">Nenhuma diária em {labelPeriodo}</div>
-                <div className="empty-desc">A sincronização foi realizada, mas seus imóveis não registraram receita neste período.</div>
-              </>
-            ) : (
-              <>
-                <div className="empty-title">Dados de {labelPeriodo} ainda não importados</div>
-                <div className="empty-desc">A importação de planilhas ou sincronização Amenitiz para este mês ainda não foi realizada.</div>
-              </>
-            )}
-          </div>
-        ) : (
-        <div className="kpi-grid" data-tour="kpis">
-          <div className="kpi-card k-navy">
-            <div className="kpi-top">
-              <div className="kpi-icon" style={{ background: '#e6f1fb' }}><TrendingUp size={14} color="#0c447c" /></div>
-              <span className="kpi-label">Faturamento</span>
-            </div>
-            <div className="kpi-val">R$ {formatBRL(kpis.faturamento)}</div>
-            <div className="kpi-foot">{isMesCorrente ? `${labelPeriodo} · ao vivo` : labelPeriodo}</div>
-          </div>
-
-          <div className="kpi-card k-red">
-            <div className="kpi-top">
-              <div className="kpi-icon" style={{ background: '#fef2f2' }}><Receipt size={14} color="#dc2626" /></div>
-              <span className="kpi-label">Custos</span>
-            </div>
-            <div className="kpi-val">R$ {formatBRL(kpis.custos)}</div>
-            {semCategoriasConfiguradas ? (
-              <div className="kpi-foot" style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#b45309' }}>
-                <AlertCircle size={11} />
-                Sem categorias configuradas
-              </div>
-            ) : (
-              <div className="kpi-foot">{labelPeriodo}</div>
-            )}
-          </div>
-
-          <div className="kpi-card k-green">
-            <div className="kpi-top">
-              <div className="kpi-icon" style={{ background: '#eaf3de' }}><TrendingUp size={14} color="#27500a" /></div>
-              <span className="kpi-label">Lucro líquido</span>
-            </div>
-            <div className="kpi-val" style={{ color: '#166534' }}>R$ {formatBRL(kpis.lucro)}</div>
-            <div className="kpi-foot">Margem de {kpis.margem.toFixed(0)}% no período</div>
-          </div>
-
-          {rotuloTaxa !== '' && (
-          <div className="kpi-card k-slate">
-            <div className="kpi-top">
-              <div className="kpi-icon" style={{ background: '#f1f5f9' }}><Percent size={14} color="#475569" /></div>
-              <span className="kpi-label" title="Taxa de administração AlugEasy, calculada imóvel a imóvel">Taxa AlugEasy</span>
-            </div>
-            <div className="kpi-val" style={{ color: '#475569' }}>− R$ {formatBRL(kpis.taxaAlugEasy)}</div>
-            <div className="kpi-foot">{rotuloTaxa}</div>
-          </div>
-          )}
-
-          <div className="kpi-card k-amber k-repasse" data-tour="repasse">
-            <div className="kpi-top">
-              <div className="kpi-icon" style={{ background: '#f0fdf4' }}><Wallet size={14} color="#166534" /></div>
-              <span className="kpi-label" title="Lucro do mês menos a taxa de gestão AlugEasy">Seu repasse</span>
-            </div>
-            <div className="kpi-val">R$ {formatBRL(kpis.repasse)}</div>
-            <div className="kpi-foot">Valor líquido ao proprietário</div>
-          </div>
-        </div>
-        )}
-
-        {/* Evolução antes das reservas: usuário entende a tendência antes dos detalhes */}
-        <div className="panel" data-tour="evolucao">
-          <div className="panel-head">
-            <div>
-              <div className="panel-title"><BarChart2 size={16} color="#193660" /> Evolução dos últimos 6 meses</div>
-              <div className="panel-sub">Faturamento e repasse mês a mês</div>
-            </div>
-          </div>
-
-          {temHistoricoSuficiente ? (
-            <div style={{ height: 192 }}>
-              <EvolucaoChart data={historicoData} />
-            </div>
-          ) : (
-            <div className="empty-state">
-              <div className="empty-icon"><Clock size={22} /></div>
-              <div className="empty-title">Histórico em construção</div>
-              <div className="empty-desc">O gráfico de evolução fica disponível depois de 2 meses de operação contínua.</div>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${Math.min(100, mesesComDados * 50)}%` }} />
-              </div>
-              <div className="progress-label">{mesesComDados} de 2 meses necessários</div>
-            </div>
-          )}
-        </div>
-
-        {/* Painel de ocupação por imóvel — grade de dias + cards de reservas */}
-        {aptIds.length > 0 && (
-          <div data-tour="ocupacao">
-          <OccupancyPanel
-            apartamentos={apartamentos.map(a => ({
-              id: a.id,
-              numero: a.numero,
-              empreendimento: a.empreendimentos?.nome ?? null,
-              tipo_gestao: a.tipo_gestao,
-            }))}
-            reservas={reservasParaPainel}
-            mes={mes}
-            ano={ano}
-            nomeMes={nomeMes}
-            sincronizado={mesSincronizado}
-          />
-          </div>
-        )}
-
-        <div className="panel" data-tour="atalhos" style={{ paddingBottom: 18 }}>
-          <div className="panel-head">
-            <div className="panel-title">Acesso rápido</div>
-          </div>
-          <div className="shortcut-grid">
-            <Link href={`/proprietario/extrato?mes=${mes}&ano=${ano}`} className="shortcut-card">
-              <div className="shortcut-icon" style={{ background: '#e6f1fb' }}><FileText size={17} color="#0c447c" /></div>
-              <div className="shortcut-title">Ver rentabilidade completa</div>
-              <div className="shortcut-desc">Detalhamento por apartamento do mês atual</div>
-            </Link>
-            <Link href={`/proprietario/extrato?mes=${mes}&ano=${ano}`} className="shortcut-card">
-              <div className="shortcut-icon" style={{ background: '#faeeda' }}><Download size={17} color="#854f0b" /></div>
-              <div className="shortcut-title">Rentabilidade e PDF</div>
-              <div className="shortcut-desc">Veja o demonstrativo e baixe a prestação de contas</div>
-            </Link>
-            <Link href="/proprietario/historico" className="shortcut-card">
-              <div className="shortcut-icon" style={{ background: '#eaf3de' }}><History size={17} color="#27500a" /></div>
-              <div className="shortcut-title">Consultar histórico</div>
-              <div className="shortcut-desc">Acompanhe os últimos 12 meses</div>
-            </Link>
-          </div>
-        </div>
-
-      </div>
-    </>
+    <InicioProprietario
+      primeiroNome={primeiroNome}
+      mes={mes}
+      ano={ano}
+      labelPeriodo={labelPeriodo}
+      isMesCorrente={isMesCorrente}
+      kpis={kpis}
+      rotuloTaxa={rotuloTaxa}
+      semCategoriasConfiguradas={semCategoriasConfiguradas}
+      semDados={semDados}
+      mesSincronizado={mesSincronizado}
+      historico={historicoData}
+      mesesComDados={mesesComDados}
+      acoes={
+        <>
+          {mes > 0 && <SyncButton mes={mes} ano={ano} />}
+          {/* selo "atualizado há X min" + aviso de reserva nova (Realtime) */}
+          <RealtimeReservas apartamentoIds={aptIds} initialIngestAt={ingestAt} />
+        </>
+      }
+      ocupacao={aptIds.length > 0 && (
+        <PainelOcupacao
+          apartamentos={apartamentosOcupacao}
+          reservas={reservasParaPainel}
+          mes={mes}
+          ano={ano}
+          nomeMes={nomeMes}
+          sincronizado={mesSincronizado}
+        />
+      )}
+    />
   )
 }

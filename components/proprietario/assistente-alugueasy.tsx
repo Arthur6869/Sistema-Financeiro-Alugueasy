@@ -89,7 +89,7 @@ const TOURS: Record<string, TourConfig> = {
         target: '[data-tour="ocupacao"]',
         titulo: 'Mapa de ocupação',
         texto:
-          'Veja os dias ocupados de cada imóvel no mês e o detalhe de cada reserva: plataforma (Airbnb, Booking...), hóspede, datas e valor líquido.',
+          'Um calendário por imóvel mostra os dias ocupados (na cor da plataforma) e, ao lado, cada reserva do mês: hóspede, datas e valor líquido.',
       },
       {
         target: '[data-tour="atalhos"]',
@@ -194,13 +194,13 @@ const TOURS: Record<string, TourConfig> = {
         target: '[data-tour="his-imovel"]',
         titulo: 'Desempenho por imóvel 🏠',
         texto:
-          'Aqui a análise é individual: escolha um dos seus imóveis para comparar faturamento (azul) e custos (vermelho) mês a mês — a linha verde mostra o lucro. Em cima, os totais dos últimos 12 meses do imóvel selecionado.',
+          'Aqui a análise é individual: escolha um dos seus imóveis para comparar faturamento (azul) e custos (laranja) mês a mês — o lucro aparece ao passar o dedo ou o mouse sobre cada mês. Em cima, os totais dos últimos 12 meses do imóvel selecionado.',
       },
       {
         target: '[data-tour="his-tabela"]',
         titulo: 'Resumo detalhado',
         texto:
-          'Cada linha é um mês: faturamento, custos, lucro, taxa AlugEasy e "Seu valor". O selo "Em andamento" marca o mês atual e "Sem dados" indica períodos sem lançamentos. As linhas com dados são clicáveis — toque em um mês para abrir a rentabilidade completa daquele período.',
+          'Cada linha é um mês: faturamento, custos, lucro, taxa AlugEasy e "Seu valor". O selo "Em andamento" marca o mês atual e "Sem dados" indica períodos sem lançamentos. Toque no título de uma coluna para ordenar, e num mês com dados para abrir a rentabilidade completa daquele período.',
       },
       {
         titulo: 'Tour completo! 🎉',
@@ -229,7 +229,7 @@ const FAQS: Faq[] = [
     pergunta: 'Como é calculado o meu repasse?',
     resposta: [
       'Sobre o resultado do mês (lucro ou faturamento, conforme o seu contrato) é aplicada a taxa de gestão da AlugEasy. O que sobra é o seu repasse.',
-      'O card verde do painel mostra o valor do mês, e a aba Rentabilidade detalha o cálculo completo, custo por custo.',
+      'O primeiro cartão do painel (Seu repasse) mostra o valor do mês, e a aba Rentabilidade detalha o cálculo completo, custo por custo.',
     ],
   },
   {
@@ -279,7 +279,7 @@ const FAQS: Faq[] = [
     id: 'ocupacao',
     pergunta: 'O que mostra o painel de ocupação?',
     resposta: [
-      'Cada imóvel tem uma grade com os dias do mês: os dias ocupados aparecem preenchidos.',
+      'Cada imóvel tem um calendário do mês: os dias ocupados aparecem na cor da plataforma, com um ponto no dia de entrada. Toque num dia para ver quem está hospedado.',
       'Logo abaixo você vê as reservas do período com plataforma (Airbnb, Booking...), hóspede, datas e valor líquido.',
     ],
   },
@@ -503,7 +503,7 @@ function AssistenteInner() {
           background: #fff; border: 1px solid #e7e9ee; border-radius: 20px;
           box-shadow: 0 16px 48px rgba(15,26,46,.18);
           display: flex; flex-direction: column; overflow: hidden;
-          font-family: 'DM Sans', system-ui, sans-serif;
+          font-family: inherit;
           animation: alu-in .2s ease-out;
         }
         @keyframes alu-in {
@@ -577,7 +577,7 @@ function AssistenteInner() {
           background: #fff; border: 1px solid #e7e9ee; border-radius: 16px;
           box-shadow: 0 16px 48px rgba(15,26,46,.25);
           padding: 18px 18px 14px;
-          font-family: 'DM Sans', system-ui, sans-serif;
+          font-family: inherit;
           animation: alu-in .2s ease-out;
         }
         .alu-tt-badge {

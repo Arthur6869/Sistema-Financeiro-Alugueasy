@@ -1,10 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { TrendingUp, Calendar, Building2 } from 'lucide-react'
 import { MESES, MESES_ABREV } from '@/lib/constants'
-import { HistoricoChart } from '@/components/proprietario/historico-chart'
-import { HistoricoLinhaClicavel } from '@/components/proprietario/historico-linha-clicavel'
-import { DesempenhoImovelChart } from '@/components/proprietario/desempenho-imovel-chart'
+import { HistoricoProprietario } from '@/components/proprietario/historico'
 import { calcularTaxaCarteira } from '@/lib/calcular-kpis'
 
 type ApartamentoVinculo = {
@@ -78,9 +75,6 @@ export default async function ProprietarioHistoricoPage() {
     })
   )
 
-  const chartLabels = dados.map(d => `${MESES_ABREV[d.m - 1]}/${String(d.a).slice(2)}`)
-  const chartValores = dados.map(d => d.semDados ? null : d.valorProprietario)
-
   // Série mensal individual de cada imóvel — alimenta o painel "Desempenho por imóvel"
   const porImovel = apartamentos.map(apt => ({
     id: apt.id,
@@ -98,130 +92,20 @@ export default async function ProprietarioHistoricoPage() {
   }))
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap');
-        *, *::before, *::after { box-sizing: border-box; }
-
-        .pg-wrap { font-family: 'DM Sans', sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px 28px 64px; }
-
-        .pg-head { margin-bottom: 28px; }
-        .pg-greeting { font-family: 'Instrument Serif', Georgia, serif; font-size: 28px; font-weight: 400; color: #0f1a2e; margin-bottom: 4px; }
-        .pg-greeting-sub { font-size: 13px; color: #5a6a82; }
-
-        .panel { background: #fff; border: 1px solid #e7e9ee; border-radius: 18px; padding: 24px; margin-bottom: 20px; }
-        .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
-        .panel-title { font-size: 15px; font-weight: 600; color: #0f1a2e; display: flex; align-items: center; gap: 8px; }
-        .panel-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
-
-        .hist-table { width: 100%; border-collapse: collapse; }
-        .hist-table th { text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; padding: 0 8px 12px; border-bottom: 1px solid #e7e9ee; }
-        .hist-table th.num { text-align: right; }
-        .hist-table td { padding: 13px 8px; border-bottom: 1px solid #f1f2f5; font-size: 13.5px; }
-        .hist-table tr:last-child td { border-bottom: none; }
-        .hist-table tr.has-data { cursor: pointer; transition: background .12s; }
-        .hist-table tr.has-data:hover { background: #f8f6f1; }
-        .hist-month { font-weight: 600; color: #0f1a2e; }
-        .hist-table td.num { text-align: right; font-weight: 600; color: #0f1a2e; }
-        .hist-table td.num.dim { color: #94a3b8; font-weight: 500; }
-        .hist-table td.num.repasse { color: #14532d; font-weight: 700; }
-        .status-pill { font-size: 10.5px; font-weight: 700; letter-spacing: .03em; padding: 4px 10px; border-radius: 100px; display: inline-block; }
-        .status-sem { background: #f1f2f5; color: #94a3b8; }
-        .status-ok { background: #f0fdf4; color: #14532d; }
-        .status-current { background: #e6f1fb; color: #0c447c; }
-
-        .table-scroll { overflow-x: auto; }
-
-        @media (max-width: 640px) {
-          .hide-col { display: none; }
-          .hist-table .num.repasse { font-size: 14px; }
-        }
-      `}</style>
-
-      <div className="pg-wrap">
-
-        <div className="pg-head">
-          <h1 className="pg-greeting">Histórico</h1>
-          <p className="pg-greeting-sub">Últimos 12 meses — toque no mês para ver a rentabilidade completa</p>
-        </div>
-
-        <div className="panel" data-tour="his-grafico">
-          <div className="panel-head">
-            <div>
-              <div className="panel-title"><TrendingUp size={16} color="#193660" /> Carteira mensal</div>
-              <div className="panel-sub">Evolução do valor recebido mês a mês</div>
-            </div>
-          </div>
-          <HistoricoChart labels={chartLabels} valores={chartValores} />
-        </div>
-
-        {/* Desempenho individual: faturamento × custos + lucro de cada imóvel */}
-        {porImovel.length > 0 && (
-          <div className="panel" data-tour="his-imovel">
-            <div className="panel-head">
-              <div>
-                <div className="panel-title"><Building2 size={16} color="#193660" /> Desempenho por imóvel</div>
-                <div className="panel-sub">Faturamento × custos de cada imóvel, mês a mês</div>
-              </div>
-            </div>
-            <DesempenhoImovelChart imoveis={porImovel} />
-          </div>
-        )}
-
-        <div className="panel" data-tour="his-tabela">
-          <div className="panel-head">
-            <div className="panel-title"><Calendar size={16} color="#193660" /> Resumo detalhado</div>
-          </div>
-
-          <div className="table-scroll">
-            <table className="hist-table">
-              <thead>
-                <tr>
-                  <th>Mês</th>
-                  <th>Status</th>
-                  <th className="num hide-col">Faturamento</th>
-                  <th className="num hide-col">Custos</th>
-                  <th className="num hide-col">Lucro</th>
-                  <th className="num hide-col">Repasse AlugEasy</th>
-                  <th className="num">Seu valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dados.map(d => (
-                  d.semDados ? (
-                    <tr key={`${d.m}-${d.a}`}>
-                      <td className="hist-month" style={{ color: d.isAtual ? '#0f1a2e' : '#94a3b8' }}>{MESES[d.m - 1]} {d.a}</td>
-                      <td>
-                        <span className={`status-pill ${d.isAtual ? 'status-current' : 'status-sem'}`}>
-                          {d.isAtual ? 'Em andamento' : 'Sem dados'}
-                        </span>
-                      </td>
-                      <td className="num dim hide-col">—</td>
-                      <td className="num dim hide-col">—</td>
-                      <td className="num dim hide-col">—</td>
-                      <td className="num dim hide-col">—</td>
-                      <td className="num dim">—</td>
-                    </tr>
-                  ) : (
-                    <HistoricoLinhaClicavel
-                      key={`${d.m}-${d.a}`}
-                      mes={d.m}
-                      ano={d.a}
-                      label={`${MESES[d.m - 1]} ${d.a}`}
-                      faturamento={d.faturamento}
-                      custos={d.custos}
-                      lucro={d.lucro}
-                      repasse={d.repasse}
-                      valorFinal={d.valorProprietario}
-                    />
-                  )
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
-    </>
+    <HistoricoProprietario
+      linhas={dados.map(d => ({
+        m: d.m,
+        a: d.a,
+        label: `${MESES[d.m - 1]} ${d.a}`,
+        faturamento: d.faturamento,
+        custos: d.custos,
+        lucro: d.lucro,
+        taxa: d.repasse,
+        valorProprietario: d.valorProprietario,
+        semDados: d.semDados,
+        isAtual: d.isAtual,
+      }))}
+      imoveis={porImovel}
+    />
   )
 }

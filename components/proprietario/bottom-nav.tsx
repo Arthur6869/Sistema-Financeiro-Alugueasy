@@ -1,51 +1,45 @@
 'use client'
 
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Home, FileText, History } from 'lucide-react'
-import { Suspense } from 'react'
+import { FileText, History, Home } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { hrefComPeriodo } from './cabecalho-portal'
 
-const items = [
-  { href: '/proprietario', icon: Home, label: 'Início' },
-  { href: '/proprietario/extrato', icon: FileText, label: 'Rentabilidade' },
-  { href: '/proprietario/historico', icon: History, label: 'Histórico' },
+const ITENS = [
+  { href: '/proprietario', icone: Home, rotulo: 'Início' },
+  { href: '/proprietario/extrato', icone: FileText, rotulo: 'Rentabilidade' },
+  { href: '/proprietario/historico', icone: History, rotulo: 'Histórico' },
 ]
 
-function buildNavHref(base: string, mes: string | null, ano: string | null) {
-  const params = new URLSearchParams()
-  if (mes) params.set('mes', mes)
-  if (ano) params.set('ano', ano)
-  const qs = params.toString()
-  return qs ? `${base}?${qs}` : base
-}
-
-function BottomNavInner() {
-  const path = usePathname()
-  const searchParams = useSearchParams()
-  const mes = searchParams.get('mes')
-  const ano = searchParams.get('ano')
+function Barra() {
+  const caminho = usePathname()
+  const params = useSearchParams()
+  const mes = params.get('mes')
+  const ano = params.get('ano')
 
   return (
     <nav
-      data-tour="navegacao-mobile"
-      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex md:hidden"
+      aria-label="Seções do portal" data-tour="navegacao-mobile"
+      className="fixed inset-x-0 bottom-0 z-50 flex border-t border-linha bg-white/95 backdrop-blur md:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      {items.map(({ href, icon: Icon, label }) => {
-        const active = path === href
+      {ITENS.map(({ href, icone: Icone, rotulo }) => {
+        const ativa = caminho === href
         return (
           <Link
-            key={href}
-            href={buildNavHref(href, mes, ano)}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors"
-            style={{ color: active ? '#193660' : '#9ca3af' }}
+            key={href} href={hrefComPeriodo(href, mes, ano)} aria-current={ativa ? 'page' : undefined}
+            className={cn(
+              'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors',
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-marca-700',
+              ativa ? 'text-marca-700' : 'text-apagado',
+            )}
           >
-            <div className={`p-1.5 rounded-xl transition-colors ${active ? 'bg-[#193660]/10' : ''}`}>
-              <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
-            </div>
-            <span className={`text-[10px] font-medium ${active ? 'text-[#193660]' : 'text-gray-400'}`}>
-              {label}
+            <span className={cn('grid h-8 w-12 place-items-center rounded-full transition-colors', ativa && 'bg-marca-50')}>
+              <Icone size={21} strokeWidth={ativa ? 2.4 : 1.8} aria-hidden="true" />
             </span>
+            {rotulo}
           </Link>
         )
       })}
@@ -53,10 +47,11 @@ function BottomNavInner() {
   )
 }
 
+/** Abas do portal no celular (no desktop elas ficam no cabeçalho). */
 export function BottomNav() {
   return (
     <Suspense fallback={null}>
-      <BottomNavInner />
+      <Barra />
     </Suspense>
   )
 }

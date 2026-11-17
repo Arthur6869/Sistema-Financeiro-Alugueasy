@@ -3,7 +3,10 @@
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Sparkles, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { moeda } from '@/components/dashboard/valor'
 
 interface RealtimeReservasProps {
   apartamentoIds: string[]
@@ -28,60 +31,55 @@ function formatData(s: string | null): string {
   return `${d}/${m}`
 }
 
-function formatBRL(v: number): string {
-  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// LGPD: só o primeiro nome do hóspede (o campo vem como "Nome Sobrenome — +55…")
+function primeiroNome(raw: string | null): string {
+  const nome = (raw ?? '').split(' — ')[0].trim().split(' ')[0] ?? ''
+  return nome ? nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase() : 'Hóspede'
 }
 
-// Cada reserva nova renderiza como uma linha destacada com selo NOVO + botão de fechar.
+/* O relógio e o DOM não são estado do React: são lidos por useSyncExternalStore,
+   fora da renderização (no servidor valem `null`, então nada depende da hora
+   em que a página foi gerada). */
+const JANELA_MS = 30_000
+const assinarRelogio = (avisar: () => void) => {
+  const iv = setInterval(avisar, JANELA_MS)
+  return () => clearInterval(iv)
+}
+const janelaAtual = () => Math.floor(Date.now() / JANELA_MS)
+const semAssinatura = () => () => {}
+// div#novas-reservas-portal, renderizada pela tela de Início
+const alvoDasNovasReservas = () => document.getElementById('novas-reservas-portal')
+
+function tempoAtras(d: Date, agoraMs: number): string {
+  const mins = Math.floor((agoraMs - d.getTime()) / 60_000)
+  if (mins < 1) return 'agora mesmo'
+  if (mins === 1) return 'há 1 min'
+  if (mins < 60) return `há ${mins} min`
+  const h = Math.floor(mins / 60)
+  return h === 1 ? 'há 1 hora' : `há ${h} horas`
+}
+
+// Cada reserva nova é uma linha destacada com selo NOVO + botão de fechar.
 function ItemNovaReserva({ r, onDismiss }: { r: NovaReserva; onDismiss: (id: string) => void }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 10,
-      background: '#fffbf2', border: '1px solid #fde68a',
-      borderLeft: '3px solid #d97706',
-      borderRadius: '0 10px 10px 0',
-      padding: '12px 14px',
-      marginBottom: 8,
-      fontFamily: 'DM Sans, sans-serif',
-    }}>
-      <div style={{
-        background: '#d97706', color: '#fff',
-        borderRadius: 5, padding: '2px 7px',
-        fontSize: 9, fontWeight: 800, letterSpacing: '.07em',
-        textTransform: 'uppercase' as const,
-        flexShrink: 0, marginTop: 2,
-      }}>
-        NOVO
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f1a2e', marginBottom: 2 }}>
-          {r.nome_hospede ?? 'Hóspede'}
-        </div>
-        <div style={{ fontSize: 11.5, color: '#5a6a82', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {r.individual_room_name ?? 'Quarto não identificado'}
-        </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3, display: 'flex', flexWrap: 'wrap' as const, gap: '0 8px' }}>
+    <li className="flex items-start gap-3 rounded-2xl border border-areia bg-white p-3.5 pl-4">
+      <span className="mt-0.5 shrink-0 rounded-md bg-marca-800 px-1.5 py-0.5 font-rotulo text-[10px] font-bold uppercase tracking-wider text-white">Novo</span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-tinta">{primeiroNome(r.nome_hospede)}</p>
+        <p className="truncate text-xs text-apagado">{r.individual_room_name ?? 'Quarto não identificado'}</p>
+        <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-apagado">
           <span>{formatData(r.checkin)} → {formatData(r.checkout)}</span>
           {r.plataforma_normalizada && <span>· {r.plataforma_normalizada}</span>}
-          {r.valor_liquido != null && (
-            <span style={{ color: '#166534', fontWeight: 600 }}>
-              · R$ {formatBRL(r.valor_liquido)}
-            </span>
-          )}
-        </div>
+          {r.valor_liquido != null && <span className="font-semibold text-positivo">· {moeda(r.valor_liquido)}</span>}
+        </p>
       </div>
       <button
-        onClick={() => onDismiss(r.booking_id)}
-        aria-label="Fechar"
-        style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          color: '#94a3b8', fontSize: 18, lineHeight: 1,
-          padding: '0 2px', flexShrink: 0, marginTop: -2,
-        }}
+        type="button" onClick={() => onDismiss(r.booking_id)} aria-label="Dispensar aviso"
+        className="-mr-1 -mt-1 grid size-8 shrink-0 place-items-center rounded-full text-apagado transition-colors hover:bg-creme hover:text-tinta focus-visible:outline-2 focus-visible:outline-marca-700"
       >
-        ×
+        <X size={15} aria-hidden="true" />
       </button>
-    </div>
+    </li>
   )
 }
 
@@ -94,28 +92,18 @@ export function RealtimeReservas({ apartamentoIds, initialIngestAt }: RealtimeRe
   const [ingestAt, setIngestAt] = useState<Date | null>(
     initialIngestAt ? new Date(initialIngestAt) : null
   )
-  const [showToast, setShowToast] = useState(false)
   const [novasReservas, setNovasReservas] = useState<NovaReserva[]>([])
   const [retryKey, setRetryKey] = useState(0)
-  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null)
 
   // IDs já vistos: dedupe de INSERTs duplicados
   const seenIds = useRef(new Set<string>())
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Debounce: agrupa rajada de eventos numa única chamada de refresh (~1.5s)
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // Ticker de 30s para atualizar "atualizado há X min"
-  const [, tick] = useState(0)
-  useEffect(() => {
-    const iv = setInterval(() => tick(n => n + 1), 30_000)
-    return () => clearInterval(iv)
-  }, [])
-
-  // Resolver o DOM target do portal (div#novas-reservas-portal injetada pelo server component)
-  useEffect(() => {
-    setPortalEl(document.getElementById('novas-reservas-portal'))
-  }, [])
+  // "atualizado há X min": a janela de 30 s muda sozinha e redesenha o selo
+  const janela = useSyncExternalStore(assinarRelogio, janelaAtual, () => null)
+  // onde a seção "Chegaram agora" é desenhada
+  const portalEl = useSyncExternalStore(semAssinatura, alvoDasNovasReservas, () => null)
 
   const aptIdsKey = apartamentoIds.join(',')
 
@@ -157,11 +145,7 @@ export function RealtimeReservas({ apartamentoIds, initialIngestAt }: RealtimeRe
                 valor_liquido: row.valor_liquido,
               }, ...prev]
             })
-
-            // Toast efêmero (8s)
-            setShowToast(true)
-            clearTimeout(toastTimer.current)
-            toastTimer.current = setTimeout(() => setShowToast(false), 8_000)
+            toast.success('Nova reserva recebida', { description: 'Os números do mês estão sendo atualizados.' })
           }
 
           // Debounce: espera 1.5s após o último evento antes de refreshar
@@ -178,7 +162,6 @@ export function RealtimeReservas({ apartamentoIds, initialIngestAt }: RealtimeRe
 
     return () => {
       supabase.removeChannel(channel)
-      clearTimeout(toastTimer.current)
       clearTimeout(refreshTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,63 +171,29 @@ export function RealtimeReservas({ apartamentoIds, initialIngestAt }: RealtimeRe
     setNovasReservas(prev => prev.filter(r => r.booking_id !== bookingId))
   }
 
-  function tempoAtras(d: Date): string {
-    const mins = Math.floor((Date.now() - d.getTime()) / 60_000)
-    if (mins < 1) return 'agora mesmo'
-    if (mins === 1) return 'há 1 min'
-    if (mins < 60) return `há ${mins} min`
-    const h = Math.floor(mins / 60)
-    return h === 1 ? 'há 1 hora' : `há ${h} horas`
-  }
-
   return (
     <>
-      {/* Badge "atualizado há X min" — renderizado inline no pg-period */}
-      {ingestAt && (
-        <span style={{
-          fontSize: '11px', color: '#94a3b8',
-          display: 'flex', alignItems: 'center', gap: 5,
-        }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: '#22c55e', display: 'inline-block', flexShrink: 0,
-          }} />
-          Atualizado {tempoAtras(ingestAt)}
+      {/* Selo "atualizado há X min" — fica ao lado dos controles do período */}
+      {ingestAt && janela !== null && (
+        <span className="inline-flex h-11 items-center gap-1.5 text-xs text-apagado">
+          <span aria-hidden="true" className="size-1.5 rounded-full bg-positivo" />
+          Atualizado {tempoAtras(ingestAt, (janela + 1) * JANELA_MS)}
         </span>
-      )}
-
-      {/* Toast efêmero de nova reserva (fixed, some em 8s) */}
-      {showToast && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          background: '#0f2647', color: 'white',
-          borderRadius: 12, padding: '12px 20px',
-          fontSize: '13px', fontWeight: 600,
-          boxShadow: '0 8px 24px rgba(15,38,71,.25)',
-          display: 'flex', alignItems: 'center', gap: 8,
-          fontFamily: 'DM Sans, sans-serif',
-        }}>
-          <span style={{ fontSize: 16 }}>✓</span>
-          Nova reserva recebida — dados atualizando…
-        </div>
       )}
 
       {/* Seção "Chegaram agora" — renderizada via portal no fluxo da página */}
       {portalEl && novasReservas.length > 0 && createPortal(
-        <div style={{ marginBottom: 20 }}>
-          <div style={{
-            fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em',
-            textTransform: 'uppercase' as const, color: '#d97706',
-            marginBottom: 8, fontFamily: 'DM Sans, sans-serif',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
+        <section aria-labelledby="titulo-novas" className="mb-4">
+          <h2 id="titulo-novas" className="mb-2 flex items-center gap-1.5 font-rotulo text-[11px] font-semibold uppercase tracking-[0.14em] text-marca-700">
+            <Sparkles size={13} aria-hidden="true" />
             Chegaram agora
-          </div>
-          {novasReservas.map(r => (
-            <ItemNovaReserva key={r.booking_id} r={r} onDismiss={dismissar} />
-          ))}
-        </div>,
+          </h2>
+          <ul className="space-y-2">
+            {novasReservas.map(r => (
+              <ItemNovaReserva key={r.booking_id} r={r} onDismiss={dismissar} />
+            ))}
+          </ul>
+        </section>,
         portalEl
       )}
     </>

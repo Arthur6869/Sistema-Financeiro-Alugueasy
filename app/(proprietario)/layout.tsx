@@ -1,16 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { LogoutButton } from '@/components/proprietario/logout-button'
-import { BottomNav } from '@/components/proprietario/bottom-nav'
-import { DesktopNav } from '@/components/proprietario/desktop-nav'
+import type { Metadata, Viewport } from 'next'
+import { fontesMarca } from '@/lib/fontes-marca'
 import { PresencaHeartbeat } from '@/components/presenca/presenca-heartbeat'
+import { CabecalhoPortal } from '@/components/proprietario/cabecalho-portal'
+import { BottomNav } from '@/components/proprietario/bottom-nav'
 import { AssistenteAlugEasy } from '@/components/proprietario/assistente-alugueasy'
-import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Portal do Proprietário — AlugEasy',
   description: 'Acompanhe o rendimento dos seus imóveis',
-  themeColor: '#193660',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -21,11 +20,17 @@ export const metadata: Metadata = {
   },
 }
 
-export default async function ProprietarioLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+// A cor da barra do navegador vai no `viewport` (no `metadata` o Next 16 só avisa e ignora)
+export const viewport: Viewport = { themeColor: '#0f2647' }
+
+/**
+ * Moldura do portal do proprietário: cabeçalho com as abas, conteúdo e, no
+ * celular, a barra de abas embaixo. A autenticação continua aqui.
+ *
+ * As fontes da marca vêm por `fontesMarca` (next/font): o @import do Google
+ * Fonts que cada página carregava era bloqueado pela CSP e nunca chegou a valer.
+ */
+export default async function ProprietarioLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -42,8 +47,8 @@ export default async function ProprietarioLayout({
   // A trava definitiva é a RLS (migration 037); esta aqui é a de superfície.
   if (profile.ativo === false) redirect('/login-proprietario?erro=conta_desativada')
 
-  const primeiroNome = profile?.full_name?.split(' ')[0] ?? ''
-  const iniciais = (profile?.full_name ?? '')
+  const nome = profile?.full_name?.trim() || 'Proprietário'
+  const iniciais = nome
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
@@ -51,74 +56,20 @@ export default async function ProprietarioLayout({
     .join('') || '?'
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f5f7', display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className={`flex min-h-dvh flex-col bg-creme text-tinta ${fontesMarca}`}>
       <PresencaHeartbeat />
+      <CabecalhoPortal nome={nome} iniciais={iniciais} />
 
-      {/* ─── Header ─── */}
-      <header style={{
-        background: '#fff',
-        borderBottom: '1px solid #e7e9ee',
-        position: 'sticky', top: 0, zIndex: 40,
-        boxShadow: '0 1px 8px rgba(15,26,46,.05)',
-      }}>
-        <div style={{
-          height: 64, display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between',
-          maxWidth: 1400, margin: '0 auto', padding: '0 24px',
-          gap: 16,
-        }}>
-
-          {/* Nav desktop — repassa mes/ano da URL atual para manter filtro entre abas */}
-          <div data-tour="navegacao" className="hidden md:block">
-            <DesktopNav />
-          </div>
-
-          {/* Usuário + Sair */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            {/* Avatar com iniciais */}
-            <div style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: '#193660', color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 700, letterSpacing: '.04em',
-              flexShrink: 0, userSelect: 'none',
-            }}>
-              {iniciais}
-            </div>
-            {/* Nome completo no desktop */}
-            <span className="hidden md:block" style={{ fontSize: 13, fontWeight: 500, color: '#0f1a2e' }}>
-              {profile?.full_name}
-            </span>
-            {/* Primeiro nome no mobile */}
-            <span className="md:hidden" style={{ fontSize: 12.5, color: '#5a6a82' }}>
-              {primeiroNome}
-            </span>
-            {/* Divisor */}
-            <div className="hidden md:block" style={{ width: 1, height: 18, background: '#e7e9ee', flexShrink: 0 }} />
-            <LogoutButton />
-          </div>
-
-        </div>
-      </header>
-
-      {/* Conteúdo — sem max-width: cada página controla a própria largura via .pg-wrap.
-          overflowX clip: nenhum elemento largo pode criar scroll lateral na página inteira */}
-      <main className="flex-1 w-full pb-24 md:pb-0" style={{ overflowX: 'clip' }}>
+      {/* overflow-x clip: nenhum elemento largo pode criar rolagem lateral na página inteira */}
+      <main className="w-full flex-1 pb-24 md:pb-0" style={{ overflowX: 'clip' }}>
         {children}
       </main>
 
-      {/* Footer desktop */}
-      <footer className="hidden md:block" style={{
-        textAlign: 'center', fontSize: 11.5,
-        color: '#94a3b8', padding: '20px 24px',
-        borderTop: '1px solid #e7e9ee', background: '#fff',
-      }}>
-        AlugEasy &copy; 2026 &mdash; Portal do Proprietário
+      <footer className="hidden border-t border-linha bg-white px-6 py-5 text-center text-xs text-apagado md:block">
+        AlugEasy © 2026 — Portal do Proprietário
       </footer>
 
       <BottomNav />
-
-      {/* Assistente virtual — tour guiado + ajuda rápida */}
       <AssistenteAlugEasy />
     </div>
   )

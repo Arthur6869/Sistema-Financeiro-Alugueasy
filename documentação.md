@@ -404,7 +404,7 @@ Grupo de rotas isolado `app/(proprietario)/` — layout e UX completamente separ
 | `/proprietario/historico` | `app/(proprietario)/proprietario/historico/page.tsx` | `proprietario` | Tabela dos últimos 12 meses com status pills (Em andamento/Fechado/Sem dados), linha de totais acumulados |
 
 **Componentes exclusivos do portal:**
-- `components/proprietario/evolucao-chart.tsx` — Recharts LineChart (Faturamento/Lucro/Repasse)
+- `components/proprietario/evolucao-repasse.tsx` — Recharts: colunas de faturamento + linha do repasse (substituiu `evolucao-chart.tsx` em 17/11/2026 — ver "Portal do Proprietário redesenhado")
 - `components/proprietario/logout-button.tsx` — Client component com signOut + redirect
 - `components/modals/cadastrar-proprietario-modal.tsx` — Multi-select de apts por empreendimento
 - `components/modals/gerenciar-proprietario-modal.tsx` — Checkbox para editar vínculos ativos
@@ -1266,11 +1266,11 @@ UNIQUE: `(proprietario_id, apartamento_id)`
 | Componente | Arquivo | Tipo |
 |---|---|---|
 | `LogoutButton` | `components/proprietario/logout-button.tsx` | Client |
-| `EvolucaoChart` | `components/proprietario/evolucao-chart.tsx` | Client (Recharts) |
+| `EvolucaoRepasse` | `components/proprietario/evolucao-repasse.tsx` | Client (Recharts) — substituiu `EvolucaoChart` em 17/11/2026 |
 | `CadastrarProprietarioModal` | `components/modals/cadastrar-proprietario-modal.tsx` | Client |
 | `GerenciarProprietarioModal` | `components/modals/gerenciar-proprietario-modal.tsx` | Client |
 | `AssistenteAlugEasy` ("Alu") | `components/proprietario/assistente-alugueasy.tsx` | Client |
-| `DesempenhoImovelChart` | `components/proprietario/desempenho-imovel-chart.tsx` | Client (Recharts) — faturamento × custos + lucro por imóvel no Histórico, com seletor e totais 12m |
+| `DesempenhoImovel` (dentro de `historico.tsx`) | `components/proprietario/historico.tsx` | Client (Recharts + abas Base UI) — faturamento × custos por imóvel no Histórico, com seletor e totais 12m; o lucro aparece no hover. Substituiu `DesempenhoImovelChart` em 17/11/2026 |
 
 ### APIs criadas/atualizadas
 
@@ -1346,7 +1346,7 @@ usuário em 16/10/2026: **cobrada só em imóveis `tipo_gestao = 'adm'`; em
 - `lib/sync-amenitiz-core.ts`: resolve o `aptInfo` ANTES de calcular a taxa e
   passa `aptInfo.tipoGestao`. Reservas de imóveis sub passam a ser gravadas
   com `taxa_aplicada = 0` e `valor_liquido = valor_bruto`; as diárias seguem.
-- Portal web (`occupancy-panel.tsx`) e app (`mobile/src/components/ocupacao.tsx`):
+- Portal web (`occupancy-panel.tsx`, hoje `painel-ocupacao.tsx`) e app (`mobile/src/components/ocupacao.tsx`):
   o badge "AlugEasy 10%" nas TAXAS do imóvel some para sublocação (ficam só
   Booking e Airbnb). Textos do botão de sync, da tela Importar e das notas do
   XLSX de conferência dizem "10% só em administração".
@@ -1872,5 +1872,94 @@ Todas exigem analista e gravam com a sessão do usuário (a RLS repete a regra).
 Texto `sr-only` dentro de uma área `overflow-x-auto` **escapa dela** (é `absolute` e o
 bloco de contenção fica fora) e cria rolagem lateral na página inteira. A área rolável
 precisa de `relative`.
+
+---
+
+## Portal do Proprietário redesenhado (17/11/2026)
+
+As quatro telas do portal (`/proprietario`, `/proprietario/extrato`,
+`/proprietario/historico`, `/proprietario/bem-vindo`) passaram para o mesmo padrão
+visual da área interna: creme, azul da marca, título em serifa, cartões e gráficos
+com as cores de série já validadas.
+
+**Nenhum cálculo mudou.** As três páginas continuam fazendo as mesmas consultas e
+somas (`calcularKPIs`, `calcularTaxaCarteira`, o rateio de reservas que cruzam o
+mês); só o `return` de cada uma trocou o JSX antigo por um componente. O diff da
+parte de consultas contra o commit anterior mostra apenas imports.
+
+### O que estava quebrado e ninguém via
+
+Cada página carregava as fontes com `@import url('https://fonts.googleapis.com/…')`
+dentro de um `<style>`. A CSP do `next.config.ts` bloqueia esse endereço, então
+"Instrument Serif" e "DM Sans" **nunca carregaram**: o portal sempre apareceu com
+Georgia e a fonte do sistema. Agora a moldura aplica `fontesMarca` (next/font,
+servida do próprio domínio) — os quatro `@import` e os blocos de CSS em texto
+saíram.
+
+### Componentes (`components/proprietario/`)
+
+| Arquivo | Papel |
+|---|---|
+| `cabecalho-portal.tsx` | Barra do topo: marca, abas (≥ 768px), usuário e sair. Exporta `hrefComPeriodo` |
+| `bottom-nav.tsx` | Abas no celular (barra de baixo) |
+| `inicio.tsx` | Início: repasse em destaque, faturamento, custos, taxa, lucro; "para onde foi o faturamento"; 6 meses; ocupação; atalhos |
+| `evolucao-repasse.tsx` | Recharts — colunas de faturamento + linha do repasse (um eixo só) |
+| `painel-ocupacao.tsx` | Calendário do mês por imóvel (7 colunas, cor da plataforma, ponto no dia de entrada), medidor de ocupação e cartões de reserva |
+| `rentabilidade.tsx` | Prestação de contas por imóvel; custos abrem/fecham por categoria; PDF |
+| `historico.tsx` | 12 meses: gráfico do valor do proprietário, desempenho por imóvel (abas) e tabela ordenável |
+| `boas-vindas.tsx` | Tela do primeiro acesso |
+| `sync-button.tsx`, `realtime-reservas.tsx`, `logout-button.tsx` | Mesmo comportamento, visual novo; avisos agora pelo `sonner` |
+
+Removidos: `desktop-nav`, `occupancy-panel`, `evolucao-chart`, `historico-chart`,
+`historico-linha-clicavel`, `desempenho-imovel-chart` (substituídos) e
+`reservas-mes-panel`, `extrato-apt-card`, `historico-cards-mobile` (ninguém importava).
+
+Peças compartilhadas novas: `components/marca/logo-marca.tsx` (a casa da marca,
+antes privada do menu interno) e `components/painel/entrada.tsx` (entrada animada
+para telas que não usam a `PaginaInterna`).
+
+`PaginaInterna` ganhou `estreita` (1100px, largura de leitura) e `tourPeriodo`
+(`data-tour` na linha de controles). `PeriodoNav` aceita `permitirTodos: 'meses'`:
+oferece "Todos os meses" sem "Todos os anos" — o portal sempre teve a visão do ano
+inteiro (`mes=0`) e ela foi mantida.
+
+### Bibliotecas em uso no portal (nenhuma dependência nova)
+
+| Biblioteca | Onde |
+|---|---|
+| GSAP (`useGSAP`, SplitText) | Entrada das seções, barras que crescem, números que contam, título das boas-vindas |
+| Recharts | Evolução de 6 meses, valor de 12 meses, faturamento × custos por imóvel |
+| TanStack Table v9 | Tabela do histórico (ordenar por qualquer coluna) |
+| Base UI | `Tooltip` (calendário, composição), `Meter` (ocupação), `ScrollArea` (cartões de reserva), `Tabs` (imóvel), `Collapsible` (custos) |
+| sonner | Avisos de sincronização e de reserva nova |
+| next/font | Instrument Serif + Geist Mono |
+
+### O que mudou além do visual
+
+1. **Taxas de plataforma calculadas no servidor.** `getTaxasPlataforma` (de
+   `lib/amenitiz`, que tem partes só de servidor) saiu do painel de ocupação: a
+   página calcula e entrega os percentuais prontos. Sublocação continua sem a taxa
+   AlugEasy.
+2. **Gráfico de 6 meses:** três linhas (faturamento, lucro, repasse) viraram colunas
+   de faturamento + linha do repasse. O lucro continua no cartão do mês.
+3. **Desempenho por imóvel:** saiu a linha de lucro sobre as barras (o lucro vai no
+   hover e nos totais); custo deixou de ser vermelho — vermelho ficou só para
+   prejuízo.
+4. **Calendário de ocupação:** de uma fila de 31 quadrados (rolava de lado no
+   celular) para um calendário de 7 colunas com os dias da semana.
+5. **Hóspede em "Chegaram agora":** só o primeiro nome (antes ia o campo inteiro,
+   que pode trazer telefone).
+6. **Selo "Atualizado há X min":** não depende mais da hora em que o servidor gerou
+   a página (`useSyncExternalStore`); os dois erros de lint antigos do arquivo saíram.
+7. **`themeColor`** foi do `metadata` para o `viewport` (o Next 16 ignorava e avisava no build).
+8. **Tour da ALU:** todos os `data-tour` foram mantidos; cinco textos que descreviam
+   a tela antiga ("card verde", "custos (vermelho)", "linha verde") foram atualizados.
+
+### Verificação
+
+Feita com dados fictícios em rotas temporárias (já removidas), sem login de
+proprietário: cerca de 50 verificações no navegador (desktop, tablet, 390px e 360px),
+teclado e movimento reduzido. **Falta conferir com uma conta real de proprietário**,
+em especial o tempo real (chegada de reserva) e o download do PDF.
 
 > **REGRA:** Esta documentação deve ser atualizada **sempre** que houver mudanças no schema do banco, novas rotas, alterações de regras de negócio, novos componentes ou correções de bugs.
