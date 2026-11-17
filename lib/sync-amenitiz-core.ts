@@ -94,6 +94,16 @@ const TRANSFERENCIAS_ANUNCIO: Array<{
   // regra de FK nula (entrada abaixo, mesma regra acima com a chave por nome).
   { empNome: 'VISION',  aptNum: 'room:e4a90e7d', inicioNovoImovel: '2026-09-16', antigo: { empNome: 'ASA SUL', aptNum: '104' } },
   { empNome: 'ASA SUL', aptNum: '104',           inicioNovoImovel: '2026-05-16', antigo: null },
+  // Quarto c0d1aa38: era o "Vision 1605" (sub) até o check-in de 30/06/2026 e
+  // foi renomeado "SM 806" na Amenitiz. O SAINT MORITZ 806 só começou a operar
+  // no check-in de 29/09/2026 (primeira reserva do calendário "Hotel Saint
+  // Moritz 806"; print da Amenitiz enviado pelo usuário em 17/11/2026). As
+  // reservas de 01/07 a 28/09 pertencem ao VISION 1605: caíam no SAINT MORITZ
+  // 806 (ago–set, inflando o portal do proprietário) e no MERCURE 1311 (jul,
+  // por room id antigo). Como a API devolve sempre o nome ATUAL do quarto, sem
+  // esta regra um sync de qualquer mês anterior moveria também o histórico
+  // inteiro do Vision 1605 para o 806. Histórico corrigido pela migration 048.
+  { empNome: 'SAINT MORITZ', aptNum: '806', inicioNovoImovel: '2026-09-29', antigo: { empNome: 'VISION', aptNum: '1605' } },
 ]
 
 // Unidades que a Amenitiz anuncia separadas mas que no sistema são UM único
